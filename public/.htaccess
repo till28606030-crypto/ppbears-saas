@@ -1,0 +1,7 @@
+RewriteEngine On
+RewriteBase /design/
+RewriteRule ^index\.html$ - [L]
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+RewriteRule . /design/index.html [L]

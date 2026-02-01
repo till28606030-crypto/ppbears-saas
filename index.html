@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="https://ppbears.com/wp-content/uploads/2026/01/new-logo-01.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ppbears MY design</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&family=Great+Vibes&family=Pacifico&family=Noto+Sans+TC:wght@400;700&family=Noto+Serif+TC:wght@400;700&family=Zen+Maru+Gothic:wght@400;700&family=Noto+Sans+JP:wght@400;700&family=Kiwi+Maru&family=Noto+Sans+KR:wght@400;700&family=Nanum+Pen+Script&display=swap" rel="stylesheet">
+    <!-- Taipei Sans TC (TaipeiSansTCBeta) -->
+    <link href="https://cdn.jsdelivr.net/npm/taipei-sans-tc/dist/Regular/TaipeiSansTCBeta-Regular.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/taipei-sans-tc/dist/Bold/TaipeiSansTCBeta-Bold.css" rel="stylesheet" />
+    
+    <!-- LXGW WenKai TC -->
+    <link href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-tc-webfont@1.0.0/style.css" rel="stylesheet" />
+    
+    <!-- Cactus Classical Serif -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/cactus-classical-serif/index.css" />
+
+    <!-- Chocolate Classical Sans (Custom @font-face) -->
+    <style>
+      @font-face {
+        font-family: 'Chocolate Classical Sans';
+        src: url('https://cdn.jsdelivr.net/gh/MoonlitOwen/ChocolateSans@master/ChocolateClassicalSans-Regular.ttf') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+        font-display: swap;
+      }
+    </style>
+
+    <script type="module">
+      if (import.meta.hot?.on) {
+        import.meta.hot.on('vite:error', (error) => {
+          if (error.err) {
+            console.error(
+              [error.err.message, error.err.frame].filter(Boolean).join('\n'),
+            )
+          }
+        })
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
