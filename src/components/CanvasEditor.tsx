@@ -864,6 +864,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
     const [searchParams] = useSearchParams();
     const [isTemplateLoading, setIsTemplateLoading] = useState(false);
+    const [hasTemplateLoaded, setHasTemplateLoaded] = useState(false); // Track if template has loaded at least once
     const templateLoadSeqRef = useRef(0);
     const enterSeqRef = useRef(0);
     const enterInFlightRef = useRef(false);
@@ -1412,27 +1413,25 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             o.data?.systemId === 'system_base_image' || o.id === 'system_base_image'
         ) as FabricImage;
 
-        let targetRect;
-        if (baseLayer) {
-            // Use base layer's bounding box for full visual coverage
-            const baseBounds = baseLayer.getBoundingRect();
-            targetRect = {
-                left: baseBounds.left,
-                top: baseBounds.top,
-                width: baseBounds.width,
-                height: baseBounds.height
-            };
-            console.log('[BG] Using base layer dimensions for color:', targetRect);
-        } else {
-            // Fallback to canvas dimensions
-            targetRect = {
-                left: 0,
-                top: 0,
-                width: canvas.getWidth(),
-                height: canvas.getHeight()
-            };
-            console.warn('[BG] No base layer, using canvas dimensions for color');
+        // If no base layer exists yet, defer background creation
+        // This prevents creating background with wrong dimensions during initial load
+        if (!baseLayer) {
+            console.warn('[BG] No base layer found, skipping background creation. Call setCanvasBgColor again after product loads.');
+            canvas.requestRenderAll();
+            dumpCanvas(canvas, 'bg_apply_color_deferred');
+            console.groupEnd();
+            return;
         }
+
+        // Use base layer's bounding box for full visual coverage
+        const baseBounds = baseLayer.getBoundingRect();
+        const targetRect = {
+            left: baseBounds.left,
+            top: baseBounds.top,
+            width: baseBounds.width,
+            height: baseBounds.height
+        };
+        console.log('[BG] Using base layer dimensions for color:', targetRect);
 
         // Create color rectangle as layer
         const rect = new Rect({
@@ -2042,6 +2041,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             canvas.requestRenderAll();
         }
 
+        // Reverted: Do not force system layers into history. 
+        // We will preserve them manually during undo/redo.
+
         const json = JSON.stringify((canvas as any).toJSON([
             'id', 'selectable', 'evented', 'locked', 'excludeFromExport',
             'isUserBackground', 'isBaseLayer', 'isMaskLayer', 'isFrameLayer', 'frameId', 'perPixelTargetFind',
@@ -2240,10 +2242,52 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 }
 
                 // 你原本的策略：載入前刪 clipPath，後面再重綁
-                // parsedData.objects.forEach((obj: any) => { delete obj.clipPath; });
-
                 const canvas = fabricCanvas.current;
-                await canvas.loadFromJSON(parsedData);
+
+                // --- Hybrid Restore Strategy ---
+                // 1. Preserve current system system objects (Base & Mask)
+                // They are static and should not be part of undo/redo JSON cycle to avoid property loss.
+                const currentObjects = canvas.getObjects();
+                const preservedBase = currentObjects.find(o =>
+                    (o as any).isBaseLayer || (o as any).id === 'system_base_image'
+                );
+                const preservedMask = currentObjects.find(o =>
+                    (o as any).isMaskLayer || (o as any).id === 'system_mask_image'
+                );
+
+                // 2. Load User History (this will clear canvas)
+                // Reviver ensuring other custom props are kept (e.g. user background)
+                const reviver = (o: any, object: any) => {
+                    if (o.isUserBackground) object.isUserBackground = true;
+                };
+
+                await canvas.loadFromJSON(parsedData, reviver);
+
+                // 3. Re-add System Objects
+                if (preservedBase) {
+                    // Ensure it's at the bottom
+                    // Check if it's already there (loadFromJSON might have added a duplicate if history was mixed)
+                    // But we chose NOT to save them in history, so loadFromJSON shouldn't add them.
+                    canvas.add(preservedBase);
+                    canvas.sendObjectToBack(preservedBase);
+                }
+
+                if (preservedMask) {
+                    // Ensure it's at the top
+                    canvas.add(preservedMask);
+                    canvas.bringObjectToFront(preservedMask);
+                    // Force properties just in case
+                    preservedMask.set({
+                        selectable: false,
+                        evented: false,
+                        excludeFromExport: true,
+                        opacity: 1,
+                        visible: true
+                    });
+                    preservedMask.setCoords();
+                }
+
+                console.log('[UNDO] Hybrid restore complete. Preserved Base:', !!preservedBase, 'Preserved Mask:', !!preservedMask);
 
                 canvas.discardActiveObject();
                 canvas.requestRenderAll();
@@ -2320,15 +2364,37 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     // --- FINAL LAYER CHECK ---
                     // 確保遮罩層在最上層，但不會遮擋使用者操作 (穿透點擊)
                     // 並且確保它是視覺上正確的 (例如中間透明)
-                    const topMask = canvas.getObjects().find(obj => (obj as any).isMaskLayer);
+
+                    // DEBUG: Log all objects to see what we have
+                    console.log('[UNDO] All canvas objects after restore:', canvas.getObjects().map(obj => ({
+                        type: obj.type,
+                        id: (obj as any).id,
+                        isMaskLayer: (obj as any).isMaskLayer,
+                        isBaseLayer: (obj as any).isBaseLayer,
+                        dataSystemId: (obj as any).data?.systemId,
+                        dataKind: (obj as any).data?.kind
+                    })));
+
+                    // Enhanced: Use multi-identifier search to find mask reliably
+                    const topMask = canvas.getObjects().find(obj =>
+                        (obj as any).isMaskLayer ||
+                        (obj as any).data?.systemId === 'system_mask_image' ||
+                        (obj as any).id === 'system_mask_image'
+                    );
+
                     if (topMask) {
+                        console.log('[UNDO] Restoring mask layer to front');
                         canvas.bringObjectToFront(topMask);
                         topMask.set({
                             evented: false, // 讓滑鼠可以穿透遮罩點擊下面的文字
                             selectable: false,
                             opacity: 1, // 確保可見
-                            // 如果是圖片，確保 globalCompositeOperation 設置正確，或者依賴圖片本身的透明度
+                            visible: true, // 明確設置可見狀態
+                            excludeFromExport: true
                         });
+                        topMask.setCoords(); // 更新坐標
+                    } else {
+                        console.warn('[UNDO] Mask layer not found after restore!');
                     }
                     // --- FINAL LAYER CHECK END ---
 
@@ -2349,107 +2415,101 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         const step = historyStepRef.current;
         const h = historyRef.current;
         if (step >= h.length - 1 || isHistoryProcessing.current) return;
+        if (!fabricCanvas.current) return;
+        const canvas = fabricCanvas.current;
 
         isHistoryProcessing.current = true;
         isRestoring.current = true;
 
-        const nextStep = step + 1;
-        const json = h[nextStep];
+        console.log('[REDO] Hybrid restore complete');
 
-        if (fabricCanvas.current && json) {
-            try {
-                const parsedData = JSON.parse(json);
-                if (!parsedData || !Array.isArray(parsedData.objects) || parsedData.objects.length === 0) {
-                    isHistoryProcessing.current = false;
-                    isRestoring.current = false;
-                    return;
-                }
+        canvas.discardActiveObject();
+        canvas.requestRenderAll();
 
-                // 1) 刪掉這行： parsedData.objects.forEach((obj: any) => { delete obj.clipPath; });
-                // Old logic: parsedData.objects.forEach((obj: any) => { delete obj.clipPath; });
+        try {
+            const objects = canvas.getObjects();
 
-                const canvas = fabricCanvas.current;
-                await canvas.loadFromJSON(parsedData);
+            activeBaseImageRef.current = null;
+            activeMaskImageRef.current = null;
+            maskLayerRef.current = null;
+            baseLayerRef.current = null;
 
-                canvas.discardActiveObject();
-                canvas.requestRenderAll();
-
-                try {
-                    const objects = canvas.getObjects();
-
-                    activeBaseImageRef.current = null;
-                    activeMaskImageRef.current = null;
-                    maskLayerRef.current = null;
-                    baseLayerRef.current = null;
-
-                    const baseObj = objects.find(obj => (obj as any).isBaseLayer) as FabricImage;
-                    if (baseObj) {
-                        activeBaseImageRef.current = baseObj;
-                        baseLayerRef.current = baseObj;
-                    }
-
-                    const systemBaseObj = objects.find(obj => (obj as any).isBaseLayer) as FabricImage;
-                    if (systemBaseObj) {
-                        const rawWidth = systemBaseObj.width || 0;
-                        const rawHeight = systemBaseObj.height || 0;
-                        const rawScaleX = systemBaseObj.scaleX || 1;
-                        const rawScaleY = systemBaseObj.scaleY || 1;
-
-                        const finalWidth = (rawWidth * rawScaleX) || 3000;
-                        const finalHeight = (rawHeight * rawScaleY) || 3000;
-                        const finalLeft = systemBaseObj.left ?? (canvas.width! / 2);
-                        const finalTop = systemBaseObj.top ?? (canvas.height! / 2);
-
-                        objects.forEach(obj => {
-                            const isSystem = (obj as any).isBaseLayer || (obj as any).isMaskLayer || (obj as any).isFrameLayer || (obj as any).id === 'system_base_image';
-                            if (!isSystem) {
-                                const clipRect = new Rect({
-                                    left: finalLeft,
-                                    top: finalTop,
-                                    originX: systemBaseObj.originX || 'center',
-                                    originY: systemBaseObj.originY || 'center',
-                                    width: finalWidth,
-                                    height: finalHeight,
-                                    scaleX: 1,
-                                    scaleY: 1,
-                                    angle: systemBaseObj.angle || 0,
-                                    rx: (systemBaseObj as any).rx || CASE_RADIUS || 0,
-                                    ry: (systemBaseObj as any).ry || CASE_RADIUS || 0,
-                                    absolutePositioned: true,
-                                });
-
-                                obj.set({ clipPath: clipRect, dirty: true });
-                            }
-                        });
-                    }
-
-                    restoreLocks(canvas);
-                    reorderLayers(canvas);
-
-                    historyStepRef.current = nextStep;
-                    setHistoryStep(nextStep);
-
-                    updateLayers();
-
-                    // --- FINAL LAYER CHECK ---
-                    const topMask = canvas.getObjects().find(obj => (obj as any).isMaskLayer);
-                    if (topMask) {
-                        canvas.bringObjectToFront(topMask);
-                        topMask.set({
-                            evented: false,
-                            selectable: false,
-                            opacity: 1,
-                        });
-                    }
-                    // --- FINAL LAYER CHECK END ---
-
-                    canvas.requestRenderAll();
-                } catch (postLoadError) {
-                    console.error("Redo post-processing failed:", postLoadError);
-                }
-            } catch (e) {
-                console.error("Redo failed:", e);
+            const baseObj = objects.find(obj => (obj as any).isBaseLayer) as FabricImage;
+            if (baseObj) {
+                activeBaseImageRef.current = baseObj;
+                baseLayerRef.current = baseObj;
             }
+
+            const systemBaseObj = objects.find(obj => (obj as any).isBaseLayer) as FabricImage;
+            if (systemBaseObj) {
+                const rawWidth = systemBaseObj.width || 0;
+                const rawHeight = systemBaseObj.height || 0;
+                const rawScaleX = systemBaseObj.scaleX || 1;
+                const rawScaleY = systemBaseObj.scaleY || 1;
+
+                const finalWidth = (rawWidth * rawScaleX) || 3000;
+                const finalHeight = (rawHeight * rawScaleY) || 3000;
+                const finalLeft = systemBaseObj.left ?? (canvas.width! / 2);
+                const finalTop = systemBaseObj.top ?? (canvas.height! / 2);
+
+                objects.forEach(obj => {
+                    const isSystem = (obj as any).isBaseLayer || (obj as any).isMaskLayer || (obj as any).isFrameLayer || (obj as any).id === 'system_base_image';
+                    if (!isSystem) {
+                        const clipRect = new Rect({
+                            left: finalLeft,
+                            top: finalTop,
+                            originX: systemBaseObj.originX || 'center',
+                            originY: systemBaseObj.originY || 'center',
+                            width: finalWidth,
+                            height: finalHeight,
+                            scaleX: 1,
+                            scaleY: 1,
+                            angle: systemBaseObj.angle || 0,
+                            rx: (systemBaseObj as any).rx || CASE_RADIUS || 0,
+                            ry: (systemBaseObj as any).ry || CASE_RADIUS || 0,
+                            absolutePositioned: true,
+                        });
+
+                        obj.set({ clipPath: clipRect, dirty: true });
+                    }
+                });
+            }
+
+            restoreLocks(canvas);
+            reorderLayers(canvas);
+
+            historyStepRef.current = nextStep;
+            setHistoryStep(nextStep);
+
+            updateLayers();
+
+            // --- FINAL LAYER CHECK ---
+            // Enhanced: Use multi-identifier search to find mask reliably
+            const topMask = canvas.getObjects().find(obj =>
+                (obj as any).isMaskLayer ||
+                (obj as any).data?.systemId === 'system_mask_image' ||
+                (obj as any).id === 'system_mask_image'
+            );
+
+            if (topMask) {
+                console.log('[REDO] Restoring mask layer to front');
+                canvas.bringObjectToFront(topMask);
+                topMask.set({
+                    evented: false,
+                    selectable: false,
+                    opacity: 1,
+                    visible: true,
+                    excludeFromExport: true
+                });
+                topMask.setCoords();
+            } else {
+                console.warn('[REDO] Mask layer not found after restore!');
+            }
+            // --- FINAL LAYER CHECK END ---
+
+            canvas.requestRenderAll();
+        } catch (e) {
+            console.error("Redo failed:", e);
         }
 
         isHistoryProcessing.current = false;
@@ -2457,9 +2517,22 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     };
 
     const clearCanvas = () => {
+        console.log('[CLEAR] Request to clear canvas');
+
         if (confirm('確定要清空所有設計嗎？這將無法復原。')) {
             const canvas = fabricCanvas.current;
-            if (!canvas) return;
+            if (!canvas) {
+                console.warn('[CLEAR] No canvas available');
+                return;
+            }
+
+            console.log('[CLEAR] Clearing user objects');
+
+            // Temporarily allow operation (clear should not be blocked)
+            const wasProcessing = isHistoryProcessing.current;
+            const wasRestoring = isRestoring.current;
+            isHistoryProcessing.current = false;
+            isRestoring.current = false;
 
             const objects = canvas.getObjects();
             // Remove all objects except Base and Mask layers
@@ -2482,7 +2555,10 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             canvas.discardActiveObject();
             canvas.requestRenderAll();
             setSelectedObject(null);
+
             saveHistory();
+
+            console.log('[CLEAR] Canvas cleared successfully');
         }
     };
 
@@ -3599,7 +3675,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         }
 
         console.log('[TPL] raw', { rawBase, rawMask });
-        console.log('[TPL] final', { baseFinal, maskFinal, templateRev });
         templateFinalSrcRef.current = { baseFinal, maskFinal };
 
         // [TPL] T2: (4) 早退條件：Key 相同 且 模板存在 且 src 一致
@@ -3617,6 +3692,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 return;
             }
             console.log("[TPL] key matched but state inconsistent, re-applying...", { stats, currentBaseSrc, baseFinal });
+        } else {
+            // console.log('[TPL] Keys do not match, proceeding with template application'); // Removed
         }
 
         templateApplyInFlightRef.current = true;
@@ -3692,6 +3769,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 }
             });
 
+            // CRITICAL: Set isBaseLayer flag for history serialization
+            (baseImg as any).isBaseLayer = true;
+
             maskImg.scaleX = REAL_WIDTH / (maskImg.width || 1);
             maskImg.scaleY = REAL_HEIGHT / (maskImg.height || 1);
             maskImg.set({
@@ -3712,6 +3792,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     isSystem: true
                 }
             });
+
+            // CRITICAL: Set isMaskLayer flag for history serialization
+            (maskImg as any).isMaskLayer = true;
 
             activeBaseImageRef.current = baseImg;
             baseLayerRef.current = baseImg;
@@ -3749,6 +3832,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                     if (!isAborted()) {
                         setIsTemplateLoading(false);
+                        setHasTemplateLoaded(true); // Mark that template has loaded at least once
                         appliedTemplateKeyRef.current = nextKey;
                     }
                     resolve();
@@ -3760,7 +3844,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             if (!isAborted()) setIsTemplateLoading(false);
             if (isAborted()) return;
 
-            console.error("Template application failed:", e);
+            console.error("[TPL] Template application failed:", e);
             addFallbackBase(canvas, REAL_WIDTH / 2, REAL_HEIGHT / 2);
             addFallbackMask(canvas, REAL_WIDTH / 2, REAL_HEIGHT / 2);
         } finally {
@@ -3788,6 +3872,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             backgroundColor: 'transparent',
             preserveObjectStacking: true,
         });
+
 
         // =====================================================================
         // [PPBears] ENFORCE IMAGE UNIFORM SCALING (NO DISTORT) - START
@@ -4502,8 +4587,12 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         mask_image: maskImage
                     });
                 } else {
-                    if (!baseImage) addFallbackBase(canvas, CENTER_X, CENTER_Y);
-                    if (!maskImage) addFallbackMask(canvas, CENTER_X, CENTER_Y);
+                    // Don't create fallback rectangles during initialization!
+                    // Fallbacks should only be created when actual image loading fails (in catch block)
+                    // Just wait for product data to load, then apply template in next sequence
+                    console.log('[ENTER] No base/mask URLs yet, skipping template application');
+                    // if (!baseImage) addFallbackBase(canvas, CENTER_X, CENTER_Y);
+                    // if (!maskImage) addFallbackMask(canvas, CENTER_X, CENTER_Y);
                 }
 
                 if (seq !== enterSeqRef.current) return;
@@ -5485,7 +5574,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 className="flex-1 flex items-center justify-center bg-[radial-gradient(circle_at_center,_#ffffff_0%,_#d1d5db_100%)] p-4 pb-20 md:pb-4 overflow-hidden relative order-first md:order-none"
             >
                 <div
-                    className="shadow-2xl rounded-lg overflow-hidden bg-white max-w-full max-h-full"
+                    className={`shadow-2xl rounded-lg overflow-hidden bg-white max-w-full max-h-full transition-opacity duration-300 ${hasTemplateLoaded ? 'opacity-100' : 'opacity-0'
+                        }`}
                     style={{ touchAction: 'none', overscrollBehavior: 'none' }}
                 >
                     <canvas ref={canvasEl} />

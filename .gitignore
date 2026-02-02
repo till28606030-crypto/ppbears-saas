@@ -13,7 +13,18 @@ dist-ssr
 *.local
 .env
 server/.env
+server_fastapi/.env
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.venv
 
 # Editor directories and files
 .vscode/*
