@@ -71,7 +71,7 @@ async def create_category(category: CategoryCreate, supabase: Client = Depends(g
         if not response.data:
             raise HTTPException(status_code=400, detail="Create failed")
         return response.data[0]
-    except Exception as e:
+    except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -96,6 +96,7 @@ async def reorder_categories(payload: CategoryReorderRequest, supabase: Client =
         return {"success": True}
     except HTTPException:
         raise
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/{category_id}", response_model=CategoryResponse)
@@ -103,7 +104,7 @@ async def update_category(category_id: UUID, category: CategoryUpdate, supabase:
     """更新類別"""
     try:
         data = category.model_dump(exclude_unset=True)
-        response = supabase.table("product_categories").update(data).eq("id", str(category_id)).execute()
+        
         if "name" in data:
             name = _norm_name(data["name"])
             if not name:
@@ -129,9 +130,12 @@ async def update_category(category_id: UUID, category: CategoryUpdate, supabase:
                 else:
                     data["layer_level"] = 1
 
+        response = supabase.table("product_categories").update(data).eq("id", str(category_id)).execute()
         if not response.data:
             raise HTTPException(status_code=404, detail="Category not found")
         return response.data[0]
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

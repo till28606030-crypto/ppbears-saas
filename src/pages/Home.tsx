@@ -18,6 +18,8 @@ import { isAdminRoute } from '../lib/isAdminRoute';
 import { FIX_RLS_SQL } from './admin/Designs';
 import { buildCategoryTree } from '@/utils/categoryTree';
 
+const EMPTY_TAGS: string[] = [];
+
 const CATEGORIES_KEY = 'ppbears_seller_categories';
 const BRANDS_KEY = 'ppbears_seller_brands';
 
@@ -354,7 +356,7 @@ export default function Home() {
                 setIsLoadingProducts(false);
             }
         };
-        
+
         fetchCategories();
         fetchProducts();
 
@@ -884,7 +886,7 @@ export default function Home() {
                 productName={currentProduct?.name || '客製化商品'}
                 previewImage={previewImage || ''}
                 onAddToCart={handleAddToCart}
-                productTags={currentProduct?.compatibilityTags || currentProduct?.tags || []}
+                productTags={currentProduct?.compatibilityTags || currentProduct?.tags || EMPTY_TAGS}
             />
 
             <MyGalleryModal

@@ -22,7 +22,7 @@ const ProductListV2: React.FC = () => {
       setLoading(true);
       const { data, error: fetchError } = await supabase
         .from('products')
-        .select('id, name, updated_at, base_image')
+        .select('id, name, updated_at, base_image, specs')
         .order('updated_at', { ascending: false })
         .limit(50);
 
@@ -38,7 +38,7 @@ const ProductListV2: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     if (!confirm('確定要刪除此產品嗎？此操作無法復原。')) return;
-    
+
     const result = await deleteProduct(id);
     if (result.success) {
       setProducts((prev) => prev.filter((p) => p.id !== id));
@@ -92,6 +92,7 @@ const ProductListV2: React.FC = () => {
             <tr className="bg-gray-50 border-bottom border-gray-200">
               <th className="px-6 py-4 font-semibold text-gray-600">ID / 名稱</th>
               <th className="px-6 py-4 font-semibold text-gray-600 text-center">Base Image</th>
+              <th className="px-6 py-4 font-semibold text-gray-600 text-center">關聯規格</th>
               <th className="px-6 py-4 font-semibold text-gray-600 text-center">分享連結</th>
               <th className="px-6 py-4 font-semibold text-gray-600">最後更新</th>
               <th className="px-6 py-4 font-semibold text-gray-600 text-right">操作</th>
@@ -100,7 +101,7 @@ const ProductListV2: React.FC = () => {
           <tbody className="divide-y divide-gray-100">
             {products.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-6 py-12 text-center text-gray-400">
+                <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
                   尚無產品資料
                 </td>
               </tr>
@@ -124,6 +125,21 @@ const ProductListV2: React.FC = () => {
                       </div>
                     )}
                   </td>
+                  {/* 關聯規格 */}
+                  <td className="px-6 py-4 text-center">
+                    {(() => {
+                      const linkedCount = (product as any).specs?.linked_option_groups?.length || 0;
+                      return linkedCount > 0 ? (
+                        <div className="flex items-center justify-center gap-1 text-blue-600 text-sm">
+                          <span className="font-medium">{linkedCount}</span>
+                          <span>個規格</span>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-xs">未設定</span>
+                      );
+                    })()}
+                  </td>
+                  {/* 分享連結 */}
                   <td className="px-6 py-4 text-center">
                     <div className="flex flex-col items-center gap-1">
                       <div className="flex items-center justify-center gap-2">
@@ -159,7 +175,7 @@ const ProductListV2: React.FC = () => {
                           );
                         })()}
                       </div>
-                      
+
                       {/* DEV-only Diagnostics */}
                       {import.meta.env.DEV && (
                         <div className="text-[8px] text-gray-400 font-mono mt-1 border-t border-gray-50 pt-1">

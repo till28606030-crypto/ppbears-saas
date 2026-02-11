@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Check, ChevronRight, ShoppingCart, Info, Loader2, AlertCircle, ZoomIn, Settings, ImageIcon } from 'lucide-react';
 import { get } from 'idb-keyval';
 import { loadOptionGroups } from '../services/optionGroups';
+import { supabase } from '../lib/supabase';
 import DOMPurify from 'dompurify';
 
 export interface SubAttributeOption {
@@ -62,7 +63,7 @@ interface SaveDesignModalProps {
     productName: string;
     previewImage: string;
     onAddToCart: (finalPrice: number, selectedOptions: any) => void;
-    productTags?: string[]; 
+    productTags?: string[];
 }
 
 // Storage Keys
@@ -70,19 +71,19 @@ const STORAGE_KEY_GROUPS = 'ppbears_option_groups';
 const STORAGE_KEY_ITEMS = 'ppbears_option_items';
 const STORAGE_KEY_AVAILABILITY = 'ppbears_product_availability';
 
-export default function SaveDesignModal({ 
-    isOpen, 
-    onClose, 
-    basePrice, 
+export default function SaveDesignModal({
+    isOpen,
+    onClose,
+    basePrice,
     productId,
-    productName, 
-    previewImage, 
-    onAddToCart, 
-    productTags = [] 
+    productName,
+    previewImage,
+    onAddToCart,
+    productTags = []
 }: SaveDesignModalProps) {
     const [currentStep, setCurrentStep] = useState(1);
     const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
-    
+
     // Lightbox State
     const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
@@ -95,12 +96,12 @@ export default function SaveDesignModal({
 
     // Helpers
     const getUI = (g: any) => {
-        const raw = 
-            g?.uiConfig ?? 
-            g?.ui ?? 
-            g?.ui_config ?? 
-            g?.uiConfigJson ?? 
-            g?.ui_json ?? 
+        const raw =
+            g?.uiConfig ??
+            g?.ui ??
+            g?.ui_config ??
+            g?.uiConfigJson ??
+            g?.ui_json ??
             null;
 
         if (!raw) return {};
@@ -118,7 +119,7 @@ export default function SaveDesignModal({
         return raw && typeof raw === 'object' ? raw : {};
     };
 
-    const normalizeDisplayType = (dt: any): 'cards'|'grid'|'list'|'checkbox'|undefined => {
+    const normalizeDisplayType = (dt: any): 'cards' | 'grid' | 'list' | 'checkbox' | undefined => {
         if (!dt) return undefined;
         const s = String(dt).trim();
 
@@ -133,7 +134,7 @@ export default function SaveDesignModal({
 
         return undefined;
     };
-    
+
     const getStep = (g: any): number => {
         const ui = getUI(g);
 
@@ -149,7 +150,7 @@ export default function SaveDesignModal({
         if (Number.isFinite(top) && top > 0) return top;
         return 1;
     };
-    
+
     const getGroupKey = (g: any): string => {
         const code = (g?.code ?? '').trim();
         return code ? code : String(g?.id ?? '');
@@ -177,13 +178,13 @@ export default function SaveDesignModal({
     // 2. Filter Groups
     const validGroups = React.useMemo(() => {
         if (!groups) return [];
-        
+
         return groups.filter(group => {
             // If group has no tags, it's Universal -> Show it
             const ui = getUI(group);
             const tags = group.matchingTags || ui.matchingTags || ui.matching_tags || [];
             if (!tags || tags.length === 0) return true;
-            
+
             // If product has no tags, treat as "Universal Product" -> Show All Groups
             if (!productTags || productTags.length === 0) return true;
 
@@ -204,7 +205,7 @@ export default function SaveDesignModal({
             // Support Snake Case from API
             const groupData = g as any;
             let s = getStep(groupData);
-            
+
             if (!map.has(s)) {
                 map.set(s, []);
                 steps.push(s);
@@ -229,14 +230,14 @@ export default function SaveDesignModal({
     useEffect(() => {
         // If current step is not in availableSteps, jump to the nearest valid step or first one
         if (availableSteps.length > 0 && !availableSteps.includes(currentStep)) {
-             // Find closest step? Or just first.
-             // If we are at step 2 and it disappears, maybe go to 1?
-             if (currentStep > availableSteps[availableSteps.length - 1]) {
-                 setCurrentStep(availableSteps[availableSteps.length - 1]);
-             } else {
-                 const next = availableSteps.find(s => s > currentStep);
-                 setCurrentStep(next || availableSteps[0]);
-             }
+            // Find closest step? Or just first.
+            // If we are at step 2 and it disappears, maybe go to 1?
+            if (currentStep > availableSteps[availableSteps.length - 1]) {
+                setCurrentStep(availableSteps[availableSteps.length - 1]);
+            } else {
+                const next = availableSteps.find(s => s > currentStep);
+                setCurrentStep(next || availableSteps[0]);
+            }
         }
     }, [availableSteps, currentStep]);
 
@@ -274,15 +275,15 @@ export default function SaveDesignModal({
         }
     }, [caseGroups, selectedOptions]);
     */
-    
+
     // Cleanup duplicate hooks
-    
+
     // Fetch Data & Restore State
     useEffect(() => {
         if (isOpen) {
             setLoading(true);
             setError(null);
-            
+
             // Restore State from LocalStorage
             const storageKey = `ppbears_checkout_progress_${productId || 'default'}`;
             const savedData = localStorage.getItem(storageKey);
@@ -315,32 +316,96 @@ export default function SaveDesignModal({
                 setActiveCaseGroupId(null);
                 setSelectedCaseGroupId(null);
             }
-            
+
+            // Timeout wrapper for IndexedDB operations
+            const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
+                return Promise.race([
+                    promise,
+                    new Promise<T>((resolve) =>
+                        setTimeout(() => {
+                            console.warn(`[SaveDesignModal] Operation timeout after ${timeoutMs}ms, using fallback`);
+                            resolve(fallback);
+                        }, timeoutMs)
+                    )
+                ]);
+            };
+
             const fetchData = async () => {
                 try {
-                    const [g, i, a] = await Promise.all([
-                        loadOptionGroups(),
-                        get(STORAGE_KEY_ITEMS),
-                        get(STORAGE_KEY_AVAILABILITY)
-                    ]);
-                    
-                    setGroups(g);
-                    
+                    console.log("[SaveDesignModal] fetchData started");
+
+                    // Break Promise.all to debug potentially hanging promises
+                    console.log("[SaveDesignModal] Loading Option Groups...");
+                    const g = await loadOptionGroups();
+                    console.log("[SaveDesignModal] Option Groups Loaded:", g.length);
+
+                    console.log("[SaveDesignModal] Loading Items from IDB...");
+                    const i = await withTimeout(
+                        get(STORAGE_KEY_ITEMS).catch(err => {
+                            console.error("Failed to load items from IDB", err);
+                            return [];
+                        }),
+                        2000,
+                        []
+                    );
+                    console.log("[SaveDesignModal] Items Loaded", Array.isArray(i) ? i.length : 0);
+
+                    console.log("[SaveDesignModal] Loading Availability from IDB...");
+                    const a = await withTimeout(
+                        get(STORAGE_KEY_AVAILABILITY).catch(err => {
+                            console.error("Failed to load availability from IDB", err);
+                            return [];
+                        }),
+                        2000,
+                        []
+                    );
+                    console.log("[SaveDesignModal] Availability Loaded", Array.isArray(a) ? a.length : 0);
+
+
+                    // Filter groups by product's linked_option_groups
+                    let filteredGroups = g;
+                    if (productId) {
+                        try {
+                            const { data: product, error } = await supabase
+                                .from('products')
+                                .select('specs')
+                                .eq('id', productId)
+                                .single();
+
+                            if (!error && product?.specs) {
+                                const linkedGroups = (product.specs as any)?.linked_option_groups;
+                                if (Array.isArray(linkedGroups) && linkedGroups.length > 0) {
+                                    console.log('[SaveDesignModal] Filtering by linked_option_groups:', linkedGroups);
+                                    filteredGroups = g.filter(group => linkedGroups.includes(group.id));
+                                    console.log('[SaveDesignModal] Filtered groups count:', filteredGroups.length);
+                                } else {
+                                    console.log('[SaveDesignModal] No linked_option_groups found, showing all groups');
+                                }
+                            }
+                        } catch (err) {
+                            console.error('[SaveDesignModal] Failed to load product specs:', err);
+                            // On error, show all groups (backward compatible)
+                        }
+                    }
+
+                    setGroups(filteredGroups);
+
                     // Debug Log
                     console.log('=== Option Groups Debug ===');
-                    console.log('Total Groups:', g.length);
+                    console.log('Total Groups (before filter):', g.length);
+                    console.log('Total Groups (after filter):', filteredGroups.length);
                     const distribution: Record<number, number> = {};
-                    g.forEach(grp => {
+                    filteredGroups.forEach(grp => {
                         // @ts-ignore
                         const s = getStep(grp);
                         distribution[s] = (distribution[s] || 0) + 1;
                     });
                     console.log('Step Distribution:', distribution);
-                    console.log('Raw Groups:', g);
-                    
+                    console.log('Filtered Groups:', filteredGroups);
+
                     // Merge hydrated items from groups into the main items list
                     // Because loadOptionGroups now might hydrate "self-items" into group.items
-                    const hydratedItems = g.reduce((acc: any[], grp: any) => {
+                    const hydratedItems = filteredGroups.reduce((acc: any[], grp: any) => {
                         if (grp.items && Array.isArray(grp.items)) {
                             return [...acc, ...grp.items];
                         }
@@ -348,8 +413,8 @@ export default function SaveDesignModal({
                     }, []);
 
                     const allItems = [...(Array.isArray(i) ? i : []), ...hydratedItems];
-                    
-                    console.log("[wizard] groups step2 list", g.filter(grp => {
+
+                    console.log("[wizard] groups step2 list", filteredGroups.filter(grp => {
                         // @ts-ignore
                         const s = getStep(grp);
                         return s === 2;
@@ -363,7 +428,7 @@ export default function SaveDesignModal({
                         matchingTags: grp.matchingTags
                     })));
 
-                    console.log("[wizard] groups step3 list", g.filter(grp => {
+                    console.log("[wizard] groups step3 list", filteredGroups.filter(grp => {
                         // @ts-ignore
                         const s = getStep(grp);
                         return s === 3;
@@ -376,7 +441,7 @@ export default function SaveDesignModal({
                         itemsLen: (grp.items?.length || 0) + (allItems.filter(it => it.parentId === grp.id).length),
                         matchingTags: grp.matchingTags
                     })));
-                    
+
                     console.log("[wizard] model tags", productTags);
 
                     setItems(allItems);
@@ -385,12 +450,22 @@ export default function SaveDesignModal({
                     console.error("Failed to load options data", err);
                     setError("無法載入選項資料");
                 } finally {
+                    console.log("[SaveDesignModal] fetchData finished, setting loading=false");
                     setLoading(false);
                 }
             };
+            console.log("[SaveDesignModal] Calling fetchData");
             fetchData();
+        } else {
+            // When closed, reset loading to true for next open?
+            // setLoading(true); // Optional
         }
     }, [isOpen, productId]);
+
+    // Debug Loading State
+    useEffect(() => {
+        console.log("[SaveDesignModal] Loading State Changed:", loading);
+    }, [loading]);
 
     // Persist State to LocalStorage
     useEffect(() => {
@@ -409,7 +484,7 @@ export default function SaveDesignModal({
     const getFilteredItems = (groupId: string) => {
         // 1. Get items for this group
         let groupItems = items.filter(i => i.parentId === groupId);
-        
+
         // Debug: Log if items found
         // if (groupItems.length === 0) console.log(`No items found for group ${groupId}`);
 
@@ -424,7 +499,7 @@ export default function SaveDesignModal({
         if (groupItems.length > 0 && filteredByTags.length === 0) {
             console.log(`[wizard] Group ${groupId} items hidden by tags. Item tags:`, groupItems[0].requiredTags, "Model tags:", productTags);
         }
-        
+
         groupItems = filteredByTags;
 
         // 3. Filter by Whitelist Availability (Strict Mode)
@@ -434,7 +509,7 @@ export default function SaveDesignModal({
             // If NO rules exist for this model, we assume "Legacy/Open Mode" (Allow all that matched tags)
             // If ANY rule exists, we switch to "Strict Whitelist Mode"
             const hasRules = availability.some(a => a.modelId === productId);
-            
+
             if (hasRules) {
                 groupItems = groupItems.filter(item => {
                     const rule = availability.find(a => a.modelId === productId && a.optionItemId === item.id);
@@ -545,7 +620,7 @@ export default function SaveDesignModal({
         const hasChosenSpec = Object.keys(selectedOptions).some(k => step1KeySet.has(k));
 
         if (!hasChosenSpec) return 0;
-        
+
         // Debug Price Breakdown
         console.log('[Pricing Breakdown]', {
             specBase,
@@ -570,7 +645,7 @@ export default function SaveDesignModal({
 
     // step1 的 groupKey 集合，用來判斷「規格」vs「加購」
     const step1KeySet = new Set((stepGroups.get(1) || []).map(g => getGroupKey(g)));
-    
+
     // Check if any Step 1 spec is selected
     const hasChosenSpec = (stepGroups.get(1) || []).some(g => selectedOptions[getGroupKey(g)]);
 
@@ -633,9 +708,9 @@ export default function SaveDesignModal({
         });
     });
 
-    const protectionId = selectedOptions['protection']; 
+    const protectionId = selectedOptions['protection'];
     const protectionItem = getItem(protectionId || '');
-    const showEmbossing = protectionItem && !protectionItem.name.includes('亮面'); 
+    const showEmbossing = protectionItem && !protectionItem.name.includes('亮面');
 
     const handleSelectOption = (groupKey: string, itemId: string) => {
         setSelectedOptions(prev => {
@@ -644,7 +719,7 @@ export default function SaveDesignModal({
             const group = validGroups.find(g => getGroupKey(g) === groupKey);
             const step = group ? getStep(group) : 1;
             const ui = getUI(group);
-            const rawDisplayType = 
+            const rawDisplayType =
                 ui?.displayType ?? ui?.display_type ?? (group as any)?.displayType ?? (group as any)?.display_type;
             const displayType = normalizeDisplayType(rawDisplayType);
 
@@ -707,7 +782,7 @@ export default function SaveDesignModal({
                     {group.subAttributes.map(attr => {
                         // Check if any option has an image
                         const hasImages = attr.options?.some(opt => opt.image);
-                        
+
                         return (
                             <div key={attr.id} className="space-y-2">
                                 <label className="text-sm font-bold text-gray-700">{attr.name}</label>
@@ -722,11 +797,10 @@ export default function SaveDesignModal({
                                                         key={opt.id}
                                                         type="button"
                                                         onClick={() => setSelectedOptions(prev => ({ ...prev, [`${groupKey}:ca:${attr.id}`]: opt.id }))}
-                                                        className={`relative flex flex-col items-center p-2 rounded-xl border-2 transition-all ${
-                                                            isSelected 
-                                                                ? 'border-black bg-white shadow-sm' 
-                                                                : 'border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50'
-                                                        }`}
+                                                        className={`relative flex flex-col items-center p-2 rounded-xl border-2 transition-all ${isSelected
+                                                            ? 'border-black bg-white shadow-sm'
+                                                            : 'border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50'
+                                                            }`}
                                                     >
                                                         {opt.image ? (
                                                             <div className="w-full aspect-square rounded-lg overflow-hidden bg-gray-100 mb-2">
@@ -754,10 +828,10 @@ export default function SaveDesignModal({
                                         </div>
                                     ) : (
                                         // Standard Select
-                                        <select 
+                                        <select
                                             className="w-full p-2 border rounded-lg text-sm bg-white"
                                             value={selectedOptions[`${groupKey}:ca:${attr.id}`] || ''}
-                                            onChange={(e) => 
+                                            onChange={(e) =>
                                                 setSelectedOptions(prev => ({ ...prev, [`${groupKey}:ca:${attr.id}`]: e.target.value }))
                                             }
                                         >
@@ -768,10 +842,10 @@ export default function SaveDesignModal({
                                         </select>
                                     )
                                 ) : (
-                                    <input 
+                                    <input
                                         className="w-full p-2 border rounded-lg text-sm bg-white"
                                         value={selectedOptions[`${groupKey}:ca:${attr.id}`] || ''}
-                                        onChange={(e) => 
+                                        onChange={(e) =>
                                             setSelectedOptions(prev => ({ ...prev, [`${groupKey}:ca:${attr.id}`]: e.target.value }))
                                         }
                                     />
@@ -802,10 +876,10 @@ export default function SaveDesignModal({
                         <div key={attr.id} className="space-y-1">
                             <label className="text-sm font-bold text-gray-700">{attr.name}</label>
                             {attr.type === 'select' ? (
-                                <select 
+                                <select
                                     className="w-full p-2 border rounded-lg text-sm bg-white"
                                     value={selectedOptions[`${groupKey}:${attr.id}`] || ''}
-                                    onChange={(e) => 
+                                    onChange={(e) =>
                                         setSelectedOptions(prev => ({ ...prev, [`${groupKey}:${attr.id}`]: e.target.value }))
                                     }
                                 >
@@ -815,10 +889,10 @@ export default function SaveDesignModal({
                                     ))}
                                 </select>
                             ) : (
-                                <input 
+                                <input
                                     className="w-full p-2 border rounded-lg text-sm bg-white"
                                     value={selectedOptions[`${groupKey}:${attr.id}`] || ''}
-                                    onChange={(e) => 
+                                    onChange={(e) =>
                                         setSelectedOptions(prev => ({ ...prev, [`${groupKey}:${attr.id}`]: e.target.value }))
                                     }
                                 />
@@ -838,13 +912,13 @@ export default function SaveDesignModal({
             return ['規格', line.label];
         }),
         ...addonLines.map(line => {
-             const parts = line.label.split(':');
-             // Handle "Group Name: Attr Name: Option Name" (Custom Attributes in Addons)
-             if (parts.length >= 3) {
-                 return [parts[1].trim(), parts.slice(2).join(':').trim()];
-             }
-             if (parts.length > 1) return [parts[0].trim(), parts.slice(1).join(':').trim()];
-             return ['加購', line.label];
+            const parts = line.label.split(':');
+            // Handle "Group Name: Attr Name: Option Name" (Custom Attributes in Addons)
+            if (parts.length >= 3) {
+                return [parts[1].trim(), parts.slice(2).join(':').trim()];
+            }
+            if (parts.length > 1) return [parts[0].trim(), parts.slice(1).join(':').trim()];
+            return ['加購', line.label];
         })
     ];
 
@@ -862,13 +936,13 @@ export default function SaveDesignModal({
             justifyContent: 'center'
         }}>
             <div className="bg-white relative z-[100000] flex flex-col md:flex-row overflow-hidden w-[100vw] h-[100dvh] rounded-none md:w-[min(1100px,92vw)] md:h-[min(760px,92vh)] md:rounded-2xl p-0">
-                <button 
+                <button
                     onClick={onClose}
                     className="absolute top-3 right-3 z-[100001] p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
                 >
                     <X className="w-5 h-5 text-gray-600" />
                 </button>
-                
+
                 {loading ? (
                     <div className="w-full h-full flex items-center justify-center flex-col gap-4">
                         <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
@@ -887,11 +961,11 @@ export default function SaveDesignModal({
                             <div className="p-4 flex items-start md:items-center justify-center bg-gray-100/50 shrink-0 h-28 md:h-1/3 rounded-xl overflow-hidden">
                                 <img src={previewImage} alt="Preview" className="max-w-full max-h-full object-contain" />
                             </div>
-                            
+
                             {/* Summary - Hidden on Mobile, Visible on Desktop */}
                             <div className="hidden md:flex flex-1 pt-6 flex-col min-h-0 overflow-hidden">
                                 <h3 className="font-bold text-gray-900 text-lg mb-1 shrink-0">{productName}</h3>
-                                
+
                                 {!hasChosenSpec ? (
                                     <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
                                         請先選擇產品規格
@@ -951,32 +1025,30 @@ export default function SaveDesignModal({
                                         // The user wants dynamic steps. If steps are [1, 6], showing "1" then "6" is honest but maybe confusing.
                                         // Let's show them as "1", "2" ... using index+1.
                                         const displayNum = idx + 1;
-                                        
+
                                         return (
                                             <React.Fragment key={stepNum}>
-                                                <button 
+                                                <button
                                                     type="button"
                                                     onClick={() => setCurrentStep(stepNum)}
                                                     disabled={stepNum > currentStep && !hasChosenSpec} // Allow navigation if spec is chosen? Or enforce sequence?
                                                     // Current logic: disabled={stepNum > currentStep} which forces sequential.
                                                     // But user wants "Direct Checkout". If spec is chosen, maybe allow jumping?
                                                     // For now, let's keep it sequential but allow jumping back.
-                                                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 transition-colors ${
-                                                        currentStep === stepNum 
-                                                            ? 'bg-black text-white' 
-                                                            : (stepNum < currentStep || hasChosenSpec) // Allow jump if visited OR if main spec selected
-                                                                ? 'bg-gray-800 text-white cursor-pointer' 
-                                                                : 'bg-gray-100 text-gray-400'
-                                                    }`}
+                                                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 transition-colors ${currentStep === stepNum
+                                                        ? 'bg-black text-white'
+                                                        : (stepNum < currentStep || hasChosenSpec) // Allow jump if visited OR if main spec selected
+                                                            ? 'bg-gray-800 text-white cursor-pointer'
+                                                            : 'bg-gray-100 text-gray-400'
+                                                        }`}
                                                 >
                                                     {displayNum}
                                                 </button>
                                                 {idx < availableSteps.length - 1 && (
-                                                    <div className={`h-1 w-4 sm:w-8 shrink-0 ${
-                                                        availableSteps[idx+1] <= currentStep || (hasChosenSpec && currentStep >= stepNum) // Logic for bar coloring
-                                                            ? 'bg-gray-800' 
-                                                            : 'bg-gray-200'
-                                                    }`}></div>
+                                                    <div className={`h-1 w-4 sm:w-8 shrink-0 ${availableSteps[idx + 1] <= currentStep || (hasChosenSpec && currentStep >= stepNum) // Logic for bar coloring
+                                                        ? 'bg-gray-800'
+                                                        : 'bg-gray-200'
+                                                        }`}></div>
                                                 )}
                                             </React.Fragment>
                                         );
@@ -1008,7 +1080,7 @@ export default function SaveDesignModal({
                                                         </div>
                                                     ))}
                                                 </dl>
-                                                
+
                                                 <div className="text-sm pt-2 border-t border-gray-100">
                                                     <div className="font-semibold mb-2 text-gray-800">材質</div>
                                                     <ul className="list-disc pl-5 text-gray-600 space-y-1 text-xs leading-relaxed">
@@ -1027,12 +1099,12 @@ export default function SaveDesignModal({
                                         <AlertCircle className="w-12 h-12 opacity-20" />
                                         <p>此步驟尚無可用的選項</p>
                                         <div className="text-xs text-gray-300 max-w-xs text-center bg-gray-900/5 p-2 rounded">
-                                            <span className="font-bold">Debug Info:</span><br/>
-                                            Step: {currentStep} (Groups: {stepGroups.get(currentStep)?.length || 0})<br/>
-                                            Product Tags: {productTags.length > 0 ? productTags.join(', ') : 'None'}<br/>
+                                            <span className="font-bold">Debug Info:</span><br />
+                                            Step: {currentStep} (Groups: {stepGroups.get(currentStep)?.length || 0})<br />
+                                            Product Tags: {productTags.length > 0 ? productTags.join(', ') : 'None'}<br />
                                             Valid Groups: {validGroups.length} / Total: {groups.length}
                                         </div>
-                                        <button 
+                                        <button
                                             type="button"
                                             onClick={() => setCurrentStep(prev => Math.min(prev + 1, maxStep))}
                                             className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm text-gray-600"
@@ -1044,322 +1116,34 @@ export default function SaveDesignModal({
                                     /* Existing Content Logic */
                                     <>
                                         {/* Step 1 Specific: Case Type Drill Down Logic */}
-                                {currentStep === 1 && activeCaseGroupId ? (
-                                    <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <button type="button" onClick={() => setActiveCaseGroupId(null)} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
-                                                <ChevronRight className="w-5 h-5 rotate-180 text-gray-500" />
-                                            </button>
-                                            <h2 className="text-2xl font-bold text-gray-900">
-                                                選擇{currentStepGroups.find(g => g.id === activeCaseGroupId)?.name}顏色
-                                            </h2>
-                                        </div>
-
-                                        {/* Step 1 Drill-down Description Images */}
-                                        {(() => {
-                                            const group = currentStepGroups.find(g => g.id === activeCaseGroupId);
-                                            if (!group) return null;
-                                            
-                                            const ui = getUI(group);
-                                            const descriptionImages = ui?.descriptionImages || (ui?.descriptionImage ? [ui.descriptionImage] : []);
-                                            
-                                            if (!descriptionImages || descriptionImages.length === 0) return null;
-
-                                            return (
-                                                <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
-                                                    {descriptionImages.map((img: string, idx: number) => (
-                                                        <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
-                                                            <img 
-                                                                src={img} 
-                                                                className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105" 
-                                                                alt={`${group.name} 說明圖片 ${idx + 1}`}
-                                                            />
-                                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
-                                                                <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            );
-                                        })()}
-                                        
-                                        {/* Color Grid */}
-                                        <div className="grid grid-cols-2 gap-4">
-                                            {(() => {
-                                                const group = currentStepGroups.find(g => g.id === activeCaseGroupId);
-                                                if (!group) return null;
-                                                const groupKey = getGroupKey(group);
-                                                const validItems = getFilteredItems(group.id);
-                                                return validItems.map(item => (
-                                                    <button
-                                                        type="button"
-                                                        key={item.id}
-                                                        onClick={() => handleSelectOption(groupKey, item.id)}
-                                                        className={`relative p-4 rounded-xl border-2 text-left transition-all group hover:shadow-md ${selectedOptions[groupKey] === item.id ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-gray-300'}`}
-                                                    >
-                                                        <div className="flex gap-4">
-                                                            <div className="w-20 h-20 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
-                                                                {item.imageUrl ? <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" /> : <div className="w-full h-full" style={{ backgroundColor: item.colorHex || '#ddd' }} />}
-                                                            </div>
-                                                            <div className="flex-1">
-                                                                <div className="flex justify-between items-start">
-                                                                    <h3 className="font-bold text-gray-900">{item.name}</h3>
-                                                                    {selectedOptions[groupKey] === item.id && <div className="bg-black text-white rounded-full p-1"><Check className="w-3 h-3" /></div>}
-                                                                </div>
-                                                                <div className="mt-3 font-medium text-blue-600">{item.priceModifier > 0 ? `NT$ ${item.priceModifier}` : '標準方案'}</div>
-                                                            </div>
-                                                        </div>
+                                        {currentStep === 1 && activeCaseGroupId ? (
+                                            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <button type="button" onClick={() => setActiveCaseGroupId(null)} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
+                                                        <ChevronRight className="w-5 h-5 rotate-180 text-gray-500" />
                                                     </button>
-                                                ));
-                                            })()}
-                                        </div>
-                                        
-                                        {/* Custom Attributes */}
-                                        {(() => {
-                                            const group = currentStepGroups.find(g => g.id === activeCaseGroupId);
-                                            if (!group?.subAttributes?.length) return null;
-                                            return renderAdvancedOptions(group);
-                                        })()}
-                                    </div>
-                                ) : (
-                                    <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-                                        <h2 className="text-2xl font-bold text-gray-900 mb-6">
-                                            {currentStep === 1 ? '選擇產品規格' : `步驟 ${currentStep}: 客製化選項`}
-                                        </h2>
+                                                    <h2 className="text-2xl font-bold text-gray-900">
+                                                        選擇{currentStepGroups.find(g => g.id === activeCaseGroupId)?.name}顏色
+                                                    </h2>
+                                                </div>
 
-                                        {/* Dynamic Groups Rendering */}
-                                        {currentStepGroups.map(group => {
-                                            // Embossing Logic check
-                                            if (group.code === 'embossing' && !showEmbossing) return null;
+                                                {/* Step 1 Drill-down Description Images */}
+                                                {(() => {
+                                                    const group = currentStepGroups.find(g => g.id === activeCaseGroupId);
+                                                    if (!group) return null;
 
-                                            const ui = getUI(group);
-                                            const groupKey = getGroupKey(group);
-                                            
-                                            let displayType = normalizeDisplayType(ui.displayType || ui.display_type) || (currentStep === 1 ? 'cards' : 'grid');
-                                            
-                                            // Determine items (before filtering) to check if we have items at all
-                                            const rawGroupItems = items.filter(i => i.parentId === group.id);
-                                            const validItems = getFilteredItems(group.id);
-                                            
-                                            // Render Card (Step 1 Style)
-                                            if (currentStep === 1 && displayType === 'cards') {
-                                                return (
-                                                    <div key={group.id} className="mb-4">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                // 1. Set Active Group for Drill Down
-                                                                setActiveCaseGroupId(group.id);
-                                                                setSelectedCaseGroupId(group.id); // ✅ Persist selection for Step 2+ Advanced Options
-                                                                
-                                                                // 2. Auto-Preselect First Valid Item (if not already selected)
-                                                                // This ensures the drill-down view is not empty/unselected by default
-                                                                if (!selectedOptions[groupKey] && validItems.length > 0) {
-                                                                    handleSelectOption(groupKey, validItems[0].id);
-                                                                }
-                                                            }}
-                                                            className="w-full p-4 rounded-xl border-2 border-gray-100 hover:border-black hover:bg-gray-50 transition-all text-left group flex items-center justify-between"
-                                                        >
-                                                            <div className="flex items-center gap-4">
-                                                                {group.thumbnail && (
-                                                                    <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
-                                                                        <img src={group.thumbnail} alt={group.name} className="w-full h-full object-cover" />
-                                                                    </div>
-                                                                )}
-                                                                <div>
-                                                                    <h3 className="font-bold text-gray-900 text-lg">{group.name}</h3>
-                                                                    <p className="text-sm text-gray-500">{group.priceModifier > 0 ? `方案價格 NT$ ${group.priceModifier}` : '標準方案'}</p>
-                                                                </div>
-                                                            </div>
-                                                            <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-black" />
-                                                        </button>
-                                                    </div>
-                                                );
-                                            }
+                                                    const ui = getUI(group);
+                                                    const descriptionImages = ui?.descriptionImages || (ui?.descriptionImage ? [ui.descriptionImage] : []);
 
-                                            // Render Description Images (Step 2+)
-                                             const descriptionImages = ui?.descriptionImages || (ui?.descriptionImage ? [ui.descriptionImage] : []);
-                                             // Removed useState from loop: const [zoomedDescImage, setZoomedDescImage] = useState<string | null>(null);
+                                                    if (!descriptionImages || descriptionImages.length === 0) return null;
 
-                                             if (displayType === 'cards' && currentStep !== 1) {
-                                                 return (
-                                                     <div key={group.id} className="mb-8">
-                                                         {/* Description Images */}
-                                                         {descriptionImages.length > 0 && (
-                                                             <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
-                                                                 {descriptionImages.map((img: string, idx: number) => (
-                                                                     <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
-                                                                         <img 
-                                                                             src={img} 
-                                                                             className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105" 
-                                                                             alt={`${group.name} 說明圖片 ${idx + 1}`}
-                                                                         />
-                                                                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
-                                                                             <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
-                                                                         </div>
-                                                                     </div>
-                                                                 ))}
-                                                             </div>
-                                                         )}
-
-                                                         {/* Lightbox moved to global scope */}
-
-                                                        <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">{group.name}</h3>
-                                                        {ui?.description && <p className="text-xs text-gray-400 mb-2">{ui.description}</p>}
-                                                        {validItems.length > 0 ? (
-                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                                {validItems.map(item => (
-                                                                    <button
-                                                                        type="button"
-                                                                        key={item.id}
-                                                                        onClick={() => handleSelectOption(groupKey, item.id)}
-                                                                        className={`relative p-4 rounded-xl border-2 text-left transition-all hover:shadow-md ${
-                                                                            selectedOptions[groupKey] === item.id ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-gray-300'
-                                                                        }`}
-                                                                    >
-                                                                        <div className="flex gap-4 items-center">
-                                                                            {/* Checkbox UI */}
-                                                                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors shrink-0 ${
-                                                                                selectedOptions[groupKey] === item.id 
-                                                                                    ? 'bg-black border-black' 
-                                                                                    : 'border-gray-300 bg-white'
-                                                                            }`}>
-                                                                                {selectedOptions[groupKey] === item.id && <Check className="w-4 h-4 text-white" />}
-                                                                            </div>
-
-                                                                            <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
-                                                                                {item.imageUrl ? (
-                                                                                    <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
-                                                                                ) : group.thumbnail ? (
-                                                                                    <img src={group.thumbnail} alt={group.name} className="w-full h-full object-cover" />
-                                                                                ) : (
-                                                                                    <div className="w-full h-full" />
-                                                                                )}
-                                                                            </div>
-                                                                            <div className="flex-1">
-                                                                                <div className="flex justify-between items-start">
-                                                                                    <h4 className="font-bold text-gray-900">{item.name}</h4>
-                                                                                </div>
-                                                                                <div className="mt-1 font-medium text-blue-600">
-                                                                                    {item.priceModifier > 0 ? `+NT$ ${item.priceModifier}` : '不加價'}
-                                                                                </div>
-                                                                                {selectedOptions[groupKey] === item.id && (
-                                                                                    <div className="mt-1 text-xs text-gray-400">再點一次可取消</div>
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    </button>
-                                                                ))}
-                                                            </div>
-                                                        ) : (
-                                                            <div className="p-4 border border-dashed border-gray-300 rounded-lg text-center text-gray-400 text-sm">
-                                                                尚無選項 (請至後台新增子項目)
-                                                            </div>
-                                                        )}
-
-                                                        {/* Custom Attributes (Step 2+) - Only show if group is selected */}
-                                                        {selectedOptions[groupKey] && group.subAttributes && group.subAttributes.length > 0 && (
-                                                            <div className="mt-4 rounded-xl border border-gray-200 bg-white overflow-hidden animate-in slide-in-from-top-2">
-                                                                <div className="p-4">
-                                                                    {renderCustomAttributes(group)}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            }
-
-                                            // Render Checkbox (New Feature)
-                                            if (displayType === 'checkbox') {
-                                                return (
-                                                    <div key={group.id} className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
-                                                        {/* Description Images */}
-                                                        {descriptionImages.length > 0 && (
-                                                            <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
-                                                                {descriptionImages.map((img: string, idx: number) => (
-                                                                    <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
-                                                                        <img 
-                                                                            src={img} 
-                                                                            className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105" 
-                                                                            alt={`${group.name} 說明圖片 ${idx + 1}`}
-                                                                        />
-                                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
-                                                                            <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
-                                                                        </div>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
-
-                                                        <h3 className="font-bold text-gray-900 mb-4 text-lg border-b pb-2">{group.name}</h3>
-                                                        
-                                                        {validItems.length > 0 ? (
-                                                            <div className="space-y-3 mb-6">
-                                                                {validItems.map(item => (
-                                                                    <label key={item.id} className="flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all hover:bg-gray-50 hover:border-gray-300 active:bg-gray-100">
-                                                                        <input 
-                                                                            type="checkbox" 
-                                                                            name={groupKey}
-                                                                            checked={selectedOptions[groupKey] === item.id}
-                                                                            onChange={() => handleSelectOption(groupKey, item.id)}
-                                                                            className="w-5 h-5 text-black border-gray-300 focus:ring-black rounded"
-                                                                        />
-                                                                        <span className="ml-3 font-bold text-gray-800 text-base">{item.name}</span>
-                                                                        {item.priceModifier > 0 && <span className="ml-auto text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">+${item.priceModifier}</span>}
-                                                                    </label>
-                                                                ))}
-                                                            </div>
-                                                        ) : (
-                                                            <div className="text-center text-gray-400 text-sm py-4 mb-4">
-                                                                {rawGroupItems.length > 0 ? (
-                                                                    <div className="flex flex-col items-center gap-2">
-                                                                        <span className="text-red-400 font-medium">此機型不適用</span>
-                                                                        <span className="text-xs opacity-70">({group.matchingTags.length > 0 ? `需標籤: ${group.matchingTags.join(', ')}` : '無可用選項'})</span>
-                                                                    </div>
-                                                                ) : (
-                                                                    <span className="italic">此區域尚無選項 (請至後台新增子項目)</span>
-                                                                )}
-                                                            </div>
-                                                        )}
-
-                                                        {/* Description Box */}
-                                                        {ui?.description && (
-                                                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                                                <div className="text-sm text-gray-600 leading-relaxed mb-3">
-                                                                    <span className="font-semibold text-gray-800 block mb-1">說明：</span>
-                                                                    <div 
-                                                                        dangerouslySetInnerHTML={{ 
-                                                                            __html: DOMPurify.sanitize(ui.description, { ADD_ATTR: ['target', 'style'] }) 
-                                                                        }} 
-                                                                        className="prose prose-sm max-w-none [&>a]:text-blue-600 [&>a]:underline [&>a]:hover:text-blue-800"
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* Custom Attributes (Step 2+) */}
-                                                        {group.subAttributes && group.subAttributes.length > 0 && (
-                                                            <div className="mt-4 rounded-xl border border-gray-200 bg-white overflow-hidden">
-                                                                <div className="p-4">
-                                                                    {renderCustomAttributes(group)}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            }
-
-                                            // Default: Grid / List (Standard Buttons)
-                                            return (
-                                                <div key={group.id} className="mb-8">
-                                                    {/* Description Images */}
-                                                    {descriptionImages.length > 0 && (
+                                                    return (
                                                         <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
                                                             {descriptionImages.map((img: string, idx: number) => (
                                                                 <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
-                                                                    <img 
-                                                                        src={img} 
-                                                                        className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105" 
+                                                                    <img
+                                                                        src={img}
+                                                                        className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
                                                                         alt={`${group.name} 說明圖片 ${idx + 1}`}
                                                                     />
                                                                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
@@ -1368,58 +1152,344 @@ export default function SaveDesignModal({
                                                                 </div>
                                                             ))}
                                                         </div>
-                                                    )}
+                                                    );
+                                                })()}
 
-                                                    <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">{group.name}</h3>
-                                                    {ui?.description && (
-                                                        <div 
-                                                            className="text-xs text-gray-400 mb-2 prose prose-xs max-w-none [&>p]:mb-1 [&>a]:text-blue-500 [&>a]:underline"
-                                                            dangerouslySetInnerHTML={{ 
-                                                                __html: DOMPurify.sanitize(ui.description, { ADD_ATTR: ['target', 'style'] }) 
-                                                            }}
-                                                        />
-                                                    )}
-                                                    {validItems.length > 0 ? (
-                                                        <div className={`grid gap-3 ${group.code === 'lanyard' || displayType === 'list' ? 'grid-cols-1' : 'grid-cols-3'}`}>
-                                                            {validItems.map(item => (
+                                                {/* Color Grid */}
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    {(() => {
+                                                        const group = currentStepGroups.find(g => g.id === activeCaseGroupId);
+                                                        if (!group) return null;
+                                                        const groupKey = getGroupKey(group);
+                                                        const validItems = getFilteredItems(group.id);
+                                                        return validItems.map(item => (
+                                                            <button
+                                                                type="button"
+                                                                key={item.id}
+                                                                onClick={() => handleSelectOption(groupKey, item.id)}
+                                                                className={`relative p-4 rounded-xl border-2 text-left transition-all group hover:shadow-md ${selectedOptions[groupKey] === item.id ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-gray-300'}`}
+                                                            >
+                                                                <div className="flex gap-4">
+                                                                    <div className="w-20 h-20 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                                                        {item.imageUrl ? <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" /> : <div className="w-full h-full" style={{ backgroundColor: item.colorHex || '#ddd' }} />}
+                                                                    </div>
+                                                                    <div className="flex-1">
+                                                                        <div className="flex justify-between items-start">
+                                                                            <h3 className="font-bold text-gray-900">{item.name}</h3>
+                                                                            {selectedOptions[groupKey] === item.id && <div className="bg-black text-white rounded-full p-1"><Check className="w-3 h-3" /></div>}
+                                                                        </div>
+                                                                        <div className="mt-3 font-medium text-blue-600">{item.priceModifier > 0 ? `NT$ ${item.priceModifier}` : '標準方案'}</div>
+                                                                    </div>
+                                                                </div>
+                                                            </button>
+                                                        ));
+                                                    })()}
+                                                </div>
+
+                                                {/* Custom Attributes */}
+                                                {(() => {
+                                                    const group = currentStepGroups.find(g => g.id === activeCaseGroupId);
+                                                    if (!group?.subAttributes?.length) return null;
+                                                    return renderAdvancedOptions(group);
+                                                })()}
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                                                <h2 className="text-2xl font-bold text-gray-900 mb-6">
+                                                    {currentStep === 1 ? '選擇產品規格' : `步驟 ${currentStep}: 客製化選項`}
+                                                </h2>
+
+                                                {/* Dynamic Groups Rendering */}
+                                                {currentStepGroups.map(group => {
+                                                    // Embossing Logic check
+                                                    if (group.code === 'embossing' && !showEmbossing) return null;
+
+                                                    const ui = getUI(group);
+                                                    const groupKey = getGroupKey(group);
+
+                                                    let displayType = normalizeDisplayType(ui.displayType || ui.display_type) || (currentStep === 1 ? 'cards' : 'grid');
+
+                                                    // Determine items (before filtering) to check if we have items at all
+                                                    const rawGroupItems = items.filter(i => i.parentId === group.id);
+                                                    const validItems = getFilteredItems(group.id);
+
+                                                    // Render Card (Step 1 Style)
+                                                    if (currentStep === 1 && displayType === 'cards') {
+                                                        return (
+                                                            <div key={group.id} className="mb-4">
                                                                 <button
                                                                     type="button"
-                                                                    key={item.id}
-                                                                    onClick={() => handleSelectOption(groupKey, item.id)}
-                                                                    className={`${(group.code === 'lanyard' || displayType === 'list') ? 'w-full flex items-center justify-between px-4 py-3' : 'px-4 py-3 text-center flex flex-col items-center justify-center'} rounded-lg border transition-all ${selectedOptions[groupKey] === item.id ? 'border-black bg-black text-white shadow-md' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                                                                    onClick={() => {
+                                                                        // 1. Set Active Group for Drill Down
+                                                                        setActiveCaseGroupId(group.id);
+                                                                        setSelectedCaseGroupId(group.id); // ✅ Persist selection for Step 2+ Advanced Options
+
+                                                                        // 2. Auto-Preselect First Valid Item (if not already selected)
+                                                                        // This ensures the drill-down view is not empty/unselected by default
+                                                                        if (!selectedOptions[groupKey] && validItems.length > 0) {
+                                                                            handleSelectOption(groupKey, validItems[0].id);
+                                                                        }
+                                                                    }}
+                                                                    className="w-full p-4 rounded-xl border-2 border-gray-100 hover:border-black hover:bg-gray-50 transition-all text-left group flex items-center justify-between"
                                                                 >
-                                                                    <span className="font-medium text-sm">{item.name}</span>
-                                                                    {item.priceModifier > 0 && <span className={`text-xs opacity-70 ${(group.code === 'lanyard' || displayType === 'list') ? 'ml-2' : 'mt-1'}`}>+${item.priceModifier}</span>}
+                                                                    <div className="flex items-center gap-4">
+                                                                        {group.thumbnail && (
+                                                                            <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
+                                                                                <img src={group.thumbnail} alt={group.name} className="w-full h-full object-cover" />
+                                                                            </div>
+                                                                        )}
+                                                                        <div>
+                                                                            <h3 className="font-bold text-gray-900 text-lg">{group.name}</h3>
+                                                                            <p className="text-sm text-gray-500">{group.priceModifier > 0 ? `方案價格 NT$ ${group.priceModifier}` : '標準方案'}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-black" />
                                                                 </button>
-                                                            ))}
-                                                        </div>
-                                                    ) : (
-                                                        <div className="p-4 border border-dashed border-gray-300 rounded-lg text-center text-gray-400 text-sm">
-                                                            {rawGroupItems.length > 0 ? (
-                                                                <div className="flex flex-col items-center gap-1">
-                                                                    <span className="text-red-400 font-medium">此機型不適用</span>
-                                                                    <span className="text-xs opacity-70">({group.matchingTags.length > 0 ? `需標籤: ${group.matchingTags.join(', ')}` : '無可用選項'})</span>
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    // Render Description Images (Step 2+)
+                                                    const descriptionImages = ui?.descriptionImages || (ui?.descriptionImage ? [ui.descriptionImage] : []);
+                                                    // Removed useState from loop: const [zoomedDescImage, setZoomedDescImage] = useState<string | null>(null);
+
+                                                    if (displayType === 'cards' && currentStep !== 1) {
+                                                        return (
+                                                            <div key={group.id} className="mb-8">
+                                                                {/* Description Images */}
+                                                                {descriptionImages.length > 0 && (
+                                                                    <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                                                                        {descriptionImages.map((img: string, idx: number) => (
+                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
+                                                                                <img
+                                                                                    src={img}
+                                                                                    className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
+                                                                                    alt={`${group.name} 說明圖片 ${idx + 1}`}
+                                                                                />
+                                                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
+                                                                                    <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Lightbox moved to global scope */}
+
+                                                                <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">{group.name}</h3>
+                                                                {ui?.description && <p className="text-xs text-gray-400 mb-2">{ui.description}</p>}
+                                                                {validItems.length > 0 ? (
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                                        {validItems.map(item => (
+                                                                            <button
+                                                                                type="button"
+                                                                                key={item.id}
+                                                                                onClick={() => handleSelectOption(groupKey, item.id)}
+                                                                                className={`relative p-4 rounded-xl border-2 text-left transition-all hover:shadow-md ${selectedOptions[groupKey] === item.id ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-gray-300'
+                                                                                    }`}
+                                                                            >
+                                                                                <div className="flex gap-4 items-center">
+                                                                                    {/* Checkbox UI */}
+                                                                                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors shrink-0 ${selectedOptions[groupKey] === item.id
+                                                                                        ? 'bg-black border-black'
+                                                                                        : 'border-gray-300 bg-white'
+                                                                                        }`}>
+                                                                                        {selectedOptions[groupKey] === item.id && <Check className="w-4 h-4 text-white" />}
+                                                                                    </div>
+
+                                                                                    <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                                                                        {item.imageUrl ? (
+                                                                                            <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                                                                                        ) : group.thumbnail ? (
+                                                                                            <img src={group.thumbnail} alt={group.name} className="w-full h-full object-cover" />
+                                                                                        ) : (
+                                                                                            <div className="w-full h-full" />
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <div className="flex-1">
+                                                                                        <div className="flex justify-between items-start">
+                                                                                            <h4 className="font-bold text-gray-900">{item.name}</h4>
+                                                                                        </div>
+                                                                                        <div className="mt-1 font-medium text-blue-600">
+                                                                                            {item.priceModifier > 0 ? `+NT$ ${item.priceModifier}` : '不加價'}
+                                                                                        </div>
+                                                                                        {selectedOptions[groupKey] === item.id && (
+                                                                                            <div className="mt-1 text-xs text-gray-400">再點一次可取消</div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="p-4 border border-dashed border-gray-300 rounded-lg text-center text-gray-400 text-sm">
+                                                                        尚無選項 (請至後台新增子項目)
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Custom Attributes (Step 2+) - Only show if group is selected */}
+                                                                {selectedOptions[groupKey] && group.subAttributes && group.subAttributes.length > 0 && (
+                                                                    <div className="mt-4 rounded-xl border border-gray-200 bg-white overflow-hidden animate-in slide-in-from-top-2">
+                                                                        <div className="p-4">
+                                                                            {renderCustomAttributes(group)}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    // Render Checkbox (New Feature)
+                                                    if (displayType === 'checkbox') {
+                                                        return (
+                                                            <div key={group.id} className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
+                                                                {/* Description Images */}
+                                                                {descriptionImages.length > 0 && (
+                                                                    <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                                                                        {descriptionImages.map((img: string, idx: number) => (
+                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
+                                                                                <img
+                                                                                    src={img}
+                                                                                    className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
+                                                                                    alt={`${group.name} 說明圖片 ${idx + 1}`}
+                                                                                />
+                                                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
+                                                                                    <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+
+                                                                <h3 className="font-bold text-gray-900 mb-4 text-lg border-b pb-2">{group.name}</h3>
+
+                                                                {validItems.length > 0 ? (
+                                                                    <div className="space-y-3 mb-6">
+                                                                        {validItems.map(item => (
+                                                                            <label key={item.id} className="flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all hover:bg-gray-50 hover:border-gray-300 active:bg-gray-100">
+                                                                                <input
+                                                                                    type="checkbox"
+                                                                                    name={groupKey}
+                                                                                    checked={selectedOptions[groupKey] === item.id}
+                                                                                    onChange={() => handleSelectOption(groupKey, item.id)}
+                                                                                    className="w-5 h-5 text-black border-gray-300 focus:ring-black rounded"
+                                                                                />
+                                                                                <span className="ml-3 font-bold text-gray-800 text-base">{item.name}</span>
+                                                                                {item.priceModifier > 0 && <span className="ml-auto text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">+${item.priceModifier}</span>}
+                                                                            </label>
+                                                                        ))}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="text-center text-gray-400 text-sm py-4 mb-4">
+                                                                        {rawGroupItems.length > 0 ? (
+                                                                            <div className="flex flex-col items-center gap-2">
+                                                                                <span className="text-red-400 font-medium">此機型不適用</span>
+                                                                                <span className="text-xs opacity-70">({group.matchingTags.length > 0 ? `需標籤: ${group.matchingTags.join(', ')}` : '無可用選項'})</span>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <span className="italic">此區域尚無選項 (請至後台新增子項目)</span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Description Box */}
+                                                                {ui?.description && (
+                                                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                                                        <div className="text-sm text-gray-600 leading-relaxed mb-3">
+                                                                            <span className="font-semibold text-gray-800 block mb-1">說明：</span>
+                                                                            <div
+                                                                                dangerouslySetInnerHTML={{
+                                                                                    __html: DOMPurify.sanitize(ui.description, { ADD_ATTR: ['target', 'style'] })
+                                                                                }}
+                                                                                className="prose prose-sm max-w-none [&>a]:text-blue-600 [&>a]:underline [&>a]:hover:text-blue-800"
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Custom Attributes (Step 2+) */}
+                                                                {group.subAttributes && group.subAttributes.length > 0 && (
+                                                                    <div className="mt-4 rounded-xl border border-gray-200 bg-white overflow-hidden">
+                                                                        <div className="p-4">
+                                                                            {renderCustomAttributes(group)}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    // Default: Grid / List (Standard Buttons)
+                                                    return (
+                                                        <div key={group.id} className="mb-8">
+                                                            {/* Description Images */}
+                                                            {descriptionImages.length > 0 && (
+                                                                <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                                                                    {descriptionImages.map((img: string, idx: number) => (
+                                                                        <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
+                                                                            <img
+                                                                                src={img}
+                                                                                className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
+                                                                                alt={`${group.name} 說明圖片 ${idx + 1}`}
+                                                                            />
+                                                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
+                                                                                <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+
+                                                            <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">{group.name}</h3>
+                                                            {ui?.description && (
+                                                                <div
+                                                                    className="text-xs text-gray-400 mb-2 prose prose-xs max-w-none [&>p]:mb-1 [&>a]:text-blue-500 [&>a]:underline"
+                                                                    dangerouslySetInnerHTML={{
+                                                                        __html: DOMPurify.sanitize(ui.description, { ADD_ATTR: ['target', 'style'] })
+                                                                    }}
+                                                                />
+                                                            )}
+                                                            {validItems.length > 0 ? (
+                                                                <div className={`grid gap-3 ${group.code === 'lanyard' || displayType === 'list' ? 'grid-cols-1' : 'grid-cols-3'}`}>
+                                                                    {validItems.map(item => (
+                                                                        <button
+                                                                            type="button"
+                                                                            key={item.id}
+                                                                            onClick={() => handleSelectOption(groupKey, item.id)}
+                                                                            className={`${(group.code === 'lanyard' || displayType === 'list') ? 'w-full flex items-center justify-between px-4 py-3' : 'px-4 py-3 text-center flex flex-col items-center justify-center'} rounded-lg border transition-all ${selectedOptions[groupKey] === item.id ? 'border-black bg-black text-white shadow-md' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                                                                        >
+                                                                            <span className="font-medium text-sm">{item.name}</span>
+                                                                            {item.priceModifier > 0 && <span className={`text-xs opacity-70 ${(group.code === 'lanyard' || displayType === 'list') ? 'ml-2' : 'mt-1'}`}>+${item.priceModifier}</span>}
+                                                                        </button>
+                                                                    ))}
                                                                 </div>
                                                             ) : (
-                                                                <span>尚無選項 (請至後台新增子項目)</span>
+                                                                <div className="p-4 border border-dashed border-gray-300 rounded-lg text-center text-gray-400 text-sm">
+                                                                    {rawGroupItems.length > 0 ? (
+                                                                        <div className="flex flex-col items-center gap-1">
+                                                                            <span className="text-red-400 font-medium">此機型不適用</span>
+                                                                            <span className="text-xs opacity-70">({group.matchingTags.length > 0 ? `需標籤: ${group.matchingTags.join(', ')}` : '無可用選項'})</span>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span>尚無選項 (請至後台新增子項目)</span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Custom Attributes (Step 2+) */}
+                                                            {group.subAttributes && group.subAttributes.length > 0 && (
+                                                                <div className="mt-4 rounded-xl border border-gray-200 bg-white overflow-hidden">
+                                                                    <div className="p-4">
+                                                                        {renderCustomAttributes(group)}
+                                                                    </div>
+                                                                </div>
                                                             )}
                                                         </div>
-                                                    )}
-
-                                                    {/* Custom Attributes (Step 2+) */}
-                                                     {group.subAttributes && group.subAttributes.length > 0 && (
-                                                         <div className="mt-4 rounded-xl border border-gray-200 bg-white overflow-hidden">
-                                                             <div className="p-4">
-                                                                 {renderCustomAttributes(group)}
-                                                             </div>
-                                                         </div>
-                                                     )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                                </>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </>
                                 )}
 
                                 {/* Mobile bottom summary (md:hidden) - Moved to scrollable content per user request */}
@@ -1462,7 +1532,7 @@ export default function SaveDesignModal({
                                                         </div>
                                                     )}
                                                 </div>
-                                                
+
                                                 <div className="flex justify-between items-center pt-2 border-t border-gray-200 mt-2">
                                                     <span className="text-xs font-bold text-gray-500">總金額</span>
                                                     <span className="text-sm font-bold text-blue-600">NT$ {currentTotal}</span>
@@ -1480,9 +1550,9 @@ export default function SaveDesignModal({
                                     {(() => {
                                         const currentIndex = availableSteps.indexOf(currentStep);
                                         return currentIndex > 0 ? (
-                                            <button 
+                                            <button
                                                 type="button"
-                                                onClick={() => setCurrentStep(availableSteps[currentIndex - 1])} 
+                                                onClick={() => setCurrentStep(availableSteps[currentIndex - 1])}
                                                 className="px-4 py-3 text-gray-600 font-medium bg-gray-100 hover:bg-gray-200 rounded-2xl transition-colors md:px-6 md:bg-transparent md:hover:bg-gray-200"
                                             >
                                                 <span className="hidden md:inline">上一步</span>
@@ -1501,15 +1571,14 @@ export default function SaveDesignModal({
                                             <>
                                                 {/* "Next" button - Show if not last step */}
                                                 {!isLastStep && (
-                                                    <button 
+                                                    <button
                                                         type="button"
-                                                        onClick={() => nextStep && setCurrentStep(nextStep)} 
+                                                        onClick={() => nextStep && setCurrentStep(nextStep)}
                                                         disabled={currentStep === 1 && !hasChosenSpec}
-                                                        className={`flex-1 md:flex-none md:w-auto px-8 py-3 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg ${
-                                                            currentStep === 1 && !hasChosenSpec 
-                                                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                                                                : 'bg-black text-white hover:bg-gray-800'
-                                                        }`}
+                                                        className={`flex-1 md:flex-none md:w-auto px-8 py-3 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg ${currentStep === 1 && !hasChosenSpec
+                                                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                            : 'bg-black text-white hover:bg-gray-800'
+                                                            }`}
                                                     >
                                                         下一步 <ChevronRight className="w-5 h-5" />
                                                     </button>
@@ -1517,13 +1586,13 @@ export default function SaveDesignModal({
 
                                                 {/* "Add to Cart" button - Show only if Last Step */}
                                                 {isLastStep && (
-                                                    <button 
+                                                    <button
                                                         type="button"
                                                         onClick={() => {
                                                             const storageKey = `ppbears_checkout_progress_${productId || 'default'}`;
                                                             localStorage.removeItem(storageKey);
                                                             onAddToCart(currentTotal, { ...selectedOptions });
-                                                        }} 
+                                                        }}
                                                         className="flex-1 md:flex-none md:w-auto px-8 py-3 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg"
                                                         title="加入購物車"
                                                     >
@@ -1542,7 +1611,7 @@ export default function SaveDesignModal({
                     </div>
                 )}
             </div>
-            
+
             {zoomedImage && (
                 <div className="fixed inset-0 z-[100002] bg-black/90 flex items-center justify-center p-4 cursor-zoom-out animate-in fade-in duration-200" onClick={() => setZoomedImage(null)}>
                     <div className="relative max-w-4xl max-h-[90vh]">

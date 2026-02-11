@@ -1,4 +1,4 @@
 # Routes module
-from . import ai
+from . import ai, categories, products
 
-__all__ = ["ai"]
+__all__ = ["ai", "categories", "products"]
