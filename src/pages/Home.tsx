@@ -13,9 +13,10 @@ import CanvasEditor, { CanvasEditorRef } from '../components/CanvasEditor';
 import SaveDesignModal from '../components/SaveDesignModal';
 import MyGalleryModal from '../components/MyGalleryModal';
 import { DEFAULT_STICKERS, DEFAULT_BACKGROUNDS, DEFAULT_FRAMES } from '../data/mockAssets';
-import { AssetItem } from '@/types';
+import { AssetItem, Category } from '@/types';
 import { isAdminRoute } from '../lib/isAdminRoute';
 import { FIX_RLS_SQL } from './admin/Designs';
+import { buildCategoryTree } from '@/utils/categoryTree';
 
 const CATEGORIES_KEY = 'ppbears_seller_categories';
 const BRANDS_KEY = 'ppbears_seller_brands';
@@ -97,6 +98,11 @@ export default function Home() {
     const [products, setProducts] = useState<any[]>([]);
     const [isLoadingProducts, setIsLoadingProducts] = useState(true);
     const [productError, setProductError] = useState<string | null>(null);
+    const [categoryTree, setCategoryTree] = useState<Category[]>([]);
+    const [categoryMap, setCategoryMap] = useState<Map<string, Category>>(new Map());
+    const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+    const [categoryError, setCategoryError] = useState<string | null>(null);
+    const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(new Set());
 
     const [activeCategory, setActiveCategory] = useState('all');
     // Derived from DB products
@@ -134,7 +140,7 @@ export default function Home() {
     const [selectedAssetCategory, setSelectedAssetCategory] = useState('全部');
 
     // Navigation State for Products Panel
-    const [navPath, setNavPath] = useState<string[]>([]); // ['phone-case', 'Apple']
+    const [navPath, setNavPath] = useState<string[]>([]); // ['all' | 'other' | categoryId]
 
     // Load Assets from DB (Stickers, Backgrounds, Frames)
     useEffect(() => {
@@ -289,7 +295,36 @@ export default function Home() {
         if (e.target) e.target.value = '';
     };
     useEffect(() => {
-        // 1. Load Products List from Supabase (with Realtime & Aggregation)
+        // 1. Load Products & Categories from Supabase (Strict Mode: No Mock Fallback)
+        const fetchCategories = async () => {
+            setIsLoadingCategories(true);
+            setCategoryError(null);
+            try {
+                const { data, error } = await supabase
+                    .from('product_categories')
+                    .select('id,parent_id,name,sort_order')
+                    .order('parent_id')
+                    .order('sort_order');
+
+                if (error) throw error;
+
+                const { tree, map } = buildCategoryTree((data as any) || []);
+                setCategoryTree(tree);
+                setCategoryMap(map);
+                setExpandedCategoryIds(new Set(tree.map((c: any) => c.id)));
+            } catch (e: any) {
+                if (e?.name === 'AbortError' || e?.message?.includes('AbortError') || e?.message?.includes('signal is aborted')) {
+                    return;
+                }
+                console.error("Failed to load categories:", e);
+                setCategoryError("無法載入商品分類，請稍後再試。");
+                setCategoryTree([]);
+                setCategoryMap(new Map());
+            } finally {
+                setIsLoadingCategories(false);
+            }
+        };
+
         const fetchProducts = async () => {
             setIsLoadingProducts(true);
             setProductError(null);
@@ -304,7 +339,6 @@ export default function Home() {
 
                 if (data) {
                     setProducts(data);
-                    processProductData(data);
                 } else {
                     setProducts([]);
                     setDynamicCategories([]);
@@ -320,38 +354,8 @@ export default function Home() {
                 setIsLoadingProducts(false);
             }
         };
-
-        const processProductData = (data: any[]) => {
-            // Aggregate Categories
-            const uniqueCats = Array.from(new Set(data.map(p => p.category || 'other')));
-            const catMap: Record<string, string> = {
-                'phone-case': '手機殼',
-                'bottle': '水杯',
-                'decor': '家居裝飾',
-                'apparel': '服裝飾品',
-                'accessories': '燭台/相框',
-                'other': '其他'
-            };
-
-            // Sort: phone-case first, then others
-            const sortedCats = uniqueCats.sort((a, b) => {
-                if (a === 'phone-case') return -1;
-                if (b === 'phone-case') return 1;
-                return a.localeCompare(b);
-            });
-
-            const newCats = sortedCats.map(id => ({
-                id,
-                label: catMap[id] || id // Fallback to ID if no label found
-            }));
-            setDynamicCategories(newCats);
-
-            // Aggregate Brands (Global) - mostly for phone cases but can be generic
-            const uniqueBrands = Array.from(new Set(data.filter(p => p.brand).map(p => p.brand)));
-            const newBrands = uniqueBrands.map(b => ({ id: b, label: b }));
-            setDynamicBrands(newBrands);
-        };
-
+        
+        fetchCategories();
         fetchProducts();
 
         // Realtime Subscription
@@ -839,6 +843,30 @@ export default function Home() {
         }
     };
 
+    const toggleCategoryExpand = (id: string) => {
+        setExpandedCategoryIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const getDescendantIds = (rootId: string) => {
+        const root = categoryMap.get(rootId);
+        if (!root) return [];
+        const out: string[] = [];
+        const stack: Category[] = [...(root.children || [])];
+        while (stack.length > 0) {
+            const node = stack.pop()!;
+            out.push(node.id);
+            if (node.children && node.children.length > 0) {
+                stack.push(...node.children);
+            }
+        }
+        return out;
+    };
+
     // If no product ID is present, render the Shop Catalog
     if (!productId) {
         return <SellerShop />;
@@ -1061,7 +1089,7 @@ export default function Home() {
                                             <ChevronLeft className="w-5 h-5" />
                                         </button>
                                         <span className="font-semibold text-sm text-gray-800">
-                                            {navPath.length === 1 ? '選擇品牌' : '選擇型號'}
+                                            選擇商品
                                         </span>
                                     </div>
                                 )}
@@ -1073,166 +1101,119 @@ export default function Home() {
                                             <div className="px-2 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">請選擇產品類型</div>
 
                                             {/* Loading State */}
-                                            {isLoadingProducts && (
+                                            {(isLoadingProducts || isLoadingCategories) && (
                                                 <div className="p-4 text-center text-gray-400 text-sm flex flex-col items-center">
                                                     <div className="w-5 h-5 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin mb-2"></div>
-                                                    載入產品中...
+                                                    載入中...
                                                 </div>
                                             )}
 
                                             {/* Error State */}
-                                            {productError && (
+                                            {(productError || categoryError) && (
                                                 <div className="p-4 text-center text-red-500 text-sm bg-red-50 rounded-lg mx-2">
-                                                    {productError}
+                                                    {productError || categoryError}
                                                 </div>
                                             )}
 
                                             {/* Empty State */}
-                                            {!isLoadingProducts && !productError && dynamicCategories.length === 0 && (
+                                            {!isLoadingProducts && !isLoadingCategories && !productError && !categoryError && categoryTree.length === 0 && (
                                                 <div className="p-8 text-center text-gray-400 text-sm">
-                                                    目前沒有上架的商品。
+                                                    目前沒有可用的分類。
                                                 </div>
                                             )}
 
-                                            {dynamicCategories.map(cat => (
-                                                <button
-                                                    key={cat.id}
-                                                    onClick={() => {
-                                                        if (['phone-case', '手機殼'].includes(cat.id)) {
-                                                            setNavPath([cat.id]);
-                                                        } else {
-                                                            // For others, jump to list directly? Or show list in same logic
-                                                            // Let's treat others as direct list for now or generic category
-                                                            setNavPath([cat.id]);
-                                                        }
-                                                    }}
-                                                    className="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition-colors group"
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        {/* Simple Icons based on ID */}
-                                                        <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500">
-                                                            {['phone-case', '手機殼'].includes(cat.id) && <Smartphone className="w-5 h-5" />}
-                                                            {cat.id === 'bottle' && <div className="w-5 h-5 border-2 border-current rounded-full" />}
-                                                            {cat.id === 'decor' && <Image className="w-5 h-5" />}
-                                                            {cat.id === 'apparel' && <div className="w-5 h-5 border-2 border-current rounded-t-lg" />}
-                                                            {['phone-case', '手機殼', 'bottle', 'decor', 'apparel'].indexOf(cat.id) === -1 && <Square className="w-5 h-5" />}
-                                                        </div>
-                                                        <span className="font-medium text-gray-700">{cat.label}</span>
+                                            {!isLoadingProducts && !isLoadingCategories && !productError && !categoryError && (
+                                                <>
+                                                    <div className="pt-2">
+                                                        {categoryTree.map(category => {
+                                                            const renderCat = (c: Category, depth: number) => {
+                                                                const hasChildren = !!(c.children && c.children.length > 0);
+                                                                const isExpanded = expandedCategoryIds.has(c.id);
+                                                                return (
+                                                                    <div key={c.id}>
+                                                                        <button
+                                                                            onClick={() => setNavPath([c.id])}
+                                                                            className="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition-colors group"
+                                                                            style={{ paddingLeft: `${depth * 12 + 12}px` }}
+                                                                        >
+                                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                                {hasChildren ? (
+                                                                                    <span
+                                                                                        onClick={(e) => {
+                                                                                            e.preventDefault();
+                                                                                            e.stopPropagation();
+                                                                                            toggleCategoryExpand(c.id);
+                                                                                        }}
+                                                                                        className="p-1 -ml-1 rounded hover:bg-gray-200 text-gray-500"
+                                                                                    >
+                                                                                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                                                                                    </span>
+                                                                                ) : (
+                                                                                    <span className="w-6" />
+                                                                                )}
+                                                                                <span className="font-medium text-gray-700 truncate">{c.name}</span>
+                                                                            </div>
+                                                                            <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 flex-shrink-0" />
+                                                                        </button>
+                                                                        {hasChildren && isExpanded && c.children!.map(child => renderCat(child, depth + 1))}
+                                                                    </div>
+                                                                );
+                                                            };
+                                                            return renderCat(category, 0);
+                                                        })}
                                                     </div>
-                                                    <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500" />
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    {/* Level 1: Brands (for Phone Case) OR Products (for others) */}
-                                    {navPath.length === 1 && (
-                                        <div className="space-y-1">
-                                            {['phone-case', '手機殼'].includes(navPath[0]) ? (
-                                                <>
-                                                    <div className="px-2 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">選擇品牌</div>
-                                                    {(() => {
-                                                        // Default Brands for Phone Cases
-                                                        const DEFAULT_PHONE_BRANDS = ['Apple', 'Samsung', 'Google', 'Xiaomi', 'OPPO', 'Vivo', 'Sony', 'ASUS'];
-
-                                                        // Dynamic Brands from existing products
-                                                        const activeBrands = new Set(
-                                                            products
-                                                                .filter(p => ['phone-case', '手機殼'].includes(p.category))
-                                                                .map(p => p.brand || 'Other')
-                                                        );
-
-                                                        // Combine Defaults + Active
-                                                        const currentCatBrands = Array.from(new Set([
-                                                            ...DEFAULT_PHONE_BRANDS,
-                                                            ...Array.from(activeBrands)
-                                                        ])).sort((a, b) => {
-                                                            const idxA = customBrandOrder.indexOf(a);
-                                                            const idxB = customBrandOrder.indexOf(b);
-                                                            // If both are in the custom order, sort by index
-                                                            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-                                                            // If only A is in custom order, A comes first
-                                                            if (idxA !== -1) return -1;
-                                                            // If only B is in custom order, B comes first
-                                                            if (idxB !== -1) return 1;
-                                                            // Otherwise alphabetical
-                                                            return a.localeCompare(b);
-                                                        });
-
-                                                        if (currentCatBrands.length === 0) {
-                                                            return <div className="text-center py-8 text-gray-400 text-sm">此分類尚無品牌。</div>;
-                                                        }
-
-                                                        return currentCatBrands.map(brand => (
-                                                            <button
-                                                                key={brand}
-                                                                onClick={() => setNavPath([navPath[0], brand])}
-                                                                className="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition-colors group"
-                                                            >
-                                                                <span className="font-medium text-gray-700 ml-2">{brand === 'Other' ? '其他品牌' : brand}</span>
-                                                                <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500" />
-                                                            </button>
-                                                        ));
-                                                    })()}
-                                                </>
-                                            ) : (
-                                                // Non-Phone Case Categories: Show Products Directly
-                                                <>
-                                                    <div className="px-2 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">選擇商品</div>
-                                                    {products.filter(p => p?.category === navPath[0]).map(product => (
-                                                        <button
-                                                            key={product.id}
-                                                            disabled={isTemplateLoading}
-                                                            onClick={() => {
-                                                                setSearchParams({ productId: product.id });
-                                                                if (window.innerWidth < 768) setActivePanel('none');
-                                                            }}
-                                                            className={`w-full flex items-center gap-3 p-2 bg-white border rounded-xl hover:border-blue-500 hover:shadow-md transition-all text-left group mb-2 ${searchParams.get('productId') === product.id ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50' : 'border-gray-200'
-                                                                } ${isTemplateLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                        >
-                                                            <div className="w-12 h-16 bg-gray-100 rounded-md overflow-hidden flex-shrink-0 flex items-center justify-center">
-                                                                <img src={product.thumbnail} alt={product.name} className="max-w-full max-h-full object-contain mix-blend-multiply" />
-                                                            </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <h4 className="font-semibold text-gray-800 text-sm truncate">{product.name}</h4>
-                                                            </div>
-                                                            {searchParams.get('productId') === product.id && <Check className="w-4 h-4 text-blue-500" />}
-                                                        </button>
-                                                    ))}
-                                                    {products.filter(p => p?.category === navPath[0]).length === 0 && (
-                                                        <div className="text-center py-8 text-gray-400 text-sm">此分類尚無商品。</div>
-                                                    )}
                                                 </>
                                             )}
                                         </div>
                                     )}
 
-                                    {/* Level 2: Models (Phone Cases filtered by Brand) */}
-                                    {navPath.length === 2 && (
+                                    {/* Level 1: Products (Filtered by category_id with descendants) */}
+                                    {navPath.length === 1 && (
                                         <div className="space-y-1">
-                                            <div className="px-2 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">選擇型號</div>
-                                            {products
-                                                .filter(p => p?.category === navPath[0] && (p?.brand || 'Other') === navPath[1])
-                                                .map(product => (
-                                                    <button
-                                                        key={product.id}
-                                                        disabled={isTemplateLoading}
-                                                        onClick={() => {
-                                                            setSearchParams({ productId: product.id });
-                                                            setActivePanel('none');
-                                                        }}
-                                                        className={`w-full flex items-center gap-3 p-3 border-b border-gray-100 hover:bg-gray-50 transition-all text-left group ${searchParams.get('productId') === product.id ? 'bg-blue-50' : ''
-                                                            } ${isTemplateLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        <div className="flex-1">
-                                                            <span className={`text-sm ${searchParams.get('productId') === product.id ? 'font-bold text-blue-700' : 'text-gray-700'}`}>
-                                                                {product.name}
-                                                            </span>
-                                                        </div>
-                                                        {searchParams.get('productId') === product.id && <Check className="w-4 h-4 text-blue-500" />}
-                                                    </button>
-                                                ))
-                                            }
+                                            <div className="px-2 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">選擇商品</div>
+                                            {(productError || categoryError) ? (
+                                                <div className="p-4 text-center text-red-500 text-sm bg-red-50 rounded-lg mx-2">
+                                                    {productError || categoryError}
+                                                </div>
+                                            ) : (() => {
+                                                const selected = navPath[0];
+                                                let filtered = products;
+
+                                                if (selected === 'other') {
+                                                    filtered = products.filter(p => !p?.category_id);
+                                                } else if (selected !== 'all') {
+                                                    const allowed = new Set<string>([selected, ...getDescendantIds(selected)]);
+                                                    filtered = products.filter(p => p?.category_id && allowed.has(p.category_id));
+                                                }
+
+                                                return (
+                                                    <>
+                                                        {filtered.map(product => (
+                                                            <button
+                                                                key={product.id}
+                                                                disabled={isTemplateLoading}
+                                                                onClick={() => {
+                                                                    setSearchParams({ productId: product.id });
+                                                                    if (window.innerWidth < 768) setActivePanel('none');
+                                                                }}
+                                                                className={`w-full flex items-center gap-3 p-2 bg-white border rounded-xl hover:border-blue-500 hover:shadow-md transition-all text-left group mb-2 ${searchParams.get('productId') === product.id ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50' : 'border-gray-200'
+                                                                    } ${isTemplateLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                            >
+                                                                <div className="w-12 h-16 bg-gray-100 rounded-md overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                                                    <img src={product.thumbnail} alt={product.name} className="max-w-full max-h-full object-contain mix-blend-multiply" />
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <h4 className="font-semibold text-gray-800 text-sm truncate">{product.name}</h4>
+                                                                </div>
+                                                                {searchParams.get('productId') === product.id && <Check className="w-4 h-4 text-blue-500" />}
+                                                            </button>
+                                                        ))}
+                                                        {filtered.length === 0 && (
+                                                            <div className="text-center py-8 text-gray-400 text-sm">此分類尚無商品。</div>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     )}
                                 </div>

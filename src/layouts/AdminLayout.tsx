@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { ShoppingBag, Image as ImageIcon, LayoutDashboard, LogOut, Menu, X, ArrowLeft, Palette, Shapes, Settings } from 'lucide-react';
+import { ShoppingBag, Image as ImageIcon, LayoutDashboard, LogOut, Menu, X, ArrowLeft, Palette, Shapes, Settings, FolderTree } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { USE_PRODUCTS_V2 } from '@/config';
 
@@ -16,6 +16,7 @@ export default function AdminLayout() {
     if (path.includes('/seller/frames') || path.includes('/seller/frame')) return 'frames';
     if (path.includes('/seller/products-v2')) return 'seller-v2';
     if (path.includes('/seller/products')) return 'seller';
+    if (path.includes('/admin/categories')) return 'categories';
     if (path.includes('/admin/assets')) return 'assets';
     if (path.includes('/admin/designs')) return 'designs';
     return 'orders'; // Default or /admin/orders
@@ -63,6 +64,14 @@ export default function AdminLayout() {
           >
             <ShoppingBag className="w-5 h-5" />
             訂單管理
+          </button>
+
+          <button 
+            onClick={() => handleNavigation('/admin/categories')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${activeTab === 'categories' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            <FolderTree className="w-5 h-5" />
+            產品類別
           </button>
           
           {USE_PRODUCTS_V2 ? (

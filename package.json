@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"vite\" \"cd server && npm run dev\"",
+    "test": "node --test ./tests/categoryTree.test.js",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",

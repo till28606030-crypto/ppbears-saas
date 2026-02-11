@@ -2415,6 +2415,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         const step = historyStepRef.current;
         const h = historyRef.current;
         if (step >= h.length - 1 || isHistoryProcessing.current) return;
+        const nextStep = step + 1;
         if (!fabricCanvas.current) return;
         const canvas = fabricCanvas.current;
 

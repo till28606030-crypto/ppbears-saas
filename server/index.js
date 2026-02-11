@@ -10,10 +10,10 @@ require('dotenv').config();
 
 // Supabase Admin Client
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseServiceKey) {
-    console.warn("⚠️ Supabase credentials missing in server/.env. Database operations may fail.");
+    console.warn("⚠️ Supabase credentials missing. Database operations may fail.");
 }
 
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
@@ -384,6 +384,161 @@ app.post('/api/templates', (req, res) => {
     console.error('❌ Save Error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
+});
+
+// --- Product Categories (Supabase) ---
+const normCategoryName = (s) => String(s || '').trim();
+const sameNameCI = (a, b) => normCategoryName(a).toLowerCase() === normCategoryName(b).toLowerCase();
+
+async function getCategorySiblings(parentId) {
+    let q = supabaseAdmin.from('product_categories').select('id,name,sort_order,parent_id,layer_level');
+    if (!parentId) q = q.is('parent_id', null);
+    else q = q.eq('parent_id', parentId);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data || [];
+}
+
+app.get('/api/categories', async (req, res) => {
+    try {
+        const { data, error } = await supabaseAdmin
+            .from('product_categories')
+            .select('*')
+            .order('parent_id', { ascending: true })
+            .order('sort_order', { ascending: true });
+        if (error) throw error;
+        return res.json(data || []);
+    } catch (error) {
+        console.error('[Categories] GET failed:', error);
+        return res.status(500).json({ success: false, message: String(error?.message || error) });
+    }
+});
+
+app.post('/api/categories', async (req, res) => {
+    try {
+        const name = normCategoryName(req.body?.name);
+        const parent_id = req.body?.parent_id || null;
+        if (!name) return res.status(400).json({ success: false, message: 'Invalid name' });
+
+        const siblings = await getCategorySiblings(parent_id);
+        if (siblings.some((s) => sameNameCI(s.name, name))) {
+            return res.status(400).json({ success: false, message: 'Duplicate category name under same parent' });
+        }
+
+        const maxSort = siblings.reduce((m, s) => Math.max(m, s.sort_order || 0), 0);
+        let layer_level = 1;
+        if (parent_id) {
+            const { data: parent, error: parentErr } = await supabaseAdmin
+                .from('product_categories')
+                .select('layer_level')
+                .eq('id', parent_id)
+                .single();
+            if (parentErr || !parent) return res.status(400).json({ success: false, message: 'Parent not found' });
+            layer_level = (parent.layer_level || 1) + 1;
+        }
+
+        const payload = { name, parent_id, sort_order: maxSort + 1, layer_level };
+        const { data, error } = await supabaseAdmin
+            .from('product_categories')
+            .insert([payload])
+            .select()
+            .single();
+        if (error) throw error;
+        return res.json(data);
+    } catch (error) {
+        console.error('[Categories] POST failed:', error);
+        return res.status(500).json({ success: false, message: String(error?.message || error) });
+    }
+});
+
+app.put('/api/categories/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const patch = {};
+        if (req.body?.name !== undefined) {
+            const name = normCategoryName(req.body.name);
+            if (!name) return res.status(400).json({ success: false, message: 'Invalid name' });
+            patch.name = name;
+        }
+        if (req.body?.parent_id !== undefined) patch.parent_id = req.body.parent_id || null;
+
+        const { data: current, error: curErr } = await supabaseAdmin
+            .from('product_categories')
+            .select('id,name,parent_id,layer_level')
+            .eq('id', id)
+            .single();
+        if (curErr || !current) return res.status(404).json({ success: false, message: 'Category not found' });
+
+        const nextParentId = patch.parent_id !== undefined ? patch.parent_id : current.parent_id;
+        const nextName = patch.name !== undefined ? patch.name : current.name;
+        const siblings = await getCategorySiblings(nextParentId);
+        if (siblings.some((s) => String(s.id) !== String(id) && sameNameCI(s.name, nextName))) {
+            return res.status(400).json({ success: false, message: 'Duplicate category name under same parent' });
+        }
+
+        if (patch.parent_id !== undefined) {
+            if (nextParentId) {
+                const { data: parent, error: parentErr } = await supabaseAdmin
+                    .from('product_categories')
+                    .select('layer_level')
+                    .eq('id', nextParentId)
+                    .single();
+                if (parentErr || !parent) return res.status(400).json({ success: false, message: 'Parent not found' });
+                patch.layer_level = (parent.layer_level || 1) + 1;
+            } else {
+                patch.layer_level = 1;
+            }
+        }
+
+        const { data, error } = await supabaseAdmin
+            .from('product_categories')
+            .update(patch)
+            .eq('id', id)
+            .select()
+            .single();
+        if (error) throw error;
+        return res.json(data);
+    } catch (error) {
+        console.error('[Categories] PUT failed:', error);
+        return res.status(500).json({ success: false, message: String(error?.message || error) });
+    }
+});
+
+app.delete('/api/categories/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const { error } = await supabaseAdmin.from('product_categories').delete().eq('id', id);
+        if (error) throw error;
+        return res.json({ success: true });
+    } catch (error) {
+        console.error('[Categories] DELETE failed:', error);
+        return res.status(500).json({ success: false, message: String(error?.message || error) });
+    }
+});
+
+app.patch('/api/categories/reorder', async (req, res) => {
+    try {
+        const parent_id = req.body?.parent_id || null;
+        const ordered_ids = Array.isArray(req.body?.ordered_ids) ? req.body.ordered_ids.map(String) : [];
+        if (ordered_ids.length === 0) return res.status(400).json({ success: false, message: 'ordered_ids required' });
+
+        const siblings = await getCategorySiblings(parent_id);
+        const siblingIds = new Set(siblings.map((s) => String(s.id)));
+        if (!ordered_ids.every((id) => siblingIds.has(String(id)))) {
+            return res.status(400).json({ success: false, message: 'ordered_ids contains non-sibling ids' });
+        }
+
+        for (let i = 0; i < ordered_ids.length; i++) {
+            const id = ordered_ids[i];
+            const { error } = await supabaseAdmin.from('product_categories').update({ sort_order: i + 1 }).eq('id', id);
+            if (error) throw error;
+        }
+
+        return res.json({ success: true });
+    } catch (error) {
+        console.error('[Categories] REORDER failed:', error);
+        return res.status(500).json({ success: false, message: String(error?.message || error) });
+    }
 });
 // --- Product Image Deletion ---
 app.post('/api/products/:id/delete-image', async (req, res) => {

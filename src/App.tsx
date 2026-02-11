@@ -10,6 +10,7 @@ import AdminAssets from "@/pages/admin/Assets";
 import AdminDesigns from "@/pages/admin/Designs";
 import AdminOptionManager from "@/pages/admin/AdminOptionManager";
 import ModelDetail from "@/pages/admin/ModelDetail";
+import AdminCategories from "@/pages/admin/Categories";
 import ProductList from "@/pages/seller/ProductList";
 import ProductEditor from "@/pages/seller/ProductEditor";
 import ProductListV2 from "@/pages/seller/products-v2/ProductList";
@@ -57,6 +58,7 @@ export default function App() {
                   <Route path="/admin/assets" element={<AdminAssets />} />
                   <Route path="/admin/designs" element={<AdminDesigns />} />
                   <Route path="/admin/options" element={<AdminOptionManager />} />
+                  <Route path="/admin/categories" element={<AdminCategories />} />
                   
                   {/* Model Detail Route (Requested Feature) */}
                   <Route path="/admin/models/:id" element={<ModelDetail />} />

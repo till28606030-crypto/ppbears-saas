@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import ai
+from routes import ai, categories, products
 import os
 from datetime import datetime
 from models import HealthResponse
@@ -41,6 +41,8 @@ async def add_build_id_header(request, call_next):
 
 # Include Routers
 app.include_router(ai.router, prefix="/api/ai", tags=["AI"])
+app.include_router(categories.router, prefix="/api/categories", tags=["Categories"])
+app.include_router(products.router, prefix="/api/products", tags=["Products"])
 
 # Root Endpoint
 @app.get("/")

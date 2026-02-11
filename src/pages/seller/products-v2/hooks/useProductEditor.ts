@@ -24,6 +24,7 @@ export interface UseProductEditorReturn {
 const MUTABLE_KEYS: (keyof ProductRow)[] = [
   'name',
   'category',
+  'category_id',
   'brand',
   'thumbnail',
   'base_image',
@@ -52,6 +53,7 @@ export const useProductEditor = (): UseProductEditorReturn => {
         id: `p_${Date.now()}`,
         name: '新產品',
         category: null,
+        category_id: null,
         brand: null,
         thumbnail: null,
         base_image: null,

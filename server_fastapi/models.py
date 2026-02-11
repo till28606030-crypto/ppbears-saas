@@ -41,3 +41,28 @@ class HealthResponse(BaseModel):
     """健康檢查響應"""
     ok: bool
     time: str
+
+
+class CategoryBase(BaseModel):
+    """類別基礎模型"""
+    name: str
+    parent_id: Optional[str] = None # UUID stored as str often easier in Pydantic/JSON
+    layer_level: Optional[int] = None
+    sort_order: Optional[int] = None
+
+class CategoryCreate(CategoryBase):
+    pass
+
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    parent_id: Optional[str] = None
+    layer_level: Optional[int] = None
+    sort_order: Optional[int] = None
+
+class CategoryReorderRequest(BaseModel):
+    parent_id: Optional[str] = None
+    ordered_ids: list[str]
+
+class CategoryResponse(CategoryBase):
+    id: str
+    created_at: datetime

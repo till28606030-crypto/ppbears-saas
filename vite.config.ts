@@ -6,6 +6,7 @@ import path from 'node:path';
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  const apiProxyTarget = env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:3001'
   return {
     base: env.VITE_BASE_PATH || '/',
     build: {
@@ -44,7 +45,7 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/api': {
-          target: 'http://127.0.0.1:3002',
+          target: apiProxyTarget,
           changeOrigin: true,
           secure: false,
         },

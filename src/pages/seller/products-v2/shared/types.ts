@@ -30,6 +30,7 @@ export interface ProductRow {
   id: string;
   name: string;
   category: string | null;
+  category_id?: string | null;
   brand: string | null;
   thumbnail: string | null;
   base_image: string | null;

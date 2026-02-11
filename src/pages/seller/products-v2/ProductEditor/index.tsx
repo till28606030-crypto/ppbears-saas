@@ -5,6 +5,7 @@ import { Loader2, ArrowLeft, Save, AlertCircle, Upload, Image as ImageIcon, Sett
 import VisualTab from './tabs/VisualTab';
 import PreviewTab from './tabs/PreviewTab';
 import { buildDesignShareUrl, copyToClipboard } from '../shared/shareLink';
+import { CategoryTreeSelect } from '@/components/CategoryTreeSelect';
 
 const ProductEditorV2: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -148,6 +149,15 @@ const ProductEditorV2: React.FC = () => {
                   onChange={(e) => setDraft({ name: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="請輸入產品名稱"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">產品類別</label>
+                <CategoryTreeSelect
+                  value={draft?.category_id || null}
+                  onChange={(categoryId) => setDraft({ category_id: categoryId })}
+                  placeholder="選擇產品類別"
                 />
               </div>
 
