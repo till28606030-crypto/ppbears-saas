@@ -886,7 +886,6 @@ export default function Home() {
                 productName={currentProduct?.name || '客製化商品'}
                 previewImage={previewImage || ''}
                 onAddToCart={handleAddToCart}
-                productTags={currentProduct?.compatibilityTags || currentProduct?.tags || EMPTY_TAGS}
             />
 
             <MyGalleryModal

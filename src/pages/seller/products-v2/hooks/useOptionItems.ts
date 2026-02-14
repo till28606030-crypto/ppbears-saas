@@ -8,7 +8,6 @@ export interface OptionItem {
     price_modifier: number;
     color_hex: string | null;
     image_url: string | null;
-    required_tags: string[];
     is_active: boolean;
     created_at: string;
 }
@@ -18,7 +17,6 @@ export interface OptionGroup {
     code: string;
     name: string;
     price_modifier: number;
-    matching_tags: string[];
     thumbnail: string | null;
     ui_config: Record<string, any>;
     is_active: boolean;

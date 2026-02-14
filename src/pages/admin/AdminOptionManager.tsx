@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-    Plus, 
-    Trash2, 
-    Save, 
-    ChevronRight, 
-    Tag, 
-    Palette, 
-    Image as ImageIcon, 
+import {
+    Plus,
+    Trash2,
+    Save,
+    ChevronRight,
+    Tag,
+    Palette,
+    Image as ImageIcon,
     Settings,
     MoreVertical,
     Search,
@@ -18,11 +18,11 @@ import {
 } from 'lucide-react';
 import { get, set } from 'idb-keyval';
 
-import { 
-    OptionGroup, 
-    OptionItem, 
-    ProductAvailability, 
-    SubAttribute, 
+import {
+    OptionGroup,
+    OptionItem,
+    ProductAvailability,
+    SubAttribute,
     SubAttributeOption,
     OptionGroupUIConfig
 } from '../../types';
@@ -40,7 +40,7 @@ const QUILL_MODULES = {
     toolbar: [
         ['bold', 'italic', 'underline', 'strike'],
         [{ 'color': [] }, { 'background': [] }],
-        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
         ['link'],
         ['clean']
     ],
@@ -61,20 +61,20 @@ const uploadToSupabase = async (file: File, bucket: 'assets' | 'models' = 'asset
             .upload(filePath, file);
 
         if (uploadError) {
-             // Ignore AbortError caused by React Strict Mode or fast unmounts
-             if (uploadError.message?.includes('AbortError') || uploadError.name === 'AbortError' || uploadError.message?.includes('signal is aborted')) {
-                 console.warn('Supabase upload aborted (likely due to dev environment/Strict Mode). Ignoring.');
-                 
-                 // Fallback for Trae Preview Environment
-                 const isPreview = window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1');
-                 if (isPreview) {
-                     alert('⚠️ 預覽環境限制：圖片上傳被中斷，將使用替代圖片。\n(請在 Chrome 或正式環境測試真實上傳功能)');
-                     return 'https://placehold.co/400x400?text=Preview+Image';
-                 }
-                 
-                 return null;
-             }
-             throw uploadError;
+            // Ignore AbortError caused by React Strict Mode or fast unmounts
+            if (uploadError.message?.includes('AbortError') || uploadError.name === 'AbortError' || uploadError.message?.includes('signal is aborted')) {
+                console.warn('Supabase upload aborted (likely due to dev environment/Strict Mode). Ignoring.');
+
+                // Fallback for Trae Preview Environment
+                const isPreview = window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1');
+                if (isPreview) {
+                    alert('⚠️ 預覽環境限制：圖片上傳被中斷，將使用替代圖片。\n(請在 Chrome 或正式環境測試真實上傳功能)');
+                    return 'https://placehold.co/400x400?text=Preview+Image';
+                }
+
+                return null;
+            }
+            throw uploadError;
         }
 
         const { data } = supabase.storage
@@ -87,8 +87,8 @@ const uploadToSupabase = async (file: File, bucket: 'assets' | 'models' = 'asset
             // Fallback for Trae Preview Environment (Catch block)
             const isPreview = window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1');
             if (isPreview) {
-                 alert('⚠️ 預覽環境限制：圖片上傳被中斷，將使用替代圖片。\n(請在 Chrome 或正式環境測試真實上傳功能)');
-                 return 'https://placehold.co/400x400?text=Preview+Image';
+                alert('⚠️ 預覽環境限制：圖片上傳被中斷，將使用替代圖片。\n(請在 Chrome 或正式環境測試真實上傳功能)');
+                return 'https://placehold.co/400x400?text=Preview+Image';
             }
             return null;
         }
@@ -111,10 +111,10 @@ export default function AdminOptionManager() {
     // Form States
     const [isEditingGroup, setIsEditingGroup] = useState(false);
     const [editingGroupData, setEditingGroupData] = useState<Partial<OptionGroup>>({});
-    
+
     // Sub-Attributes Editor State
-    const [attributeInput, setAttributeInput] = useState<{name: string, type: 'select' | 'text'}>({ name: '', type: 'select' });
-    const [attributeOptionInput, setAttributeOptionInput] = useState<{attrId: string, name: string, price: number, image?: string} | null>(null);
+    const [attributeInput, setAttributeInput] = useState<{ name: string, type: 'select' | 'text' }>({ name: '', type: 'select' });
+    const [attributeOptionInput, setAttributeOptionInput] = useState<{ attrId: string, name: string, price: number, image?: string } | null>(null);
 
     const [isEditingItem, setIsEditingItem] = useState(false);
     const [editingItemData, setEditingItemData] = useState<Partial<OptionItem>>({});
@@ -127,7 +127,7 @@ export default function AdminOptionManager() {
                 // 1. Fetch from Supabase
                 const { data: dbGroups, error: errG } = await supabase.from('option_groups').select('*');
                 const { data: dbItems, error: errI } = await supabase.from('option_items').select('*');
-                
+
                 if (errG) {
                     if (!errG.message?.includes('AbortError')) console.error('Error loading groups:', errG);
                 }
@@ -138,7 +138,7 @@ export default function AdminOptionManager() {
                 // DB has data
                 if (dbGroups) setGroups(dbGroups.map(fromDbGroup));
                 if (dbItems) setItems(dbItems.map(fromDbItem));
-                
+
                 // Load Availability (Still local for now, or move to DB later)
                 const storedAvailability = await get(STORAGE_KEY_AVAILABILITY);
                 setAvailability(storedAvailability || []);
@@ -205,7 +205,7 @@ export default function AdminOptionManager() {
 
     const addAttributeOption = (attrId: string) => {
         if (!attributeOptionInput || !attributeOptionInput.name.trim()) return;
-        
+
         const newOption: SubAttributeOption = {
             id: `opt_${Date.now()}`,
             name: attributeOptionInput.name,
@@ -239,7 +239,7 @@ export default function AdminOptionManager() {
 
     const handleSaveGroup = async () => {
         if (!editingGroupData.name) return alert('請輸入名稱');
-        
+
         // Ensure uiConfig.step is set (default to 1)
         const uiConfig = {
             ...(editingGroupData.uiConfig || {}),
@@ -247,15 +247,14 @@ export default function AdminOptionManager() {
         };
 
         const groupToSave: OptionGroup = editingGroupData.id ? {
-             ...groups.find(g => g.id === editingGroupData.id)!, 
-             ...editingGroupData, 
-             uiConfig 
+            ...groups.find(g => g.id === editingGroupData.id)!,
+            ...editingGroupData,
+            uiConfig
         } as OptionGroup : {
             id: `grp_${Date.now()}`,
             code: `code_${Date.now()}`,
             name: editingGroupData.name || '未命名',
             priceModifier: editingGroupData.priceModifier || 0,
-            matchingTags: editingGroupData.matchingTags || [],
             thumbnail: editingGroupData.thumbnail,
             subAttributes: editingGroupData.subAttributes,
             uiConfig: uiConfig
@@ -263,7 +262,7 @@ export default function AdminOptionManager() {
 
         // Save to Supabase
         const { error } = await supabase.from('option_groups').upsert(toDbGroup(groupToSave));
-        
+
         if (error) {
             console.error('Error saving group:', error);
             alert('儲存失敗: ' + error.message);
@@ -282,19 +281,19 @@ export default function AdminOptionManager() {
 
     const handleDuplicateGroup = async (id: string) => {
         if (!confirm('確定複製此規格大類？')) return;
-        
+
         setLoading(true);
         try {
             // 1. Try RPC (Backend Logic)
             const { data, error } = await supabase.rpc('duplicate_option_group', { source_group_id: id });
-            
+
             if (!error && data) {
                 // RPC Success
                 const newGroup = fromDbGroup(data);
                 // Fetch new items
                 const { data: newItemsData } = await supabase.from('option_items').select('*').eq('parent_id', newGroup.id);
                 const newItems = (newItemsData || []).map(fromDbItem);
-                
+
                 setGroups(prev => [...prev, newGroup]);
                 setItems(prev => [...prev, ...newItems]);
                 alert('複製成功');
@@ -306,7 +305,7 @@ export default function AdminOptionManager() {
             // 2. Client-side Fallback
             const sourceGroup = groups.find(g => g.id === id);
             if (!sourceGroup) throw new Error('Source group not found');
-            
+
             const newGroupId = `grp_${Date.now()}`;
             // Ensure deep copy of uiConfig & subAttributes
             const newUiConfig = JSON.parse(JSON.stringify(sourceGroup.uiConfig || {}));
@@ -320,24 +319,24 @@ export default function AdminOptionManager() {
                 uiConfig: newUiConfig,
                 subAttributes: newSubAttributes
             };
-            
+
             const sourceItems = items.filter(i => i.parentId === id);
             const newItems = sourceItems.map((item, index) => ({
                 ...item,
                 id: `itm_${Date.now()}_${index}`,
                 parentId: newGroupId
             }));
-            
+
             // Insert Group
             const { error: gErr } = await supabase.from('option_groups').insert(toDbGroup(newGroup));
             if (gErr) throw gErr;
-            
+
             // Insert Items
             if (newItems.length > 0) {
-                 const { error: iErr } = await supabase.from('option_items').insert(newItems.map(toDbItem));
-                 if (iErr) throw iErr;
+                const { error: iErr } = await supabase.from('option_items').insert(newItems.map(toDbItem));
+                if (iErr) throw iErr;
             }
-            
+
             setGroups(prev => [...prev, newGroup]);
             setItems(prev => [...prev, ...newItems]);
             alert('複製成功 (Client-side)');
@@ -413,7 +412,7 @@ export default function AdminOptionManager() {
 
     const TagInput = ({ tags, onChange }: { tags: string[], onChange: (tags: string[]) => void }) => {
         const [input, setInput] = useState('');
-        
+
         const handleKeyDown = (e: React.KeyboardEvent) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -437,7 +436,7 @@ export default function AdminOptionManager() {
                         <button onClick={() => removeTag(tag)} className="hover:text-blue-900"><Trash2 className="w-3 h-3" /></button>
                     </span>
                 ))}
-                <input 
+                <input
                     value={input}
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -459,37 +458,37 @@ export default function AdminOptionManager() {
                         <Settings className="w-5 h-5" />
                         規格大類 (Parent)
                     </h2>
-                    <button 
+                    <button
                         onClick={() => {
-                            setEditingGroupData({ matchingTags: [] });
+                            setEditingGroupData({});
                             setIsEditingGroup(true);
                         }}
                         className="p-2 bg-black text-white rounded-lg hover:bg-gray-800"
                     >
                         <Plus className="w-4 h-4" />
                     </button>
-                    
+
                     {/* Import Availability Button */}
                     <div className="relative">
-                        <button 
+                        <button
                             onClick={() => fileInputRef.current?.click()}
                             className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 ml-2"
                             title="匯入配色對照表 (CSV)"
                         >
                             <FileSpreadsheet className="w-4 h-4" />
                         </button>
-                        <input 
+                        <input
                             ref={fileInputRef}
-                            type="file" 
+                            type="file"
                             accept=".csv"
                             className="hidden"
                             onChange={handleImportAvailability}
                         />
                     </div>
-                    
+
 
                 </div>
-                
+
                 <div className="flex-1 overflow-y-auto p-2 space-y-2">
                     {/* Empty State */}
                     {groups.length === 0 && !loading && (
@@ -502,7 +501,7 @@ export default function AdminOptionManager() {
 
                     {/* Sort groups by step order */}
                     {[...groups].sort((a, b) => (a.uiConfig?.step || 1) - (b.uiConfig?.step || 1)).map(group => (
-                        <div 
+                        <div
                             key={group.id}
                             onClick={() => setSelectedGroupId(group.id)}
                             className={`p-3 rounded-xl cursor-pointer border transition-all ${selectedGroupId === group.id ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'bg-white border-gray-200 hover:border-gray-300'}`}
@@ -518,15 +517,15 @@ export default function AdminOptionManager() {
                                         <h3 className="font-bold text-gray-900">{group.name}</h3>
                                         {group.uiConfig?.displayType && (
                                             <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100">
-                                                {group.uiConfig.displayType === 'cards' ? '大卡片' : 
-                                                 group.uiConfig.displayType === 'grid' ? '網格' : 
-                                                 group.uiConfig.displayType === 'list' ? '列表' : '勾選框'}
+                                                {group.uiConfig.displayType === 'cards' ? '大卡片' :
+                                                    group.uiConfig.displayType === 'grid' ? '網格' :
+                                                        group.uiConfig.displayType === 'list' ? '列表' : '勾選框'}
                                             </span>
                                         )}
                                     </div>
                                 </div>
                                 <div className="flex gap-1">
-                                    <button 
+                                    <button
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             setEditingGroupData(group);
@@ -537,7 +536,7 @@ export default function AdminOptionManager() {
                                     >
                                         <Settings className="w-4 h-4" />
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             handleDuplicateGroup(group.id);
@@ -547,7 +546,7 @@ export default function AdminOptionManager() {
                                     >
                                         <Copy className="w-4 h-4" />
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             handleDeleteGroup(group.id);
@@ -558,17 +557,6 @@ export default function AdminOptionManager() {
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>
-                            </div>
-                            <div className="flex flex-wrap gap-1 mb-2 ml-[3.25rem]">
-                                {group.matchingTags.length > 0 ? (
-                                    group.matchingTags.map(t => (
-                                        <span key={t} className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded border border-gray-200">
-                                            {t}
-                                        </span>
-                                    ))
-                                ) : (
-                                    <span className="text-xs text-gray-400 italic">通用選項 (無標籤限制)</span>
-                                )}
                             </div>
                             <div className="text-xs text-gray-500 flex justify-between ml-[3.25rem]">
                                 <span>加價: +${group.priceModifier}</span>
@@ -595,7 +583,7 @@ export default function AdminOptionManager() {
                                     所屬大類: <span className="font-bold">{groups.find(g => g.id === selectedGroupId)?.name}</span>
                                 </p>
                             </div>
-                            <button 
+                            <button
                                 onClick={() => {
                                     setEditingItemData({ parentId: selectedGroupId, colorHex: '#000000' });
                                     setIsEditingItem(true);
@@ -619,7 +607,7 @@ export default function AdminOptionManager() {
                                             </div>
                                         )}
                                         <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button 
+                                            <button
                                                 onClick={() => {
                                                     setEditingItemData(item);
                                                     setIsEditingItem(true);
@@ -628,7 +616,7 @@ export default function AdminOptionManager() {
                                             >
                                                 <Settings className="w-3 h-3" />
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={() => handleDeleteItem(item.id)}
                                                 className="p-1.5 bg-white rounded shadow text-gray-600 hover:text-red-600"
                                             >
@@ -663,10 +651,10 @@ export default function AdminOptionManager() {
                 <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
                     <div className="bg-white rounded-xl w-full max-w-lg p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
                         <h3 className="text-xl font-bold sticky top-0 bg-white z-10 pb-2 border-b">{editingGroupData.id ? '編輯大類' : '新增規格大類'}</h3>
-                        
+
                         <div>
                             <label className="block text-sm font-bold mb-1">名稱</label>
-                            <input 
+                            <input
                                 className="w-full border rounded-lg px-3 py-2"
                                 value={editingGroupData.name || ''}
                                 onChange={e => setEditingGroupData(prev => ({ ...prev, name: e.target.value }))}
@@ -676,20 +664,11 @@ export default function AdminOptionManager() {
 
                         <div>
                             <label className="block text-sm font-bold mb-1">基礎加價</label>
-                            <input 
+                            <input
                                 type="number"
                                 className="w-full border rounded-lg px-3 py-2"
                                 value={editingGroupData.priceModifier || 0}
                                 onChange={e => setEditingGroupData(prev => ({ ...prev, priceModifier: Number(e.target.value) }))}
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-bold mb-1">配對標籤 (Matching Tags) <span className="text-red-500">*</span></label>
-                            <p className="text-xs text-gray-500 mb-2">只有具備這些標籤的手機型號，才會顯示此選項。</p>
-                            <TagInput 
-                                tags={editingGroupData.matchingTags || []}
-                                onChange={tags => setEditingGroupData(prev => ({ ...prev, matchingTags: tags }))}
                             />
                         </div>
 
@@ -700,7 +679,7 @@ export default function AdminOptionManager() {
                                     {editingGroupData.thumbnail ? (
                                         <>
                                             <img src={editingGroupData.thumbnail} alt="Preview" className="w-full h-full object-contain" />
-                                            <button 
+                                            <button
                                                 onClick={() => setEditingGroupData(prev => ({ ...prev, thumbnail: undefined }))}
                                                 className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
                                             >
@@ -728,18 +707,18 @@ export default function AdminOptionManager() {
                                 <Settings className="w-4 h-4" />
                                 前台顯示設定 (Steps & UI)
                             </h4>
-                            
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold mb-1 text-gray-600">步驟順序 (Step Index)</label>
-                                    <input 
+                                    <input
                                         type="number"
                                         min="1"
                                         className="w-full border rounded-lg px-3 py-2 text-sm"
                                         value={editingGroupData.uiConfig?.step || 1}
-                                        onChange={e => setEditingGroupData(prev => ({ 
-                                            ...prev, 
-                                            uiConfig: { ...prev.uiConfig, step: Number(e.target.value) } 
+                                        onChange={e => setEditingGroupData(prev => ({
+                                            ...prev,
+                                            uiConfig: { ...prev.uiConfig, step: Number(e.target.value) }
                                         }))}
                                         placeholder="1"
                                     />
@@ -747,12 +726,12 @@ export default function AdminOptionManager() {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold mb-1 text-gray-600">顯示樣式 (Display Type)</label>
-                                    <select 
+                                    <select
                                         className="w-full border rounded-lg px-3 py-2 text-sm"
                                         value={editingGroupData.uiConfig?.displayType || 'cards'}
-                                        onChange={e => setEditingGroupData(prev => ({ 
-                                            ...prev, 
-                                            uiConfig: { ...prev.uiConfig, displayType: e.target.value as any } 
+                                        onChange={e => setEditingGroupData(prev => ({
+                                            ...prev,
+                                            uiConfig: { ...prev.uiConfig, displayType: e.target.value as any }
                                         }))}
                                     >
                                         <option value="cards">大卡片 (適用殼種)</option>
@@ -766,12 +745,12 @@ export default function AdminOptionManager() {
                             <div>
                                 <label className="block text-xs font-bold mb-1 text-gray-600">功能說明文字 (Description)</label>
                                 <div className="bg-white">
-                                    <ReactQuill 
+                                    <ReactQuill
                                         theme="snow"
                                         value={editingGroupData.uiConfig?.description || ''}
-                                        onChange={(value) => setEditingGroupData(prev => ({ 
-                                            ...prev, 
-                                            uiConfig: { ...prev.uiConfig, description: value } 
+                                        onChange={(value) => setEditingGroupData(prev => ({
+                                            ...prev,
+                                            uiConfig: { ...prev.uiConfig, description: value }
                                         }))}
                                         modules={QUILL_MODULES}
                                         placeholder="例如: 透過 AI 技術提升照片解析度... (支援 HTML 與連結)"
@@ -783,9 +762,9 @@ export default function AdminOptionManager() {
 
                             <div>
                                 <label className="block text-xs font-bold mb-2 text-gray-600">說明圖片 (可上傳多張)</label>
-                                <MultiImageUploader 
+                                <MultiImageUploader
                                     images={
-                                        editingGroupData.uiConfig?.descriptionImages || 
+                                        editingGroupData.uiConfig?.descriptionImages ||
                                         (editingGroupData.uiConfig?.descriptionImage ? [editingGroupData.uiConfig.descriptionImage] : [])
                                     }
                                     onChange={(newImages) => {
@@ -809,7 +788,7 @@ export default function AdminOptionManager() {
                                 自訂屬性 (Custom Attributes)
                             </label>
                             <p className="text-xs text-gray-500 mb-3">例如: 磁吸功能、鏡頭框顏色、按鍵顏色等。</p>
-                            
+
                             <div className="space-y-3 mb-3">
                                 {(editingGroupData.subAttributes || []).map(attr => (
                                     <div key={attr.id} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
@@ -817,7 +796,7 @@ export default function AdminOptionManager() {
                                             <span className="font-bold text-sm text-gray-800">{attr.name} <span className="text-xs text-gray-500 font-normal">({attr.type === 'select' ? '選單' : '文字'})</span></span>
                                             <button onClick={() => removeAttribute(attr.id)} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 className="w-3 h-3" /></button>
                                         </div>
-                                        
+
                                         {attr.type === 'select' && (
                                             <div className="pl-2 border-l-2 border-gray-200 space-y-2">
                                                 <div className="flex flex-wrap gap-2">
@@ -829,7 +808,7 @@ export default function AdminOptionManager() {
                                                         </span>
                                                     ))}
                                                 </div>
-                                                
+
                                                 {/* Add Option Input */}
                                                 <div className="flex gap-2 items-center">
                                                     <label className="cursor-pointer w-8 h-8 flex items-center justify-center border rounded bg-white hover:bg-gray-50 overflow-hidden relative shrink-0">
@@ -838,47 +817,47 @@ export default function AdminOptionManager() {
                                                         ) : (
                                                             <ImageIcon className="w-4 h-4 text-gray-400" />
                                                         )}
-                                                        <input 
-                                                            type="file" 
+                                                        <input
+                                                            type="file"
                                                             accept="image/*"
                                                             className="hidden"
                                                             onChange={async (e) => {
                                                                 const file = e.target.files?.[0];
                                                                 if (!file) return;
-                                                                
+
                                                                 const publicUrl = await uploadToSupabase(file, 'models');
                                                                 if (publicUrl) {
-                                                                    setAttributeOptionInput(prev => 
-                                                                        prev?.attrId === attr.id 
-                                                                        ? { ...prev, image: publicUrl } 
-                                                                        : { attrId: attr.id, name: '', price: 0, image: publicUrl }
+                                                                    setAttributeOptionInput(prev =>
+                                                                        prev?.attrId === attr.id
+                                                                            ? { ...prev, image: publicUrl }
+                                                                            : { attrId: attr.id, name: '', price: 0, image: publicUrl }
                                                                     );
                                                                 }
                                                             }}
                                                         />
                                                     </label>
-                                                    <input 
-                                                        placeholder="選項名稱" 
+                                                    <input
+                                                        placeholder="選項名稱"
                                                         className="border rounded px-2 py-1 text-xs w-24"
                                                         value={attributeOptionInput?.attrId === attr.id ? attributeOptionInput.name : ''}
-                                                        onChange={e => setAttributeOptionInput(prev => 
-                                                            prev?.attrId === attr.id 
-                                                            ? { ...prev, name: e.target.value } 
-                                                            : { attrId: attr.id, name: e.target.value, price: 0 }
+                                                        onChange={e => setAttributeOptionInput(prev =>
+                                                            prev?.attrId === attr.id
+                                                                ? { ...prev, name: e.target.value }
+                                                                : { attrId: attr.id, name: e.target.value, price: 0 }
                                                         )}
                                                     />
-                                                    <input 
-                                                        type="number" 
-                                                        placeholder="加價" 
+                                                    <input
+                                                        type="number"
+                                                        placeholder="加價"
                                                         className="border rounded px-2 py-1 text-xs w-16"
                                                         value={attributeOptionInput?.attrId === attr.id ? attributeOptionInput.price : 0}
-                                                        onChange={e => setAttributeOptionInput(prev => 
-                                                            prev?.attrId === attr.id 
-                                                            ? { ...prev, price: Number(e.target.value) } 
-                                                            : { attrId: attr.id, name: '', price: Number(e.target.value) }
+                                                        onChange={e => setAttributeOptionInput(prev =>
+                                                            prev?.attrId === attr.id
+                                                                ? { ...prev, price: Number(e.target.value) }
+                                                                : { attrId: attr.id, name: '', price: Number(e.target.value) }
                                                         )}
                                                     />
-                                                    <button 
+                                                    <button
                                                         onClick={() => addAttributeOption(attr.id)}
                                                         className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 shrink-0"
                                                     >
@@ -892,13 +871,13 @@ export default function AdminOptionManager() {
                             </div>
 
                             <div className="flex gap-2 items-center bg-gray-50 p-2 rounded-lg">
-                                <input 
-                                    placeholder="屬性名稱 (如: 磁吸)" 
+                                <input
+                                    placeholder="屬性名稱 (如: 磁吸)"
                                     className="border rounded px-2 py-1 text-sm flex-1"
                                     value={attributeInput.name}
                                     onChange={e => setAttributeInput(prev => ({ ...prev, name: e.target.value }))}
                                 />
-                                <select 
+                                <select
                                     className="border rounded px-2 py-1 text-sm"
                                     value={attributeInput.type}
                                     onChange={e => setAttributeInput(prev => ({ ...prev, type: e.target.value as any }))}
@@ -906,7 +885,7 @@ export default function AdminOptionManager() {
                                     <option value="select">選單 (Select)</option>
                                     <option value="text">文字 (Text)</option>
                                 </select>
-                                <button 
+                                <button
                                     onClick={addAttribute}
                                     className="text-sm bg-gray-800 text-white px-3 py-1 rounded hover:bg-black"
                                 >
@@ -926,7 +905,7 @@ export default function AdminOptionManager() {
             {/* Modal: Edit Group Sub-Attributes (New Modal or Embedded?) */}
             {/* Let's embed it in the Edit Group modal for now, or maybe too crowded? */}
             {/* Actually, let's append it to the Edit Group modal content above the buttons */}
-            
+
             {/* ... Wait, I can't insert into the middle of previous block easily with search/replace. */}
             {/* I will replace the whole Edit Group Modal content to include the Attributes section */}
 
@@ -935,10 +914,10 @@ export default function AdminOptionManager() {
                 <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
                     <div className="bg-white rounded-xl w-full max-w-md p-6 space-y-4 shadow-2xl">
                         <h3 className="text-xl font-bold">{editingItemData.id ? '編輯選項' : '新增子選項'}</h3>
-                        
+
                         <div>
                             <label className="block text-sm font-bold mb-1">名稱</label>
-                            <input 
+                            <input
                                 className="w-full border rounded-lg px-3 py-2"
                                 value={editingItemData.name || ''}
                                 onChange={e => setEditingItemData(prev => ({ ...prev, name: e.target.value }))}
@@ -947,85 +926,85 @@ export default function AdminOptionManager() {
                         </div>
 
                         <div>
-                                <label className="block text-sm font-bold mb-1">加價金額</label>
-                                <input 
-                                    type="number"
-                                    className="w-full border rounded-lg px-3 py-2"
-                                    value={editingItemData.priceModifier || 0}
-                                    onChange={e => setEditingItemData(prev => ({ ...prev, priceModifier: Number(e.target.value) }))}
+                            <label className="block text-sm font-bold mb-1">加價金額</label>
+                            <input
+                                type="number"
+                                className="w-full border rounded-lg px-3 py-2"
+                                value={editingItemData.priceModifier || 0}
+                                onChange={e => setEditingItemData(prev => ({ ...prev, priceModifier: Number(e.target.value) }))}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold mb-1">代表色 (Color Hex)</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="color"
+                                    className="w-10 h-10 border rounded cursor-pointer"
+                                    value={editingItemData.colorHex || '#000000'}
+                                    onChange={e => setEditingItemData(prev => ({ ...prev, colorHex: e.target.value }))}
+                                />
+                                <input
+                                    type="text"
+                                    className="flex-1 border rounded-lg px-3 py-2 uppercase font-mono"
+                                    value={editingItemData.colorHex || '#000000'}
+                                    onChange={e => setEditingItemData(prev => ({ ...prev, colorHex: e.target.value }))}
                                 />
                             </div>
+                        </div>
 
-                            <div>
-                                <label className="block text-sm font-bold mb-1">代表色 (Color Hex)</label>
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="color"
-                                        className="w-10 h-10 border rounded cursor-pointer"
-                                        value={editingItemData.colorHex || '#000000'}
-                                        onChange={e => setEditingItemData(prev => ({ ...prev, colorHex: e.target.value }))}
-                                    />
-                                    <input 
-                                        type="text"
-                                        className="flex-1 border rounded-lg px-3 py-2 uppercase font-mono"
-                                        value={editingItemData.colorHex || '#000000'}
-                                        onChange={e => setEditingItemData(prev => ({ ...prev, colorHex: e.target.value }))}
-                                    />
-                                </div>
-                            </div>
+                        <div>
+                            <label className="block text-sm font-bold mb-1">圖片連結 (可選)</label>
+                            <div className="space-y-2">
+                                <input
+                                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                                    value={editingItemData.imageUrl || ''}
+                                    onChange={e => setEditingItemData(prev => ({ ...prev, imageUrl: e.target.value }))}
+                                    placeholder="https://..."
+                                />
 
-                            <div>
-                                <label className="block text-sm font-bold mb-1">圖片連結 (可選)</label>
-                                <div className="space-y-2">
-                                    <input 
-                                        className="w-full border rounded-lg px-3 py-2 text-sm"
-                                        value={editingItemData.imageUrl || ''}
-                                        onChange={e => setEditingItemData(prev => ({ ...prev, imageUrl: e.target.value }))}
-                                        placeholder="https://..."
-                                    />
-                                    
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-20 h-20 bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center overflow-hidden relative group">
-                                            {editingItemData.imageUrl ? (
-                                                <>
-                                                    <img src={editingItemData.imageUrl} alt="Preview" className="w-full h-full object-contain" />
-                                                    <button 
-                                                        onClick={() => setEditingItemData(prev => ({ ...prev, imageUrl: undefined }))}
-                                                        className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
-                                                    >
-                                                        <Trash2 className="w-5 h-5" />
-                                                    </button>
-                                                </>
-                                            ) : (
-                                                <ImageIcon className="w-8 h-8 text-gray-300" />
-                                            )}
-                                        </div>
-                                        <div className="flex-1">
-                                            <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm font-medium">
-                                                <Upload className="w-4 h-4" />
-                                                上傳圖片
-                                                <input 
-                                                    type="file" 
-                                                    accept="image/*" 
-                                                    className="hidden" 
-                                                    onChange={async (e) => {
-                                                        const file = e.target.files?.[0];
-                                                        if (!file) return;
-                                                        
-                                                        const publicUrl = await uploadToSupabase(file, 'models');
-                                                        if (publicUrl) {
-                                                            setEditingItemData(prev => ({ ...prev, imageUrl: publicUrl }));
-                                                        }
-                                                    }} 
-                                                />
-                                            </label>
-                                            <p className="text-xs text-gray-400 mt-2">支援 JPG, PNG, GIF</p>
-                                        </div>
+                                <div className="flex items-center gap-4">
+                                    <div className="w-20 h-20 bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center overflow-hidden relative group">
+                                        {editingItemData.imageUrl ? (
+                                            <>
+                                                <img src={editingItemData.imageUrl} alt="Preview" className="w-full h-full object-contain" />
+                                                <button
+                                                    onClick={() => setEditingItemData(prev => ({ ...prev, imageUrl: undefined }))}
+                                                    className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                                                >
+                                                    <Trash2 className="w-5 h-5" />
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <ImageIcon className="w-8 h-8 text-gray-300" />
+                                        )}
+                                    </div>
+                                    <div className="flex-1">
+                                        <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm font-medium">
+                                            <Upload className="w-4 h-4" />
+                                            上傳圖片
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (!file) return;
+
+                                                    const publicUrl = await uploadToSupabase(file, 'models');
+                                                    if (publicUrl) {
+                                                        setEditingItemData(prev => ({ ...prev, imageUrl: publicUrl }));
+                                                    }
+                                                }}
+                                            />
+                                        </label>
+                                        <p className="text-xs text-gray-400 mt-2">支援 JPG, PNG, GIF</p>
                                     </div>
                                 </div>
                             </div>
+                        </div>
 
-                            <div className="flex justify-end gap-2 pt-4">
+                        <div className="flex justify-end gap-2 pt-4">
                             <button onClick={() => setIsEditingItem(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">取消</button>
                             <button onClick={handleSaveItem} className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800">保存</button>
                         </div>

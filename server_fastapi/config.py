@@ -1,13 +1,21 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 
 class Settings(BaseSettings):
     """應用配置"""
     
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+        case_sensitive=False,
+        populate_by_name=True
+    )
+
     # Supabase
     supabase_url: str = ""
     supabase_service_role_key: str = ""
+    supabase_anon_key: str = ""  # Added to match .env potentially
     
     # Replicate
     replicate_api_token: str = ""
@@ -19,13 +27,6 @@ class Settings(BaseSettings):
     
     # Build ID
     build_id: str = ""
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
-        # Allow field names with different casing
-        populate_by_name = True
-
 
 @lru_cache()
 def get_settings():

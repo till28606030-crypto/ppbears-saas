@@ -39,7 +39,6 @@ export interface ProductRow {
   specs: ProductSpecs;
   mask_config: MaskConfig;
   permissions: ProductPermissions;
-  tags: string[];
   is_active: boolean;
   updated_at: string;
   created_at: string;

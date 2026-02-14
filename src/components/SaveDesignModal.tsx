@@ -33,7 +33,6 @@ export interface OptionGroup {
     code: string;
     name: string;
     priceModifier: number;
-    matchingTags: string[];
     thumbnail?: string;
     subAttributes?: SubAttribute[];
     uiConfig?: OptionGroupUIConfig;
@@ -46,7 +45,6 @@ export interface OptionItem {
     priceModifier: number;
     colorHex?: string;
     imageUrl?: string;
-    requiredTags?: string[];
 }
 
 export interface ProductAvailability {
@@ -63,7 +61,6 @@ interface SaveDesignModalProps {
     productName: string;
     previewImage: string;
     onAddToCart: (finalPrice: number, selectedOptions: any) => void;
-    productTags?: string[];
 }
 
 // Storage Keys
@@ -78,8 +75,7 @@ export default function SaveDesignModal({
     productId,
     productName,
     previewImage,
-    onAddToCart,
-    productTags = []
+    onAddToCart
 }: SaveDesignModalProps) {
     const [currentStep, setCurrentStep] = useState(1);
     const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
@@ -175,23 +171,10 @@ export default function SaveDesignModal({
         [groups, selectedCaseGroupId]
     );
 
-    // 2. Filter Groups
+    // 2. All groups are valid (filtering now handled by linked_option_groups)
     const validGroups = React.useMemo(() => {
-        if (!groups) return [];
-
-        return groups.filter(group => {
-            // If group has no tags, it's Universal -> Show it
-            const ui = getUI(group);
-            const tags = group.matchingTags || ui.matchingTags || ui.matching_tags || [];
-            if (!tags || tags.length === 0) return true;
-
-            // If product has no tags, treat as "Universal Product" -> Show All Groups
-            if (!productTags || productTags.length === 0) return true;
-
-            // Fallback: If tags exist, product must include at least ONE matching tag
-            return tags.some(tag => productTags.includes(tag));
-        });
-    }, [groups, productTags]);
+        return groups || [];
+    }, [groups]);
 
     // Grouping by Step
     const { stepGroups, maxStep, availableSteps } = React.useMemo(() => {
@@ -245,7 +228,6 @@ export default function SaveDesignModal({
     useEffect(() => {
         if (isOpen) {
             console.log("=== Debug Checkout Modal ===");
-            console.log("Product Tags:", productTags);
             console.log("All Groups:", groups);
             console.log("Valid Groups:", validGroups);
             console.log("Step Groups:", Object.fromEntries(stepGroups));
@@ -424,8 +406,7 @@ export default function SaveDesignModal({
                         // @ts-ignore
                         stepIndex: getStep(grp),
                         // @ts-ignore
-                        itemsLen: (grp.items?.length || 0) + (allItems.filter(it => it.parentId === grp.id).length),
-                        matchingTags: grp.matchingTags
+                        itemsLen: (grp.items?.length || 0) + (allItems.filter(it => it.parentId === grp.id).length)
                     })));
 
                     console.log("[wizard] groups step3 list", filteredGroups.filter(grp => {
@@ -438,11 +419,8 @@ export default function SaveDesignModal({
                         // @ts-ignore
                         stepIndex: getStep(grp),
                         // @ts-ignore
-                        itemsLen: (grp.items?.length || 0) + (allItems.filter(it => it.parentId === grp.id).length),
-                        matchingTags: grp.matchingTags
+                        itemsLen: (grp.items?.length || 0) + (allItems.filter(it => it.parentId === grp.id).length)
                     })));
-
-                    console.log("[wizard] model tags", productTags);
 
                     setItems(allItems);
                     setAvailability(Array.isArray(a) ? a : []);
@@ -485,24 +463,7 @@ export default function SaveDesignModal({
         // 1. Get items for this group
         let groupItems = items.filter(i => i.parentId === groupId);
 
-        // Debug: Log if items found
-        // if (groupItems.length === 0) console.log(`No items found for group ${groupId}`);
-
-        // 2. Filter by Tags (Legacy / System Tags)
-        // If item has requiredTags, productTags MUST include ALL of them
-        const filteredByTags = groupItems.filter(item => {
-            if (!item.requiredTags || item.requiredTags.length === 0) return true;
-            if (!productTags || productTags.length === 0) return true;
-            return item.requiredTags.every(tag => productTags.includes(tag));
-        });
-
-        if (groupItems.length > 0 && filteredByTags.length === 0) {
-            console.log(`[wizard] Group ${groupId} items hidden by tags. Item tags:`, groupItems[0].requiredTags, "Model tags:", productTags);
-        }
-
-        groupItems = filteredByTags;
-
-        // 3. Filter by Whitelist Availability (Strict Mode)
+        // 2. Filter by Whitelist Availability (Strict Mode)
         // Only apply if we have a productId
         if (productId) {
             // Check if ANY availability rules exist for this model
@@ -551,7 +512,7 @@ export default function SaveDesignModal({
             // Only set step to 'case' if it's the very first load (no step state logic here to avoid reset)
             // Actually, we don't want to force reset step here.
         }
-    }, [loading, validGroups, items, availability, productId, productTags, stepGroups]);
+    }, [loading, validGroups, items, availability, productId, stepGroups]);
     */
 
     if (!isOpen) return null;
@@ -1101,7 +1062,6 @@ export default function SaveDesignModal({
                                         <div className="text-xs text-gray-300 max-w-xs text-center bg-gray-900/5 p-2 rounded">
                                             <span className="font-bold">Debug Info:</span><br />
                                             Step: {currentStep} (Groups: {stepGroups.get(currentStep)?.length || 0})<br />
-                                            Product Tags: {productTags.length > 0 ? productTags.join(', ') : 'None'}<br />
                                             Valid Groups: {validGroups.length} / Total: {groups.length}
                                         </div>
                                         <button
@@ -1384,7 +1344,7 @@ export default function SaveDesignModal({
                                                                         {rawGroupItems.length > 0 ? (
                                                                             <div className="flex flex-col items-center gap-2">
                                                                                 <span className="text-red-400 font-medium">此機型不適用</span>
-                                                                                <span className="text-xs opacity-70">({group.matchingTags.length > 0 ? `需標籤: ${group.matchingTags.join(', ')}` : '無可用選項'})</span>
+                                                                                <span className="text-xs opacity-70">(無可用選項)</span>
                                                                             </div>
                                                                         ) : (
                                                                             <span className="italic">此區域尚無選項 (請至後台新增子項目)</span>
@@ -1468,7 +1428,7 @@ export default function SaveDesignModal({
                                                                     {rawGroupItems.length > 0 ? (
                                                                         <div className="flex flex-col items-center gap-1">
                                                                             <span className="text-red-400 font-medium">此機型不適用</span>
-                                                                            <span className="text-xs opacity-70">({group.matchingTags.length > 0 ? `需標籤: ${group.matchingTags.join(', ')}` : '無可用選項'})</span>
+                                                                            <span className="text-xs opacity-70">(無可用選項)</span>
                                                                         </div>
                                                                     ) : (
                                                                         <span>尚無選項 (請至後台新增子項目)</span>

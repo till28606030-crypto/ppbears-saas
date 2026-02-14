@@ -32,7 +32,6 @@ const MUTABLE_KEYS: (keyof ProductRow)[] = [
   'specs',
   'mask_config',
   'permissions',
-  'tags',
   'is_active',
 ];
 
@@ -61,7 +60,6 @@ export const useProductEditor = (): UseProductEditorReturn => {
         specs: {},
         mask_config: {},
         permissions: {},
-        tags: [],
         is_active: true,
         updated_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
@@ -93,7 +91,7 @@ export const useProductEditor = (): UseProductEditorReturn => {
   const getChangedFields = useCallback(() => {
     if (!draft) return {};
     if (!product) return draft; // For new products
-    
+
     const changed: Partial<ProductRow> = {};
     MUTABLE_KEYS.forEach((key) => {
       if (JSON.stringify(draft[key]) !== JSON.stringify(product[key])) {
@@ -113,7 +111,7 @@ export const useProductEditor = (): UseProductEditorReturn => {
     if (!draft) return { valid: false, errors: ['資料未載入'] };
     if (!draft.name?.trim()) errors.push('名稱為必填');
     if (!draft.base_image) errors.push('必須上傳產品底圖 (base_image)');
-    
+
     if (typeof draft.specs !== 'object') errors.push('Specs 格式錯誤');
     if (typeof draft.mask_config !== 'object') errors.push('Mask Config 格式錯誤');
     if (typeof draft.permissions !== 'object') errors.push('Permissions 格式錯誤');
@@ -132,25 +130,25 @@ export const useProductEditor = (): UseProductEditorReturn => {
     try {
       setSaving(true);
       setError(null);
-      
+
       const isNew = !product;
       const changedFields = isNew ? draft : getChangedFields();
-      
+
       if (Object.keys(changedFields).length === 0) {
         return { success: true };
       }
 
-      const payload = { 
-        ...changedFields, 
-        updated_at: new Date().toISOString() 
+      const payload = {
+        ...changedFields,
+        updated_at: new Date().toISOString()
       };
 
-      const { data, error: saveError } = isNew 
+      const { data, error: saveError } = isNew
         ? await supabase.from('products').insert([payload]).select().single()
         : await supabase.from('products').update(payload).eq('id', product.id).select().single();
 
       if (saveError) throw saveError;
-      
+
       setProduct(data);
       setDraftState(data);
       return { success: true };
@@ -195,7 +193,7 @@ export const useProductEditor = (): UseProductEditorReturn => {
         .select('*')
         .eq('id', id)
         .single();
-      
+
       if (fetchError) throw fetchError;
 
       const payload: any = {};
@@ -216,13 +214,13 @@ export const useProductEditor = (): UseProductEditorReturn => {
         const prefix = source.id.includes('_') ? source.id.split('_')[0] : 'prod';
         const newId = `${prefix}_${Date.now()}`;
         payload.id = newId;
-        
+
         const retryResult = await supabase
           .from('products')
           .insert([payload])
           .select('id')
           .single();
-        
+
         if (retryResult.error) throw retryResult.error;
         inserted = retryResult.data;
       } else if (insError) {
