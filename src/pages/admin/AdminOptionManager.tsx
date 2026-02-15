@@ -14,8 +14,29 @@ import {
     FileSpreadsheet,
     ListPlus,
     X,
-    Copy
+    Copy,
+    Edit2,
+    GripVertical,
+    Check,
+    Move
 } from 'lucide-react';
+import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    DragEndEvent
+} from '@dnd-kit/core';
+import {
+    arrayMove,
+    SortableContext,
+    sortableKeyboardCoordinates,
+    useSortable,
+    verticalListSortingStrategy
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { get, set } from 'idb-keyval';
 
 import {
@@ -38,6 +59,8 @@ import 'react-quill/dist/quill.snow.css';
 
 const QUILL_MODULES = {
     toolbar: [
+        [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+        [{ 'size': ['small', false, 'large', 'huge'] }],
         ['bold', 'italic', 'underline', 'strike'],
         [{ 'color': [] }, { 'background': [] }],
         [{ 'list': 'ordered' }, { 'list': 'bullet' }],
@@ -115,6 +138,7 @@ export default function AdminOptionManager() {
     // Sub-Attributes Editor State
     const [attributeInput, setAttributeInput] = useState<{ name: string, type: 'select' | 'text' }>({ name: '', type: 'select' });
     const [attributeOptionInput, setAttributeOptionInput] = useState<{ attrId: string, name: string, price: number, image?: string } | null>(null);
+    const [editingAttributeOption, setEditingAttributeOption] = useState<{ attrId: string, optionId: string, name: string, price: number, image?: string } | null>(null);
 
     const [isEditingItem, setIsEditingItem] = useState(false);
     const [editingItemData, setEditingItemData] = useState<Partial<OptionItem>>({});
@@ -231,6 +255,47 @@ export default function AdminOptionManager() {
             subAttributes: (prev.subAttributes || []).map(a => {
                 if (a.id === attrId) {
                     return { ...a, options: (a.options || []).filter(o => o.id !== optionId) };
+                }
+                return a;
+            })
+        }));
+    };
+
+    const updateAttributeOption = (attrId: string, optionId: string, updates: Partial<SubAttributeOption>) => {
+        setEditingGroupData(prev => ({
+            ...prev,
+            subAttributes: (prev.subAttributes || []).map(a => {
+                if (a.id === attrId) {
+                    return {
+                        ...a,
+                        options: (a.options || []).map(o =>
+                            o.id === optionId ? { ...o, ...updates } : o
+                        )
+                    };
+                }
+                return a;
+            })
+        }));
+        setEditingAttributeOption(null);
+    };
+
+    const handleAttributeOptionDragEnd = (attrId: string, event: DragEndEvent) => {
+        const { active, over } = event;
+
+        if (!over || active.id === over.id) return;
+
+        setEditingGroupData(prev => ({
+            ...prev,
+            subAttributes: (prev.subAttributes || []).map(a => {
+                if (a.id === attrId) {
+                    const options = a.options || [];
+                    const oldIndex = options.findIndex(o => o.id === active.id);
+                    const newIndex = options.findIndex(o => o.id === over.id);
+
+                    return {
+                        ...a,
+                        options: arrayMove(options, oldIndex, newIndex)
+                    };
                 }
                 return a;
             })
@@ -409,6 +474,119 @@ export default function AdminOptionManager() {
     };
 
     // --- Components ---
+
+    const SortableOptionTag: React.FC<{
+        option: SubAttributeOption;
+        attrId: string;
+        isEditing: boolean;
+        onEdit: () => void;
+        onSave: (updates: Partial<SubAttributeOption>) => void;
+        onCancel: () => void;
+        onDelete: () => void;
+        editingData: { attrId: string, optionId: string, name: string, price: number, image?: string } | null;
+        onEditingDataChange: (data: any) => void;
+    }> = ({ option, attrId, isEditing, onEdit, onSave, onCancel, onDelete, editingData, onEditingDataChange }) => {
+        const {
+            attributes,
+            listeners,
+            setNodeRef,
+            transform,
+            transition,
+            isDragging
+        } = useSortable({ id: option.id });
+
+        const style = {
+            transform: CSS.Transform.toString(transform),
+            transition,
+            opacity: isDragging ? 0.5 : 1
+        };
+
+        if (isEditing && editingData) {
+            return (
+                <div
+                    ref={setNodeRef}
+                    style={style}
+                    className="text-xs bg-blue-50 border border-blue-300 px-2 py-1 rounded flex items-center gap-1"
+                >
+                    <label className="cursor-pointer w-5 h-5 flex items-center justify-center border rounded bg-white hover:bg-gray-50 overflow-hidden shrink-0">
+                        {editingData.image ? (
+                            <img src={editingData.image} className="w-full h-full object-cover" alt="" />
+                        ) : (
+                            <ImageIcon className="w-3 h-3 text-gray-400" />
+                        )}
+                        <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                const publicUrl = await uploadToSupabase(file, 'models');
+                                if (publicUrl && editingData) {
+                                    onEditingDataChange({ ...editingData, image: publicUrl });
+                                }
+                            }}
+                        />
+                    </label>
+                    <input
+                        value={editingData.name}
+                        onChange={(e) => onEditingDataChange({ ...editingData, name: e.target.value })}
+                        className="border rounded px-1 py-0.5 text-xs w-20"
+                        placeholder="名稱"
+                    />
+                    <input
+                        type="number"
+                        value={editingData.price}
+                        onChange={(e) => onEditingDataChange({ ...editingData, price: Number(e.target.value) })}
+                        className="border rounded px-1 py-0.5 text-xs w-12"
+                        placeholder="$"
+                    />
+                    <button
+                        onClick={() => onSave({ name: editingData.name, priceModifier: editingData.price, image: editingData.image })}
+                        className="text-green-600 hover:bg-green-100 p-0.5 rounded"
+                        title="保存"
+                    >
+                        <Check className="w-3 h-3" />
+                    </button>
+                    <button
+                        onClick={onCancel}
+                        className="text-gray-400 hover:bg-gray-100 p-0.5 rounded"
+                        title="取消"
+                    >
+                        <X className="w-3 h-3" />
+                    </button>
+                </div>
+            );
+        }
+
+        return (
+            <div
+                ref={setNodeRef}
+                style={style}
+                className="text-xs bg-white border border-gray-200 px-2 py-1 rounded flex items-center gap-1 group"
+            >
+                <div {...attributes} {...listeners} className="cursor-move text-gray-400 hover:text-gray-600">
+                    <GripVertical className="w-3 h-3" />
+                </div>
+                {option.image && <img src={option.image} alt="" className="w-4 h-4 rounded object-cover border border-gray-100" />}
+                <span>{option.name} (+${option.priceModifier})</span>
+                <button
+                    onClick={onEdit}
+                    className="text-gray-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="編輯"
+                >
+                    <Edit2 className="w-3 h-3" />
+                </button>
+                <button
+                    onClick={onDelete}
+                    className="text-gray-400 hover:text-red-500"
+                    title="刪除"
+                >
+                    <X className="w-3 h-3" />
+                </button>
+            </div>
+        );
+    };
 
     const TagInput = ({ tags, onChange }: { tags: string[], onChange: (tags: string[]) => void }) => {
         const [input, setInput] = useState('');
@@ -799,15 +977,42 @@ export default function AdminOptionManager() {
 
                                         {attr.type === 'select' && (
                                             <div className="pl-2 border-l-2 border-gray-200 space-y-2">
-                                                <div className="flex flex-wrap gap-2">
-                                                    {(attr.options || []).map(opt => (
-                                                        <span key={opt.id} className="text-xs bg-white border border-gray-200 px-2 py-1 rounded flex items-center gap-1">
-                                                            {opt.image && <img src={opt.image} alt="" className="w-4 h-4 rounded object-cover border border-gray-100" />}
-                                                            {opt.name} (+${opt.priceModifier})
-                                                            <button onClick={() => removeAttributeOption(attr.id, opt.id)} className="text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>
-                                                        </span>
-                                                    ))}
-                                                </div>
+                                                <DndContext
+                                                    collisionDetection={closestCenter}
+                                                    onDragEnd={(event) => handleAttributeOptionDragEnd(attr.id, event)}
+                                                >
+                                                    <SortableContext
+                                                        items={(attr.options || []).map(o => o.id)}
+                                                        strategy={verticalListSortingStrategy}
+                                                    >
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {(attr.options || []).map(opt => {
+                                                                const isEditing = editingAttributeOption?.attrId === attr.id && editingAttributeOption?.optionId === opt.id;
+
+                                                                return (
+                                                                    <SortableOptionTag
+                                                                        key={opt.id}
+                                                                        option={opt}
+                                                                        attrId={attr.id}
+                                                                        isEditing={isEditing}
+                                                                        onEdit={() => setEditingAttributeOption({
+                                                                            attrId: attr.id,
+                                                                            optionId: opt.id,
+                                                                            name: opt.name,
+                                                                            price: opt.priceModifier,
+                                                                            image: opt.image
+                                                                        })}
+                                                                        onSave={(updates) => updateAttributeOption(attr.id, opt.id, updates)}
+                                                                        onCancel={() => setEditingAttributeOption(null)}
+                                                                        onDelete={() => removeAttributeOption(attr.id, opt.id)}
+                                                                        editingData={isEditing ? editingAttributeOption : null}
+                                                                        onEditingDataChange={setEditingAttributeOption}
+                                                                    />
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </SortableContext>
+                                                </DndContext>
 
                                                 {/* Add Option Input */}
                                                 <div className="flex gap-2 items-center">

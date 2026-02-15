@@ -36,6 +36,9 @@ export interface OptionGroup {
     thumbnail?: string;
     subAttributes?: SubAttribute[];
     uiConfig?: OptionGroupUIConfig;
+    min?: number;
+    max?: number;
+    matchingTags?: string[];
 }
 
 export interface OptionItem {
@@ -45,6 +48,7 @@ export interface OptionItem {
     priceModifier: number;
     colorHex?: string;
     imageUrl?: string;
+    requiredTags?: string[];
 }
 
 export interface ProductAvailability {

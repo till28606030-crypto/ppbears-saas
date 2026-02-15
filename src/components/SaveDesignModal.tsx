@@ -1237,7 +1237,21 @@ export default function SaveDesignModal({
                                                                 {/* Lightbox moved to global scope */}
 
                                                                 <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">{group.name}</h3>
-                                                                {ui?.description && <p className="text-xs text-gray-400 mb-2">{ui.description}</p>}
+                                                                {ui?.description && (
+                                                                    <div
+                                                                        className="text-xs text-gray-400 mb-2 prose prose-xs max-w-none [&>p]:mb-1 [&>a]:text-blue-500 [&>a]:underline"
+                                                                        dangerouslySetInnerHTML={{
+                                                                            __html: DOMPurify.sanitize(
+                                                                                ui.description
+                                                                                    .replace(/&amp;/g, '&')
+                                                                                    .replace(/&lt;/g, '<')
+                                                                                    .replace(/&gt;/g, '>')
+                                                                                    .replace(/&quot;/g, '"'),
+                                                                                { ADD_ATTR: ['target', 'style'] }
+                                                                            )
+                                                                        }}
+                                                                    />
+                                                                )}
                                                                 {validItems.length > 0 ? (
                                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                                         {validItems.map(item => (
@@ -1352,14 +1366,22 @@ export default function SaveDesignModal({
                                                                     </div>
                                                                 )}
 
-                                                                {/* Description Box */}
                                                                 {ui?.description && (
                                                                     <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                                                                         <div className="text-sm text-gray-600 leading-relaxed mb-3">
                                                                             <span className="font-semibold text-gray-800 block mb-1">說明：</span>
                                                                             <div
                                                                                 dangerouslySetInnerHTML={{
-                                                                                    __html: DOMPurify.sanitize(ui.description, { ADD_ATTR: ['target', 'style'] })
+                                                                                    __html: DOMPurify.sanitize(
+                                                                                        // Robust fix: Ensure unescaped HTML before sanitizing
+                                                                                        // Must replace &amp; first to handle double escaping (e.g. &amp;lt;)
+                                                                                        ui.description
+                                                                                            .replace(/&amp;/g, '&')
+                                                                                            .replace(/&lt;/g, '<')
+                                                                                            .replace(/&gt;/g, '>')
+                                                                                            .replace(/&quot;/g, '"'),
+                                                                                        { ADD_ATTR: ['target', 'style'] }
+                                                                                    )
                                                                                 }}
                                                                                 className="prose prose-sm max-w-none [&>a]:text-blue-600 [&>a]:underline [&>a]:hover:text-blue-800"
                                                                             />
@@ -1402,12 +1424,21 @@ export default function SaveDesignModal({
 
                                                             <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">{group.name}</h3>
                                                             {ui?.description && (
-                                                                <div
-                                                                    className="text-xs text-gray-400 mb-2 prose prose-xs max-w-none [&>p]:mb-1 [&>a]:text-blue-500 [&>a]:underline"
-                                                                    dangerouslySetInnerHTML={{
-                                                                        __html: DOMPurify.sanitize(ui.description, { ADD_ATTR: ['target', 'style'] })
-                                                                    }}
-                                                                />
+                                                                <>
+                                                                    <div
+                                                                        className="text-xs text-gray-400 mb-2 prose prose-xs max-w-none [&>p]:mb-1 [&>a]:text-blue-500 [&>a]:underline"
+                                                                        dangerouslySetInnerHTML={{
+                                                                            __html: DOMPurify.sanitize(
+                                                                                ui.description
+                                                                                    .replace(/&amp;/g, '&')
+                                                                                    .replace(/&lt;/g, '<')
+                                                                                    .replace(/&gt;/g, '>')
+                                                                                    .replace(/&quot;/g, '"'),
+                                                                                { ADD_ATTR: ['target', 'style'] }
+                                                                            )
+                                                                        }}
+                                                                    />
+                                                                </>
                                                             )}
                                                             {validItems.length > 0 ? (
                                                                 <div className={`grid gap-3 ${group.code === 'lanyard' || displayType === 'list' ? 'grid-cols-1' : 'grid-cols-3'}`}>
