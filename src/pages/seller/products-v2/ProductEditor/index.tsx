@@ -4,6 +4,7 @@ import { useProductEditor } from '../hooks/useProductEditor';
 import { Loader2, ArrowLeft, Save, AlertCircle, Upload, Image as ImageIcon, Settings, Eye, Layout, Share2, ExternalLink, Info } from 'lucide-react';
 import VisualTab from './tabs/VisualTab';
 import PreviewTab from './tabs/PreviewTab';
+import AttributeSettingsTab from './tabs/AttributeSettingsTab';
 import { buildDesignShareUrl, copyToClipboard } from '../shared/shareLink';
 import { CategoryTreeSelect } from '@/components/CategoryTreeSelect';
 import { useOptionItems } from '../hooks/useOptionItems';
@@ -11,7 +12,7 @@ import { useOptionItems } from '../hooks/useOptionItems';
 const ProductEditorV2: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'base' | 'visual' | 'preview'>('base');
+  const [activeTab, setActiveTab] = useState<'base' | 'visual' | 'preview' | 'attributes'>('base');
 
   const editor = useProductEditor();
   const {
@@ -101,6 +102,15 @@ const ProductEditorV2: React.FC = () => {
           {activeTab === 'base' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />}
         </button>
         <button
+          onClick={() => setActiveTab('attributes')}
+          className={`flex items-center gap-2 pb-4 text-sm font-medium transition-colors relative ${activeTab === 'attributes' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+            }`}
+        >
+          <Settings className="w-4 h-4" />
+          屬性設置
+          {activeTab === 'attributes' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />}
+        </button>
+        <button
           onClick={() => setActiveTab('visual')}
           className={`flex items-center gap-2 pb-4 text-sm font-medium transition-colors relative ${activeTab === 'visual' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
             }`}
@@ -134,173 +144,179 @@ const ProductEditorV2: React.FC = () => {
         </div>
       )}
 
-      {activeTab === 'base' ? (
+      {activeTab === 'base' || activeTab === 'attributes' ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Left Column: Form */}
+          {/* Main Content */}
           <div className="md:col-span-2 space-y-6">
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-4">
-              <h2 className="text-lg font-semibold">基本設定</h2>
+            {activeTab === 'base' ? (
+              <>
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 space-y-4">
+                  <h2 className="text-lg font-semibold">基本設定</h2>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">產品名稱</label>
-                <input
-                  type="text"
-                  value={draft?.name || ''}
-                  onChange={(e) => setDraft({ name: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="請輸入產品名稱"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">產品類別</label>
-                <CategoryTreeSelect
-                  value={draft?.category_id || null}
-                  onChange={(categoryId) => setDraft({ category_id: categoryId })}
-                  placeholder="選擇產品類別"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                {/* Base Image Upload */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">產品底圖 (Base Image) *</label>
-                  <div
-                    onClick={() => baseImageInputRef.current?.click()}
-                    className={`aspect-square border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer transition-colors overflow-hidden ${draft?.base_image ? 'border-blue-200 bg-blue-50' : 'border-gray-300 hover:border-blue-400'
-                      }`}
-                  >
-                    {draft?.base_image ? (
-                      <img src={draft.base_image} alt="Base" className="w-full h-full object-contain" />
-                    ) : (
-                      <>
-                        <Upload className="w-8 h-8 text-gray-400 mb-2" />
-                        <span className="text-xs text-gray-500">點擊上傳底圖</span>
-                      </>
-                    )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">產品名稱</label>
+                    <input
+                      type="text"
+                      value={draft?.name || ''}
+                      onChange={(e) => setDraft({ name: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="請輸入產品名稱"
+                    />
                   </div>
-                  <input
-                    type="file"
-                    ref={baseImageInputRef}
-                    onChange={(e) => onFileChange(e, 'base')}
-                    className="hidden"
-                    accept="image/*"
-                  />
-                </div>
 
-                {/* Mask Image Upload */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">遮罩圖 (Mask Image)</label>
-                  <div
-                    onClick={() => maskImageInputRef.current?.click()}
-                    className={`aspect-square border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer transition-colors overflow-hidden ${draft?.mask_image ? 'border-purple-200 bg-purple-50' : 'border-gray-300 hover:border-blue-400'
-                      }`}
-                  >
-                    {draft?.mask_image ? (
-                      <img src={draft.mask_image} alt="Mask" className="w-full h-full object-contain" />
-                    ) : (
-                      <>
-                        <ImageIcon className="w-8 h-8 text-gray-400 mb-2" />
-                        <span className="text-xs text-gray-500">點擊上傳遮罩</span>
-                      </>
-                    )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">產品類別</label>
+                    <CategoryTreeSelect
+                      value={draft?.category_id || null}
+                      onChange={(categoryId) => setDraft({ category_id: categoryId })}
+                      placeholder="選擇產品類別"
+                    />
                   </div>
-                  <input
-                    type="file"
-                    ref={maskImageInputRef}
-                    onChange={(e) => onFileChange(e, 'mask')}
-                    className="hidden"
-                    accept="image/*"
-                  />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Base Image Upload */}
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">產品底圖 (Base Image) *</label>
+                      <div
+                        onClick={() => baseImageInputRef.current?.click()}
+                        className={`aspect-square border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer transition-colors overflow-hidden ${draft?.base_image ? 'border-blue-200 bg-blue-50' : 'border-gray-300 hover:border-blue-400'
+                          }`}
+                      >
+                        {draft?.base_image ? (
+                          <img src={draft.base_image} alt="Base" className="w-full h-full object-contain" />
+                        ) : (
+                          <>
+                            <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                            <span className="text-xs text-gray-500">點擊上傳底圖</span>
+                          </>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        ref={baseImageInputRef}
+                        onChange={(e) => onFileChange(e, 'base')}
+                        className="hidden"
+                        accept="image/*"
+                      />
+                    </div>
+
+                    {/* Mask Image Upload */}
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">遮罩圖 (Mask Image)</label>
+                      <div
+                        onClick={() => maskImageInputRef.current?.click()}
+                        className={`aspect-square border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer transition-colors overflow-hidden ${draft?.mask_image ? 'border-purple-200 bg-purple-50' : 'border-gray-300 hover:border-blue-400'
+                          }`}
+                      >
+                        {draft?.mask_image ? (
+                          <img src={draft.mask_image} alt="Mask" className="w-full h-full object-contain" />
+                        ) : (
+                          <>
+                            <ImageIcon className="w-8 h-8 text-gray-400 mb-2" />
+                            <span className="text-xs text-gray-500">點擊上傳遮罩</span>
+                          </>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        ref={maskImageInputRef}
+                        onChange={(e) => onFileChange(e, 'mask')}
+                        className="hidden"
+                        accept="image/*"
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* 關聯的產品規格 */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-              <h2 className="text-lg font-semibold mb-4">關聯的產品規格</h2>
-              <p className="text-sm text-gray-500 mb-4">選擇此產品模板可搭配的規格大類（Step 選項）</p>
+                {/* 關聯的產品規格 */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                  <h2 className="text-lg font-semibold mb-4">關聯的產品規格</h2>
+                  <p className="text-sm text-gray-500 mb-4">選擇此產品模板可搭配的規格大類（Step 選項）</p>
 
-              {optionItemsLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {[...optionGroups]
-                    .sort((a, b) => ((a as any).ui_config?.step || 1) - ((b as any).ui_config?.step || 1))
-                    .map((group) => {
-                      const linkedGroups = draft?.specs?.linked_option_groups || [];
-                      const isChecked = linkedGroups.includes(group.id);
+                  {optionItemsLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {[...optionGroups]
+                        .sort((a, b) => ((a as any).ui_config?.step || 1) - ((b as any).ui_config?.step || 1))
+                        .map((group) => {
+                          const linkedGroups = draft?.specs?.linked_option_groups || [];
+                          const isChecked = linkedGroups.includes(group.id);
 
-                      return (
-                        <label
-                          key={group.id}
-                          className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              const currentLinked = draft?.specs?.linked_option_groups || [];
-                              const newLinked = e.target.checked
-                                ? [...currentLinked, group.id]
-                                : currentLinked.filter(id => id !== group.id);
+                          return (
+                            <label
+                              key={group.id}
+                              className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  const currentLinked = draft?.specs?.linked_option_groups || [];
+                                  const newLinked = e.target.checked
+                                    ? [...currentLinked, group.id]
+                                    : currentLinked.filter(id => id !== group.id);
 
-                              setDraft({
-                                specs: {
-                                  ...(draft?.specs || {}),
-                                  linked_option_groups: newLinked
-                                }
-                              });
-                            }}
-                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                          />
-                          <div className="flex items-center gap-3 flex-1">
-                            {/* Step Badge */}
-                            <div className="flex flex-col items-center justify-center bg-gray-100 rounded px-2 py-1 min-w-[2.5rem]">
-                              <span className="text-[10px] text-gray-500 font-bold uppercase">Step</span>
-                              <span className="text-base font-bold leading-none text-gray-800">
-                                {(group as any).ui_config?.step || 1}
-                              </span>
-                            </div>
-                            {/* Group Info */}
-                            <div className="flex-1">
-                              <div className="text-sm font-medium text-gray-800">{group.name}</div>
-                              {group.price_modifier !== 0 && (
-                                <div className="text-xs text-gray-500">
-                                  基礎加價: {group.price_modifier > 0 ? '+' : ''}{group.price_modifier} 元
-                                </div>
-                              )}
-                            </div>
-                            {/* Thumbnail */}
-                            {(group as any).thumbnail && (
-                              <img
-                                src={(group as any).thumbnail}
-                                alt={group.name}
-                                className="w-12 h-12 object-cover rounded border border-gray-200"
+                                  setDraft({
+                                    specs: {
+                                      ...(draft?.specs || {}),
+                                      linked_option_groups: newLinked
+                                    }
+                                  });
+                                }}
+                                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
                               />
-                            )}
-                          </div>
-                        </label>
-                      );
-                    })}
+                              <div className="flex items-center gap-3 flex-1">
+                                {/* Step Badge */}
+                                <div className="flex flex-col items-center justify-center bg-gray-100 rounded px-2 py-1 min-w-[2.5rem]">
+                                  <span className="text-[10px] text-gray-500 font-bold uppercase">Step</span>
+                                  <span className="text-base font-bold leading-none text-gray-800">
+                                    {(group as any).ui_config?.step || 1}
+                                  </span>
+                                </div>
+                                {/* Group Info */}
+                                <div className="flex-1">
+                                  <div className="text-sm font-medium text-gray-800">{group.name}</div>
+                                  {group.price_modifier !== 0 && (
+                                    <div className="text-xs text-gray-500">
+                                      基礎加價: {group.price_modifier > 0 ? '+' : ''}{group.price_modifier} 元
+                                    </div>
+                                  )}
+                                </div>
+                                {/* Thumbnail */}
+                                {(group as any).thumbnail && (
+                                  <img
+                                    src={(group as any).thumbnail}
+                                    alt={group.name}
+                                    className="w-12 h-12 object-cover rounded border border-gray-200"
+                                  />
+                                )}
+                              </div>
+                            </label>
+                          );
+                        })}
 
-                  {optionGroups.length === 0 && (
-                    <div className="text-center py-8 text-gray-400">
-                      尚無產品規格資料
+                      {optionGroups.length === 0 && (
+                        <div className="text-center py-8 text-gray-400">
+                          尚無產品規格資料
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
-            </div>
 
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-              <h2 className="text-lg font-semibold mb-4">資料預覽 (JSON)</h2>
-              <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-auto max-h-[400px] text-xs font-mono">
-                {JSON.stringify(draft, null, 2)}
-              </pre>
-            </div>
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                  <h2 className="text-lg font-semibold mb-4">資料預覽 (JSON)</h2>
+                  <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-auto max-h-[400px] text-xs font-mono">
+                    {JSON.stringify(draft, null, 2)}
+                  </pre>
+                </div>
+              </>
+            ) : (
+              <AttributeSettingsTab draft={draft} setDraft={editor.setDraft} />
+            )}
           </div>
 
           {/* Right Column: Actions */}

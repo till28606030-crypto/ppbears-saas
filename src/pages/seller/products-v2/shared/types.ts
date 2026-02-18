@@ -27,6 +27,17 @@ export interface ProductPermissions {
   [key: string]: any;
 }
 
+export interface ClientPermissions {
+  text: boolean;
+  background: boolean;
+  designs: boolean;
+  ai_remove_bg: boolean;
+  stickers: boolean;
+  barcode: boolean;
+  ai_cartoon: boolean;
+  frames: boolean;
+}
+
 export interface ProductRow {
   id: string;
   name: string;
@@ -39,6 +50,7 @@ export interface ProductRow {
   specs: ProductSpecs;
   mask_config: MaskConfig;
   permissions: ProductPermissions;
+  client_permissions?: ClientPermissions;
   is_active: boolean;
   updated_at: string;
   created_at: string;

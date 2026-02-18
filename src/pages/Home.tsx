@@ -25,6 +25,7 @@ const BRANDS_KEY = 'ppbears_seller_brands';
 
 const customBrandOrder = ['Apple', 'Samsung', 'Google', 'Xiaomi', 'OPPO', 'Vivo', 'Sony', 'ASUS'];
 
+// Default permissions should be all true if not parsing
 const DEFAULT_PERMS = {
     text: true,
     stickers: true,
@@ -32,7 +33,8 @@ const DEFAULT_PERMS = {
     barcode: true,
     designs: true,
     aiCartoon: true,
-    aiRemoveBg: true
+    aiRemoveBg: true,
+    frames: true
 };
 
 const generateDesignId = () => {
@@ -88,7 +90,29 @@ export default function Home() {
     const [showGalleryModal, setShowGalleryModal] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [currentProduct, setCurrentProduct] = useState<any>(null);
-    const perms = { ...DEFAULT_PERMS, ...(currentProduct?.permissions || {}) };
+
+    // [Permission Logic]
+    // 1. If client_permissions exists, use it mapping to internal keys
+    // 2. Fallback to old permissions? Or just default.
+    const perms = (() => {
+        if (currentProduct?.client_permissions) {
+            const cp = currentProduct.client_permissions;
+            console.log('Using client_permissions:', cp);
+            return {
+                text: cp.text !== false,
+                stickers: cp.stickers !== false,
+                backgrounds: cp.background !== false,
+                barcode: cp.barcode !== false,
+                designs: cp.designs !== false,
+                aiCartoon: cp.ai_cartoon !== false,
+                aiRemoveBg: cp.ai_remove_bg !== false,
+                frames: cp.frames !== false
+            };
+        }
+        console.log('Using DEFAULT_PERMS (no client_permissions found on product)', currentProduct);
+        return DEFAULT_PERMS;
+    })();
+
     const [designId, setDesignId] = useState('');
     const [copied, setCopied] = useState(false);
     const [isCropping, setIsCropping] = useState(false);
@@ -400,6 +424,10 @@ export default function Home() {
                         .eq('id', targetProductId)
                         .single();
 
+                    if (dbProduct && !dbProduct.client_permissions) {
+                        console.warn("client_permissions missing on product, refetching or check schema");
+                    }
+
                     if (error) {
                         // Ignore AbortError (client-side cancellation)
                         if (error.message?.includes('AbortError') || error.details?.includes('AbortError') || error.message?.includes('signal is aborted')) {
@@ -538,6 +566,7 @@ export default function Home() {
         if (lowerName === 'background' && !perms.backgrounds) return;
         if (lowerName === 'barcode' && !perms.barcode) return;
         if (lowerName === 'designs' && !perms.designs) return;
+        if (lowerName === 'frames' && !perms.frames) return;
         if (lowerName === 'magic' && !(perms.aiCartoon || perms.aiRemoveBg)) return;
 
         if (lowerName === 'magic') {
@@ -1015,16 +1044,18 @@ export default function Home() {
                 )}
 
                 {/* Tool: Frames (New) */}
-                <button
-                    onClick={() => handleToolClick('Frames')}
-                    className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'frames' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
-                    title="相框"
-                >
-                    <Shapes className="w-6 h-6 mb-1" />
-                    <span className="text-xs font-medium">
-                        相框
-                    </span>
-                </button>
+                {perms.frames && (
+                    <button
+                        onClick={() => handleToolClick('Frames')}
+                        className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'frames' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
+                        title="相框"
+                    >
+                        <Shapes className="w-6 h-6 mb-1" />
+                        <span className="text-xs font-medium">
+                            相框
+                        </span>
+                    </button>
+                )}
 
                 {/* Tool: Barcode */}
                 {perms.barcode && (

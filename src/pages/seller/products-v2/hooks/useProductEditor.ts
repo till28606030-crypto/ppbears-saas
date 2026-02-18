@@ -32,6 +32,7 @@ const MUTABLE_KEYS: (keyof ProductRow)[] = [
   'specs',
   'mask_config',
   'permissions',
+  'client_permissions',
   'is_active',
 ];
 
