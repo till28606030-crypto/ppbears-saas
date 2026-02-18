@@ -311,9 +311,17 @@ export default function Home() {
                 if (error) throw error;
 
                 const { tree, map } = buildCategoryTree((data as any) || []);
-                setCategoryTree(tree);
+
+                // [Flatten Logic] If only one root category (e.g., "Category"), show its children directly
+                if (tree.length === 1 && tree[0].children && tree[0].children.length > 0) {
+                    setCategoryTree(tree[0].children);
+                    // Open all top-level items by default
+                    setExpandedCategoryIds(new Set(tree[0].children.map((c: any) => c.id)));
+                } else {
+                    setCategoryTree(tree);
+                    setExpandedCategoryIds(new Set(tree.map((c: any) => c.id)));
+                }
                 setCategoryMap(map);
-                setExpandedCategoryIds(new Set(tree.map((c: any) => c.id)));
             } catch (e: any) {
                 if (e?.name === 'AbortError' || e?.message?.includes('AbortError') || e?.message?.includes('signal is aborted')) {
                     return;
@@ -817,31 +825,61 @@ export default function Home() {
                 finalOptions.template_slug = templateSlug;
             }
 
-            // Create Order Object
-            const newOrder = {
-                id: `ORD-${Date.now()}`,
-                designId: designId,
-                productName: currentProduct?.name || '客製化商品',
-                timestamp: new Date().toISOString(),
-                previewImage: previewImage, // Visible to user/admin
-                printImage: printImage,     // Hidden production file
-                price: finalPrice,
-                options: finalOptions
-            };
+            console.log('[Cart] Starting checkout process...');
+            console.log('[Cart] Price:', finalPrice);
+            console.log('[Cart] Options:', finalOptions);
 
-            // Save to IndexedDB (Supports large files > 5MB)
-            await update('mock_orders', (orders) => {
-                const currentOrders = orders || [];
-                return [newOrder, ...currentOrders];
+            // Product ID: 123835 - 客製化手機殼 (line3)
+            const WOOCOMMERCE_PRODUCT_ID = 123835;
+
+            console.log('[Cart] Saving design to Supabase...');
+
+            // Save complete design to Supabase
+            const { data: designData, error: designError } = await supabase
+                .from('custom_designs')
+                .insert({
+                    design_id: designId,
+                    product_name: currentProduct?.name || '客製化手機殼',
+                    phone_model: currentProduct?.name || 'Unknown',
+                    price: finalPrice,
+                    options: finalOptions
+                })
+                .select()
+                .single();
+
+            if (designError) {
+                console.error('[Cart] Failed to save design:', designError);
+                throw new Error(`無法保存設計: ${designError.message}`);
+            }
+
+            console.log('[Cart] Design saved successfully:', designData);
+
+            // Build WooCommerce add-to-cart URL (只傳 design_id)
+            const checkoutUrl = new URL('https://ppbears.com/');
+            checkoutUrl.searchParams.set('add-to-cart', String(WOOCOMMERCE_PRODUCT_ID));
+            checkoutUrl.searchParams.set('quantity', '1');
+            checkoutUrl.searchParams.set('design_id', designId);
+
+            console.log('[Cart] Checkout URL:', checkoutUrl.toString());
+
+            // Save images to IndexedDB for reference
+            const { update } = await import('idb-keyval');
+            await update('pending_order_images', (images) => {
+                const currentImages = images || {};
+                currentImages[designId] = {
+                    previewImage,
+                    printImage,
+                    timestamp: new Date().toISOString()
+                };
+                return currentImages;
             });
 
-            console.log("Order placed successfully:", newOrder);
-            alert("訂單已送出！Order placed successfully!");
-            setShowCheckout(false);
+            // Redirect to WooCommerce
+            window.location.href = checkoutUrl.toString();
 
         } catch (error: any) {
-            console.error("Order processing error:", error);
-            alert("訂單處理失敗: " + (error.message || "Unknown error"));
+            console.error("[Cart] Order processing error:", error);
+            alert(`處理失敗: ${error.message}\n\n請查看瀏覽器 Console (F12) 了解詳細錯誤訊息。`);
         }
     };
 

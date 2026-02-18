@@ -615,6 +615,8 @@ export default function SaveDesignModal({
     // 加購明細（Step2/3）
     const addonLines: { label: string; delta: number }[] = [];
 
+    console.log('[Summary Debug] Processing selectedOptions:', selectedOptions);
+
     Object.entries(selectedOptions).forEach(([key, val]) => {
         // subAttributes：key 會長得像 `${groupKey}:${attrId}` or `${groupKey}:ca:${attrId}`
         if (key.includes(':')) {
@@ -624,24 +626,49 @@ export default function SaveDesignModal({
             const attrId = isCustomAttr ? parts[2] : parts[1];
 
             const group = findGroupByKey(gKey);
-            if (!group?.subAttributes?.length) return;
+            if (!group?.subAttributes?.length) {
+                console.log(`[Summary Debug] No group or subAttributes for key: ${key}`);
+                return;
+            }
 
             const attr = group.subAttributes.find(a => String(a.id) === String(attrId));
-            const opt = attr?.options?.find(o => String(o.id) === String(val));
-            if (!attr || !opt) return;
+            if (!attr) {
+                console.log(`[Summary Debug] No attr found for ${key}`);
+                return;
+            }
+
+            // Handle text vs select types
+            let displayLabel: string;
+            let delta = 0;
+
+            if (attr.type === 'text') {
+                // Text input: use value directly
+                displayLabel = `${attr.name}: ${val}`;
+            } else {
+                // Select: find option
+                const opt = attr.options?.find(o => String(o.id) === String(val));
+                if (!opt) {
+                    console.log(`[Summary Debug] No opt found for ${key}:`, { attr: attr.name, val });
+                    return;
+                }
+                displayLabel = `${attr.name}: ${opt.name}`;
+                delta = Number(opt.priceModifier) || 0;
+            }
 
             // subAttributes 視為規格的一部分
             const step = getStep(group);
+            console.log(`[Summary Debug] SubAttribute ${key}: ${displayLabel} (Step ${step})`);
+
             if (step === 1) {
                 specLines.push({
-                    label: `${attr.name}: ${opt.name}`,
-                    delta: Number(opt.priceModifier) || 0
+                    label: displayLabel,
+                    delta
                 });
             } else {
                 // Step 2+ Custom Attributes
                 addonLines.push({
-                    label: `${group.name}: ${attr.name}: ${opt.name}`,
-                    delta: Number(opt.priceModifier) || 0
+                    label: `${group.name}: ${displayLabel}`,
+                    delta
                 });
             }
             return;
@@ -668,6 +695,9 @@ export default function SaveDesignModal({
             delta
         });
     });
+
+    console.log('[Summary Debug] Final specLines:', specLines);
+    console.log('[Summary Debug] Final addonLines:', addonLines);
 
     const protectionId = selectedOptions['protection'];
     const protectionItem = getItem(protectionId || '');
@@ -1582,7 +1612,44 @@ export default function SaveDesignModal({
                                                         onClick={() => {
                                                             const storageKey = `ppbears_checkout_progress_${productId || 'default'}`;
                                                             localStorage.removeItem(storageKey);
-                                                            onAddToCart(currentTotal, { ...selectedOptions });
+
+                                                            // Generate label mapping for WordPress
+                                                            const optionsWithLabels: Record<string, any> = {};
+
+                                                            Object.entries(selectedOptions).forEach(([key, val]) => {
+                                                                // Store original selection
+                                                                optionsWithLabels[key] = val;
+
+                                                                // Add label mapping
+                                                                if (key.includes(':')) {
+                                                                    // subAttribute (e.g., "code_123:attr_456" or "code_123:ca:attr_789")
+                                                                    const parts = key.split(':');
+                                                                    const isCustomAttr = parts[1] === 'ca';
+                                                                    const gKey = parts[0];
+                                                                    const attrId = isCustomAttr ? parts[2] : parts[1];
+
+                                                                    const group = validGroups.find(g => getGroupKey(g) === gKey);
+                                                                    const attr = group?.subAttributes?.find(a => String(a.id) === String(attrId));
+                                                                    const opt = attr?.options?.find(o => String(o.id) === String(val));
+
+                                                                    if (attr && opt) {
+                                                                        const labelKey = `${key}__label`;
+                                                                        optionsWithLabels[labelKey] = `${attr.name}: ${opt.name}`;
+                                                                    }
+                                                                } else {
+                                                                    // main group selection
+                                                                    const group = validGroups.find(g => getGroupKey(g) === key);
+                                                                    const item = items.find(i => i.id === val);
+
+                                                                    if (group && item) {
+                                                                        const labelKey = `${key}__label`;
+                                                                        optionsWithLabels[labelKey] = `${group.name}: ${item.name}`;
+                                                                    }
+                                                                }
+                                                            });
+
+                                                            console.log('[SaveDesignModal] Options with labels:', optionsWithLabels);
+                                                            onAddToCart(currentTotal, optionsWithLabels);
                                                         }}
                                                         className="flex-1 md:flex-none md:w-auto px-8 py-3 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg"
                                                         title="加入購物車"

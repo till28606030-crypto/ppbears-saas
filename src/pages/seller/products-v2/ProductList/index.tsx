@@ -3,28 +3,103 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { ProductRow } from '../shared/types';
 import { useProductEditor } from '../hooks/useProductEditor';
-import { Loader2, Plus, AlertCircle, CheckCircle2, XCircle, Copy, Trash2, Share2, ExternalLink } from 'lucide-react';
+import { Loader2, Plus, AlertCircle, CheckCircle2, XCircle, Copy, Trash2, Share2, ExternalLink, Search, Filter } from 'lucide-react';
 import { buildDesignShareUrl, copyToClipboard } from '../shared/shareLink';
+import { Category } from '@/types';
+import { buildCategoryTree } from '@/utils/categoryTree';
+import CategorySelect from '@/components/CategorySelect';
 
 const ProductListV2: React.FC = () => {
   const [products, setProducts] = useState<Partial<ProductRow>[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Search & Filter State
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
   const navigate = useNavigate();
   const { deleteProduct, duplicateProduct } = useProductEditor();
 
+  // Load Categories on mount
+  useEffect(() => {
+    const fetchCategories = async () => {
+      const { data } = await supabase.from('product_categories').select('*').order('sort_order');
+      if (data) {
+        const { tree } = buildCategoryTree(data as any);
+        // [Flatten Logic] If single root, hoist children
+        if (tree.length === 1 && tree[0].children && tree[0].children.length > 0) {
+          setCategories(tree[0].children);
+        } else {
+          setCategories(tree);
+        }
+      }
+    };
+    fetchCategories();
+  }, []);
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Fetch products when filters change
   useEffect(() => {
     fetchProducts();
-  }, []);
+  }, [selectedCategory, debouncedSearch, categories]); // Added categories dependency
 
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const { data, error: fetchError } = await supabase
+      let query = supabase
         .from('products')
-        .select('id, name, updated_at, base_image, specs')
-        .order('updated_at', { ascending: false })
-        .limit(50);
+        .select('id, name, updated_at, created_at, base_image, specs, category_id')
+        .order('created_at', { ascending: false });
+
+      // Apply Filters
+      if (selectedCategory !== 'all') {
+        // [Recursive Filter] Get all descendant category IDs
+        const getAllCategoryIds = (catId: string, cats: Category[]): string[] => {
+          let ids = [catId];
+          const findCategory = (nodes: Category[]): Category | undefined => {
+            for (const node of nodes) {
+              if (node.id === catId) return node;
+              if (node.children) {
+                const found = findCategory(node.children);
+                if (found) return found;
+              }
+            }
+            return undefined;
+          };
+
+          const targetCat = findCategory(cats);
+
+          if (targetCat && targetCat.children) {
+            const collectIds = (nodes: Category[]) => {
+              nodes.forEach(node => {
+                ids.push(node.id);
+                if (node.children) collectIds(node.children);
+              });
+            };
+            collectIds(targetCat.children);
+          }
+          return ids;
+        };
+
+        const idsToFilter = getAllCategoryIds(selectedCategory, categories);
+        query = query.in('category_id', idsToFilter);
+      }
+
+      if (debouncedSearch) {
+        query = query.ilike('name', `%${debouncedSearch}%`);
+      }
+
+      const { data, error: fetchError } = await query.limit(50);
 
       if (fetchError) throw fetchError;
       setProducts(data || []);
@@ -57,14 +132,7 @@ const ProductListV2: React.FC = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-2" />
-        <p className="text-gray-500">載入產品列表中...</p>
-      </div>
-    );
-  }
+
 
   return (
     <div className="p-6">
@@ -79,6 +147,31 @@ const ProductListV2: React.FC = () => {
         </button>
       </div>
 
+      <div className="mb-6 flex flex-col md:flex-row gap-4">
+        {/* Category Filter */}
+        <div className="min-w-[240px]">
+          <CategorySelect
+            categories={categories}
+            selectedId={selectedCategory}
+            onChange={setSelectedCategory}
+          />
+        </div>
+
+        {/* Text Search */}
+        <div className="relative flex-1">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+            <Search className="w-4 h-4" />
+          </div>
+          <input
+            type="text"
+            placeholder="搜尋產品名稱..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          />
+        </div>
+      </div>
+
       {error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3 text-red-700">
           <AlertCircle className="w-5 h-5" />
@@ -86,141 +179,148 @@ const ProductListV2: React.FC = () => {
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-gray-50 border-bottom border-gray-200">
-              <th className="px-6 py-4 font-semibold text-gray-600">ID / 名稱</th>
-              <th className="px-6 py-4 font-semibold text-gray-600 text-center">Base Image</th>
-              <th className="px-6 py-4 font-semibold text-gray-600 text-center">關聯規格</th>
-              <th className="px-6 py-4 font-semibold text-gray-600 text-center">分享連結</th>
-              <th className="px-6 py-4 font-semibold text-gray-600">最後更新</th>
-              <th className="px-6 py-4 font-semibold text-gray-600 text-right">操作</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {products.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
-                  尚無產品資料
-                </td>
+      {loading ? (
+        <div className="flex flex-col items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-2" />
+          <p className="text-gray-500">載入產品列表中...</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50 border-bottom border-gray-200">
+                <th className="px-6 py-4 font-semibold text-gray-600">ID / 名稱</th>
+                <th className="px-6 py-4 font-semibold text-gray-600 text-center">Base Image</th>
+                <th className="px-6 py-4 font-semibold text-gray-600 text-center">關聯規格</th>
+                <th className="px-6 py-4 font-semibold text-gray-600 text-center">分享連結</th>
+                <th className="px-6 py-4 font-semibold text-gray-600">建立時間</th>
+                <th className="px-6 py-4 font-semibold text-gray-600 text-right">操作</th>
               </tr>
-            ) : (
-              products.map((product) => (
-                <tr key={product.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-gray-900">{product.name}</div>
-                    <div className="text-xs text-gray-400 mt-1 font-mono">{product.id}</div>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    {product.base_image ? (
-                      <div className="flex items-center justify-center gap-1 text-green-600 text-sm">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>已設定</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center gap-1 text-red-500 text-sm">
-                        <XCircle className="w-4 h-4" />
-                        <span>未設定</span>
-                      </div>
-                    )}
-                  </td>
-                  {/* 關聯規格 */}
-                  <td className="px-6 py-4 text-center">
-                    {(() => {
-                      const linkedCount = (product as any).specs?.linked_option_groups?.length || 0;
-                      return linkedCount > 0 ? (
-                        <div className="flex items-center justify-center gap-1 text-blue-600 text-sm">
-                          <span className="font-medium">{linkedCount}</span>
-                          <span>個規格</span>
-                        </div>
-                      ) : (
-                        <span className="text-gray-400 text-xs">未設定</span>
-                      );
-                    })()}
-                  </td>
-                  {/* 分享連結 */}
-                  <td className="px-6 py-4 text-center">
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="flex items-center justify-center gap-2">
-                        {(() => {
-                          const result = buildDesignShareUrl(product.id);
-                          if (result.url) {
-                            return (
-                              <>
-                                <button
-                                  onClick={async () => {
-                                    const ok = await copyToClipboard(result.url!);
-                                    if (ok) alert('分享連結已複製！');
-                                  }}
-                                  className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-all"
-                                  title="複製分享連結"
-                                >
-                                  <Share2 className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => window.open(result.url!, '_blank')}
-                                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all"
-                                  title="在新分頁開啟"
-                                >
-                                  <ExternalLink className="w-4 h-4" />
-                                </button>
-                              </>
-                            );
-                          }
-                          return (
-                            <span className="text-[10px] text-gray-400 italic" title={result.reason}>
-                              無法分享
-                            </span>
-                          );
-                        })()}
-                      </div>
-
-                      {/* DEV-only Diagnostics */}
-                      {import.meta.env.DEV && (
-                        <div className="text-[8px] text-gray-400 font-mono mt-1 border-t border-gray-50 pt-1">
-                          {import.meta.env.VITE_CANONICAL_ORIGIN ? (
-                            <span className="text-green-500">ENV: {import.meta.env.VITE_CANONICAL_ORIGIN}</span>
-                          ) : (
-                            <span className="text-red-400">ENV missing (restart dev server)</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {product.updated_at ? new Date(product.updated_at).toLocaleString() : '-'}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      <button
-                        onClick={() => handleDuplicate(product.id!)}
-                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all"
-                        title="複製產品"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(product.id!)}
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all"
-                        title="刪除產品"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => navigate(`/seller/products-v2/${product.id}`)}
-                        className="text-blue-600 hover:text-blue-800 font-medium text-sm ml-2"
-                      >
-                        編輯
-                      </button>
-                    </div>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {products.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
+                    尚無產品資料
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ) : (
+                products.map((product) => (
+                  <tr key={product.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="font-medium text-gray-900">{product.name}</div>
+                      <div className="text-xs text-gray-400 mt-1 font-mono">{product.id}</div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {product.base_image ? (
+                        <div className="flex items-center justify-center gap-1 text-green-600 text-sm">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>已設定</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center gap-1 text-red-500 text-sm">
+                          <XCircle className="w-4 h-4" />
+                          <span>未設定</span>
+                        </div>
+                      )}
+                    </td>
+                    {/* 關聯規格 */}
+                    <td className="px-6 py-4 text-center">
+                      {(() => {
+                        const linkedCount = (product as any).specs?.linked_option_groups?.length || 0;
+                        return linkedCount > 0 ? (
+                          <div className="flex items-center justify-center gap-1 text-blue-600 text-sm">
+                            <span className="font-medium">{linkedCount}</span>
+                            <span>個規格</span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-xs">未設定</span>
+                        );
+                      })()}
+                    </td>
+                    {/* 分享連結 */}
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="flex items-center justify-center gap-2">
+                          {(() => {
+                            const result = buildDesignShareUrl(product.id);
+                            if (result.url) {
+                              return (
+                                <>
+                                  <button
+                                    onClick={async () => {
+                                      const ok = await copyToClipboard(result.url!);
+                                      if (ok) alert('分享連結已複製！');
+                                    }}
+                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-all"
+                                    title="複製分享連結"
+                                  >
+                                    <Share2 className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => window.open(result.url!, '_blank')}
+                                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all"
+                                    title="在新分頁開啟"
+                                  >
+                                    <ExternalLink className="w-4 h-4" />
+                                  </button>
+                                </>
+                              );
+                            }
+                            return (
+                              <span className="text-[10px] text-gray-400 italic" title={result.reason}>
+                                無法分享
+                              </span>
+                            );
+                          })()}
+                        </div>
+
+                        {/* DEV-only Diagnostics */}
+                        {import.meta.env.DEV && (
+                          <div className="text-[8px] text-gray-400 font-mono mt-1 border-t border-gray-50 pt-1">
+                            {import.meta.env.VITE_CANONICAL_ORIGIN ? (
+                              <span className="text-green-500">ENV: {import.meta.env.VITE_CANONICAL_ORIGIN}</span>
+                            ) : (
+                              <span className="text-red-400">ENV missing (restart dev server)</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">
+                      {(product as any).created_at ? new Date((product as any).created_at).toLocaleString() : '-'}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-3">
+                        <button
+                          onClick={() => handleDuplicate(product.id!)}
+                          className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all"
+                          title="複製產品"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(product.id!)}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-all"
+                          title="刪除產品"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => navigate(`/seller/products-v2/${product.id}`)}
+                          className="text-blue-600 hover:text-blue-800 font-medium text-sm ml-2"
+                        >
+                          編輯
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };

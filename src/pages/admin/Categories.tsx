@@ -227,7 +227,20 @@ const AdminCategories: React.FC = () => {
     fetchCategories();
   }, []);
 
-  const { tree, map } = useMemo(() => buildCategoryTree(flat), [flat]);
+  const { tree, map, flattenedParentId } = useMemo(() => {
+    const { tree: rawTree, map: rawMap } = buildCategoryTree(flat);
+
+    // [Flatten Logic] If only one root category (e.g., "Category"), show its children directly
+    // This allows the admin to skip the top-level folder
+    if (rawTree.length === 1 && rawTree[0].children && rawTree[0].children.length > 0) {
+      return {
+        tree: rawTree[0].children,
+        map: rawMap,
+        flattenedParentId: rawTree[0].id
+      };
+    }
+    return { tree: rawTree, map: rawMap, flattenedParentId: null };
+  }, [flat]);
 
   useEffect(() => {
     const next = new Set<string>();
@@ -274,6 +287,7 @@ const AdminCategories: React.FC = () => {
     setEditingId(null);
     if (parentId) setExpandedIds((prev) => new Set(prev).add(parentId));
   };
+
 
   const cancelAdd = () => {
     setIsAdding(false);
@@ -363,7 +377,7 @@ const AdminCategories: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-800">產品類別管理</h1>
         </div>
         <button
-          onClick={() => startAdd(null)}
+          onClick={() => startAdd(flattenedParentId)}
           className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
         >
           <Plus className="w-4 h-4" />
@@ -386,7 +400,7 @@ const AdminCategories: React.FC = () => {
             <div className="text-gray-500">載入中...</div>
           ) : (
             <div>
-              {isAdding && addingParentId === null && (
+              {isAdding && addingParentId === flattenedParentId && (
                 <div className="flex items-center gap-2 mb-4 p-3 bg-blue-50 rounded border border-blue-100">
                   <input
                     autoFocus
@@ -406,7 +420,7 @@ const AdminCategories: React.FC = () => {
               )}
 
               <SortableCategoryList
-                parentId={null}
+                parentId={flattenedParentId}
                 nodes={tree}
                 depth={0}
                 expandedIds={expandedIds}
