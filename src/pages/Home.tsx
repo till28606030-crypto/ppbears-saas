@@ -1270,7 +1270,7 @@ export default function Home() {
                                                                     } ${isTemplateLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                             >
                                                                 <div className="w-12 h-16 bg-gray-100 rounded-md overflow-hidden flex-shrink-0 flex items-center justify-center">
-                                                                    <img src={product.thumbnail} alt={product.name} className="max-w-full max-h-full object-contain mix-blend-multiply" />
+                                                                    <img src={product.thumbnail || product.base_image || ''} alt={product.name} className="max-w-full max-h-full object-contain mix-blend-multiply" />
                                                                 </div>
                                                                 <div className="flex-1 min-w-0">
                                                                     <h4 className="font-semibold text-gray-800 text-sm truncate">{product.name}</h4>
@@ -1539,7 +1539,7 @@ export default function Home() {
                                 </div>
 
                                 {/* Grid Content */}
-                                <div className={`p-2 pb-20 overflow-y-auto flex-1 ${activePanel === 'designs' ? 'grid grid-cols-2 gap-x-3 gap-y-4' : 'grid grid-cols-4 gap-x-1 gap-y-1 content-start'}`}>
+                                <div className={`p-2 pb-20 overflow-y-auto flex-1 ${activePanel === 'designs' ? 'grid grid-cols-3 md:grid-cols-2 gap-x-2 gap-y-3' : 'grid grid-cols-4 gap-x-1 gap-y-1 content-start'}`}>
                                     {activePanel === 'designs' && (
                                         <>
                                             {/* Debug UI for Dev */}
@@ -1763,7 +1763,8 @@ export default function Home() {
                             onOpenStickers: perms.stickers ? () => handleToolClick('Stickers') : undefined,
                             onOpenBackgrounds: perms.backgrounds ? () => handleToolClick('Background') : undefined,
                             onOpenBarcode: perms.barcode ? () => handleToolClick('Barcode') : undefined,
-                            onOpenFrames: perms.designs ? () => handleToolClick('Frames') : undefined,
+                            onOpenFrames: perms.frames ? () => handleToolClick('Frames') : undefined,
+                            onOpenDesigns: perms.designs ? () => handleToolClick('Designs') : undefined,
                             // Split AI Actions for Mobile
                             onAiCartoon: perms.aiCartoon ? () => { handleAiAction('toon_ink'); setActivePanel('none'); } : undefined,
                             onAiRemoveBg: perms.aiRemoveBg ? () => { handleAiAction('remove_bg'); setActivePanel('none'); } : undefined,

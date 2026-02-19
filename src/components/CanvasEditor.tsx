@@ -390,7 +390,7 @@ import {
     AlignCenter, Scissors, ArrowUp, ArrowDown, Bold, Italic, GripVertical, Eye,
     EyeOff, Lock, Unlock, Image as ImageIcon, Sticker, ScanBarcode, Check, X,
     Layers, Upload, Pencil, Sparkles, RefreshCw, Crop, ArrowLeft, Square, Circle as CircleIcon, Heart, Shapes,
-    AlignLeft, AlignRight, ChevronDown, PaintBucket, Baseline, Smartphone, Ban, Frame, LayoutTemplate, SlidersHorizontal, Wand2
+    AlignLeft, AlignRight, ChevronDown, PaintBucket, Baseline, Smartphone, Ban, Frame, LayoutTemplate, SlidersHorizontal, Wand2, Eraser
 } from 'lucide-react';
 import FontPicker from './FontPicker';
 import JsBarcode from 'jsbarcode';
@@ -807,6 +807,7 @@ interface CanvasEditorProps {
         onOpenBackgrounds: () => void;
         onOpenBarcode: () => void;
         onOpenFrames: () => void;
+        onOpenDesigns?: () => void;
         onOpenAI?: () => void; // Deprecated in favor of separate actions
         onAiCartoon?: () => void;
         onAiRemoveBg?: () => void;
@@ -5572,7 +5573,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 ref={containerRef}
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
-                className="flex-1 flex items-center justify-center bg-[radial-gradient(circle_at_center,_#ffffff_0%,_#d1d5db_100%)] p-4 pb-20 md:pb-4 overflow-hidden relative order-first md:order-none"
+                className="flex-1 flex items-center justify-center bg-[radial-gradient(circle_at_center,_#ffffff_0%,_#d1d5db_100%)] px-4 pb-20 pt-24 md:p-4 overflow-hidden relative order-first md:order-none"
             >
                 <div
                     className={`shadow-2xl rounded-lg overflow-hidden bg-white max-w-full max-h-full transition-opacity duration-300 ${hasTemplateLoaded ? 'opacity-100' : 'opacity-0'
@@ -5582,50 +5583,123 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     <canvas ref={canvasEl} />
                 </div>
 
-                {/* Top Controls: Undo/Redo/Clear (Centered at Top) */}
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-8 z-30 pointer-events-none scale-90 -translate-y-2">
-                    {/* Pointer events auto for buttons to allow clicking, but container lets clicks pass through if needed (though top area is usually empty) */}
-                    <div className="pointer-events-auto flex items-center gap-6 bg-white/80 backdrop-blur-md px-6 py-2 rounded-full shadow-sm border border-gray-100">
+                {/* Unified Top Controls & Floating Actions Container */}
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-col items-center gap-2 w-max max-w-full px-2">
+
+                    {/* 1. Static Top Controls (Layers, Undo, Redo, Clear) */}
+                    <div className="pointer-events-auto flex items-center gap-2 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-lg border border-gray-100/50">
                         <button
                             onClick={() => setIsMobileLayersOpen(true)}
-                            className="group relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-all"
+                            className="group relative flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-gray-900 active:scale-95 transition-all min-w-[2.5rem]"
                             title="圖層"
                         >
-                            <Layers className="w-6 h-6" />
-                            {layers.length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>}
+                            <Layers className="w-4 h-4" />
+                            <span className="text-[9px] font-bold tracking-wider text-gray-500 group-hover:text-gray-900">圖層</span>
+                            {layers.length > 0 && <span className="absolute top-0 right-0 w-1.5 h-1.5 bg-red-500 rounded-full ring-1 ring-white"></span>}
                         </button>
 
-                        <div className="w-px h-6 bg-gray-300"></div>
+                        <div className="w-px h-6 bg-gray-200"></div>
 
                         <button
                             onClick={undo}
                             disabled={historyStep <= 0}
-                            className="group relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            className="group relative flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 transition-all min-w-[2.5rem]"
                             title="復原"
                         >
-                            <Undo2 className="w-6 h-6" />
+                            <Undo2 className="w-4 h-4" />
+                            <span className="text-[9px] font-bold tracking-wider text-gray-500 group-hover:text-gray-900">復原</span>
                         </button>
 
                         <button
                             onClick={redo}
                             disabled={historyStep >= history.length - 1}
-                            className="group relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            className="group relative flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 transition-all min-w-[2.5rem]"
                             title="重做"
                         >
-                            <Redo2 className="w-6 h-6" />
+                            <Redo2 className="w-4 h-4" />
+                            <span className="text-[9px] font-bold tracking-wider text-gray-500 group-hover:text-gray-900">重做</span>
                         </button>
 
-                        <div className="w-px h-6 bg-gray-300"></div>
+                        <div className="w-px h-6 bg-gray-200"></div>
 
                         <button
                             onClick={clearCanvas}
-                            className="group relative flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-red-600 transition-colors"
+                            className="group relative flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-red-600 active:scale-95 transition-all min-w-[2.5rem]"
                             title="清空全部"
                         >
-                            <RefreshCw className="w-5 h-5" />
-                            <span className="text-[10px] font-bold tracking-wider">清空</span>
+                            <Eraser className="w-4 h-4" />
+                            <span className="text-[9px] font-bold tracking-wider text-gray-500 group-hover:text-red-600">清空</span>
                         </button>
                     </div>
+
+                    {/* 2. Dynamic Floating Quick Actions (The "Pill") - Automatically stacked below */}
+                    {selectedObject && !showMobileTextInput && (
+                        <div className="pointer-events-auto bg-white/90 backdrop-blur-md rounded-xl shadow-lg border border-gray-100/50 flex flex-row items-center p-1.5 gap-1 animate-in slide-in-from-top-2 fade-in duration-200">
+                            <button onClick={deleteSelected} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-red-500 hover:bg-red-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                <Trash2 className="w-4 h-4" />
+                                <span className="text-[9px] font-bold">刪除</span>
+                            </button>
+                            <div className="w-px h-6 bg-gray-200"></div>
+                            <button onClick={duplicateObject} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                <Copy className="w-4 h-4" />
+                                <span className="text-[9px] font-bold">複製</span>
+                            </button>
+
+                            {(selectedObject as any).isFrameLayer && (
+                                <>
+                                    <div className="w-px h-6 bg-gray-200"></div>
+                                    {/* Frame-specific actions could go here */}
+                                </>
+                            )}
+
+                            {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
+                                <>
+                                    <div className="w-px h-6 bg-gray-200"></div>
+                                    <button onClick={() => { setActiveMobileSubMenu('edit'); setShowMobileTextInput(false); setShowMobilePropertyBar(true); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-blue-600 hover:bg-blue-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                        <Pencil className="w-4 h-4" />
+                                        <span className="text-[9px] font-bold">編輯</span>
+                                    </button>
+                                </>
+                            )}
+
+                            {selectedObject.type === 'image' && (
+                                <>
+                                    <div className="w-px h-6 bg-gray-200"></div>
+
+                                    <button onClick={toggleFillCanvas} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                        {(selectedObject as any).isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                                        <span className="text-[9px] font-bold">{(selectedObject as any).isMaximized ? "還原" : "滿版"}</span>
+                                    </button>
+
+                                    <button onClick={flipObject} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                        <FlipHorizontal className="w-4 h-4" />
+                                        <span className="text-[9px] font-bold">鏡像</span>
+                                    </button>
+
+                                    <button onClick={() => {
+                                        const obj = selectedObject;
+                                        // Rotate 90
+                                        obj.rotate((obj.angle || 0) + 90);
+                                        fabricCanvas.current?.requestRenderAll();
+                                        saveHistory();
+                                    }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                        <RefreshCw className="w-4 h-4" />
+                                        <span className="text-[9px] font-bold">旋轉</span>
+                                    </button>
+
+                                    <div className="w-px h-6 bg-gray-200"></div>
+
+                                    {/* Only show Lock/Unlock if object has a clipPath (Crop/Frame) */}
+                                    {selectedObject.clipPath && (
+                                        <button onClick={toggleCropMode} className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg hover:bg-gray-50 min-w-[2.5rem] transition-colors ${isCropping ? 'text-blue-600 bg-blue-50' : 'text-gray-600'}`}>
+                                            {isCropping ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                                            <span className="text-[9px] font-bold">{isCropping ? "解鎖" : "鎖定"}</span>
+                                        </button>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Floating Property Toolbar (Desktop Only) - Fixed at Bottom Center */}
@@ -5770,66 +5844,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
 
 
-            {/* 2. Floating Quick Actions (The "Pill") - Visible when object selected */}
-            {selectedObject && !showMobileTextInput && (
-                <div className="md:hidden absolute top-20 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
-                    <div className="pointer-events-auto bg-white rounded-full shadow-lg border border-gray-200 flex flex-row items-center p-1 gap-1">
-                        <button onClick={deleteSelected} className="p-2 text-red-500 hover:bg-red-50 rounded-full">
-                            <Trash2 className="w-5 h-5" />
-                        </button>
-                        <div className="w-px h-4 bg-gray-200"></div>
-                        <button onClick={duplicateObject} className="p-2 text-gray-600 hover:bg-gray-50 rounded-full">
-                            <Copy className="w-5 h-5" />
-                        </button>
-                        {(selectedObject as any).isFrameLayer && (
-                            <>
-                                <div className="w-px h-4 bg-gray-200"></div>
-                                {/* Upload logic here if needed for mobile quick action */}
-                            </>
-                        )}
-                        {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
-                            <>
-                                <div className="w-px h-4 bg-gray-200"></div>
-                                <button onClick={() => { setActiveMobileSubMenu('edit'); setShowMobileTextInput(false); setShowMobilePropertyBar(true); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-full">
-                                    <Pencil className="w-5 h-5" />
-                                </button>
-                            </>
-                        )}
-                        {selectedObject.type === 'image' && (
-                            <>
-                                <div className="w-px h-4 bg-gray-200"></div>
 
-                                <button onClick={toggleFillCanvas} className="p-2 text-gray-600 hover:bg-gray-50 rounded-full">
-                                    {(selectedObject as any).isMaximized ? <Minimize2 className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
-                                </button>
-
-                                <button onClick={flipObject} className="p-2 text-gray-600 hover:bg-gray-50 rounded-full">
-                                    <FlipHorizontal className="w-5 h-5" />
-                                </button>
-
-                                <button onClick={() => {
-                                    const obj = selectedObject;
-                                    // Rotate 90
-                                    obj.rotate((obj.angle || 0) + 90);
-                                    fabricCanvas.current?.requestRenderAll();
-                                    saveHistory();
-                                }} className="p-2 text-gray-600 hover:bg-gray-50 rounded-full">
-                                    <RefreshCw className="w-5 h-5" />
-                                </button>
-
-                                <div className="w-px h-4 bg-gray-200"></div>
-
-                                {/* Only show Lock/Unlock if object has a clipPath (Crop/Frame) */}
-                                {selectedObject.clipPath && (
-                                    <button onClick={toggleCropMode} className={`p-2 rounded-full hover:bg-gray-50 ${isCropping ? 'text-blue-600 bg-blue-50' : 'text-gray-600'}`}>
-                                        {isCropping ? <Unlock className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
-                                    </button>
-                                )}
-                            </>
-                        )}
-                    </div>
-                </div>
-            )}
 
             {/* 3. Context Property Bar (Bottom) - Visible when object selected */}
             <div className={`
@@ -6175,11 +6190,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 <span className="text-[10px] font-medium">圖片</span>
                             </button>
 
-                            <button onClick={() => setShowFrameSelectionModal(true)} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-gray-500 active:text-blue-600">
-                                <LayoutTemplate className="w-6 h-6" />
-                                <span className="text-[10px] font-medium">相框</span>
-                            </button>
-
                             <button onClick={centerObject} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-gray-500 active:text-blue-600">
                                 <AlignCenter className="w-6 h-6" />
                                 <span className="text-[10px] font-medium">置中</span>
@@ -6274,8 +6284,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 </button>
                             )}
 
-                            {/* Frames Button REMOVED from main toolbar as per user request */}
-
                             {mobileActions?.onOpenStickers && (
                                 <button
                                     onMouseDown={(e) => e.preventDefault()}
@@ -6298,6 +6306,17 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 </button>
                             )}
 
+                            {mobileActions?.onOpenFrames && (
+                                <button
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={mobileActions?.onOpenFrames}
+                                    className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
+                                >
+                                    <Shapes className="w-6 h-6" />
+                                    <span className="text-[10px] font-medium">相框</span>
+                                </button>
+                            )}
+
                             {mobileActions?.onOpenBarcode && (
                                 <button
                                     onMouseDown={(e) => e.preventDefault()}
@@ -6306,6 +6325,17 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 >
                                     <ScanBarcode className="w-6 h-6" />
                                     <span className="text-[10px] font-medium">條碼</span>
+                                </button>
+                            )}
+
+                            {mobileActions?.onOpenDesigns && (
+                                <button
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={mobileActions?.onOpenDesigns}
+                                    className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
+                                >
+                                    <LayoutTemplate className="w-6 h-6" />
+                                    <span className="text-[10px] font-medium">設計</span>
                                 </button>
                             )}
 
@@ -6375,8 +6405,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 </div>
             </div>
 
-            {/* Custom Frame Selection Modal */}
-            {showFrameSelectionModal && (
+            {/* Custom Frame Selection Modal - REMOVED: Use PC frames panel via onOpenFrames instead */}
+            {false && (
                 <div className="absolute inset-0 z-[150] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh] animate-in fade-in zoom-in duration-200">
                         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
