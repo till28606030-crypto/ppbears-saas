@@ -14,7 +14,8 @@ import {
     Path,
     Polygon,
     ActiveSelection,
-    Point
+    Point,
+    filters as fabricFilters
 } from 'fabric';
 
 // --- Race Condition Guards ---
@@ -390,7 +391,7 @@ import {
     AlignCenter, Scissors, ArrowUp, ArrowDown, Bold, Italic, GripVertical, Eye,
     EyeOff, Lock, Unlock, Image as ImageIcon, Sticker, ScanBarcode, Check, X,
     Layers, Upload, Pencil, Sparkles, RefreshCw, Crop, ArrowLeft, Square, Circle as CircleIcon, Heart, Shapes,
-    AlignLeft, AlignRight, ChevronDown, PaintBucket, Baseline, Smartphone, Ban, Frame, LayoutTemplate, SlidersHorizontal, Wand2, Eraser
+    AlignLeft, AlignRight, ChevronDown, PaintBucket, Baseline, Smartphone, Ban, Frame, LayoutTemplate, SlidersHorizontal, Wand2, Eraser, Sun
 } from 'lucide-react';
 import FontPicker from './FontPicker';
 import JsBarcode from 'jsbarcode';
@@ -813,6 +814,7 @@ interface CanvasEditorProps {
         onAiRemoveBg?: () => void;
         onOpenProduct: () => void;
     };
+    onImageLayerChange?: (hasImage: boolean) => void;
     previewConfig?: {
         width: number;
         height: number;
@@ -860,7 +862,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         currentProduct,
         onCropModeChange,
         onSelectionChange,
-        permissions
+        permissions,
+        onImageLayerChange
     } = props;
 
     const [searchParams] = useSearchParams();
@@ -902,6 +905,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const fabricCanvas = useRef<Canvas | null>(null);
     const maskLayerRef = useRef<FabricObject | null>(null);
     const baseLayerRef = useRef<FabricObject | null>(null);
+    const onImageLayerChangeRef = useRef<((hasImage: boolean) => void) | undefined>(onImageLayerChange);
+    useEffect(() => { onImageLayerChangeRef.current = onImageLayerChange; }, [onImageLayerChange]);
 
     // Selected Object State
     const [selectedObject, setSelectedObject] = useState<FabricObject | null>(null);
@@ -911,6 +916,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const [showCropMenu, setShowCropMenu] = useState(false); // Mobile crop sub-menu state
     const [showMobileTextInput, setShowMobileTextInput] = useState(false); // Mobile text input modal
     const [showMobilePropertyBar, setShowMobilePropertyBar] = useState(true); // Mobile property bar visibility
+    const [showBrightnessSlider, setShowBrightnessSlider] = useState(false); // Show brightness slider popover
+    const [brightness, setBrightness] = useState(0); // Brightness value: -1 (dark) to 1 (bright)
 
     useEffect(() => {
         onTemplateLoadingChange?.(isTemplateLoading);
@@ -932,6 +939,18 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             onSelectionChange(selectedObject);
         }
     }, [selectedObject, onSelectionChange]);
+
+    // Sync brightness state when selected image changes
+    useEffect(() => {
+        setShowBrightnessSlider(false); // Close the slider popover
+        if (selectedObject && selectedObject.type === 'image') {
+            const img = selectedObject as FabricImage;
+            const existingFilter: any = (img.filters || []).find((f: any) => f.type === 'Brightness');
+            setBrightness(existingFilter?.brightness ?? 0);
+        } else {
+            setBrightness(0);
+        }
+    }, [selectedObject]);
 
     // History & Toolbar State
     const [history, setHistory] = useState<string[]>([]);
@@ -1861,6 +1880,12 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             });
         });
         setLayers(newLayers.reverse());
+
+        // Notify parent if canvas has any user image layers
+        if (onImageLayerChangeRef.current) {
+            const hasUserImage = newLayers.some(l => l.type === 'image');
+            onImageLayerChangeRef.current(hasUserImage);
+        }
     };
 
     const handleDragEnd = (event: DragEndEvent) => {
@@ -5530,6 +5555,24 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
     toggleCropModeRef.current = toggleCropMode;
 
+    // Apply brightness filter to selected image
+    const applyBrightness = (value: number) => {
+        const canvas = fabricCanvas.current;
+        const obj = selectedObject;
+        if (!canvas || !obj || obj.type !== 'image') return;
+        const img = obj as FabricImage;
+        // Find existing brightness filter or create new one
+        const existingFilterIdx = (img.filters || []).findIndex((f: any) => f.type === 'Brightness');
+        const brightnessFilter = new fabricFilters.Brightness({ brightness: value });
+        if (existingFilterIdx >= 0) {
+            img.filters[existingFilterIdx] = brightnessFilter;
+        } else {
+            img.filters = [...(img.filters || []), brightnessFilter];
+        }
+        img.applyFilters();
+        canvas.requestRenderAll();
+    };
+
     const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.stopPropagation();
@@ -5687,6 +5730,42 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                         <span className="text-[9px] font-bold">旋轉</span>
                                     </button>
 
+                                    {/* Brightness Button with inline popover */}
+                                    <div className="relative">
+                                        <button onClick={() => setShowBrightnessSlider(v => !v)} className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[2.5rem] transition-colors ${showBrightnessSlider ? 'text-amber-600 bg-amber-50' : 'text-gray-600 hover:bg-gray-50'}`}>
+                                            <Sun className="w-4 h-4" />
+                                            <span className="text-[9px] font-bold">亮度</span>
+                                        </button>
+                                        {showBrightnessSlider && (
+                                            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-white rounded-xl shadow-xl border border-gray-200 p-3 z-50 w-48 animate-in fade-in slide-in-from-top-2 duration-150">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="text-xs font-bold text-gray-700">亮度</span>
+                                                    <span className="text-xs font-mono text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">{Math.round(brightness * 100)}%</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <Sun className="w-3 h-3 text-gray-400" />
+                                                    <input
+                                                        type="range"
+                                                        min="-1" max="1" step="0.01"
+                                                        value={brightness}
+                                                        onTouchStart={(e) => e.stopPropagation()}
+                                                        onTouchMove={(e) => e.stopPropagation()}
+                                                        onChange={(e) => {
+                                                            const val = parseFloat(e.target.value);
+                                                            setBrightness(val);
+                                                            applyBrightness(val);
+                                                        }}
+                                                        onMouseUp={saveHistory}
+                                                        onTouchEnd={saveHistory}
+                                                        className="flex-1 accent-amber-500"
+                                                    />
+                                                    <Sun className="w-4 h-4 text-amber-400" />
+                                                </div>
+                                                <button onClick={() => { setBrightness(0); applyBrightness(0); saveHistory(); }} className="mt-2 w-full text-[10px] text-center text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded py-1">重置</button>
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <div className="w-px h-6 bg-gray-200"></div>
 
                                     {/* Only show Lock/Unlock if object has a clipPath (Crop/Frame) */}
@@ -5749,6 +5828,38 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 }} className="p-2 text-gray-600 hover:bg-gray-50 rounded-full transition-colors" title="旋轉">
                                     <RefreshCw className="w-5 h-5" />
                                 </button>
+
+                                {/* Brightness button desktop */}
+                                <div className="relative">
+                                    <button onClick={() => setShowBrightnessSlider(v => !v)} className={`p-2 rounded-full transition-colors ${showBrightnessSlider ? 'text-amber-600 bg-amber-50' : 'text-gray-600 hover:bg-gray-50'}`} title="亮度">
+                                        <Sun className="w-5 h-5" />
+                                    </button>
+                                    {showBrightnessSlider && (
+                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white rounded-xl shadow-xl border border-gray-200 p-3 z-50 w-52 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-xs font-bold text-gray-700">亮度</span>
+                                                <span className="text-xs font-mono text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">{Math.round(brightness * 100)}%</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Sun className="w-3 h-3 text-gray-400" />
+                                                <input
+                                                    type="range"
+                                                    min="-1" max="1" step="0.01"
+                                                    value={brightness}
+                                                    onChange={(e) => {
+                                                        const val = parseFloat(e.target.value);
+                                                        setBrightness(val);
+                                                        applyBrightness(val);
+                                                    }}
+                                                    onMouseUp={saveHistory}
+                                                    className="flex-1 accent-amber-500"
+                                                />
+                                                <Sun className="w-4 h-4 text-amber-400" />
+                                            </div>
+                                            <button onClick={() => { setBrightness(0); applyBrightness(0); saveHistory(); }} className="mt-2 w-full text-[10px] text-center text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded py-1">重置</button>
+                                        </div>
+                                    )}
+                                </div>
 
                                 <div className="w-px h-4 bg-gray-200"></div>
 
@@ -6177,6 +6288,14 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 </button>
                             )}
 
+                            {/* 相框 Button - shown when image is selected */}
+                            {mobileActions?.onOpenFrames && !(selectedObject as any).isFrameLayer && (
+                                <button onClick={mobileActions?.onOpenFrames} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-amber-600">
+                                    <Frame className="w-6 h-6" />
+                                    <span className="text-[10px] font-medium">相框</span>
+                                </button>
+                            )}
+
                             {/* Fallback Legacy AI */}
                             {!mobileActions?.onAiCartoon && !mobileActions?.onAiRemoveBg && mobileActions?.onOpenAI && (
                                 <button onClick={mobileActions?.onOpenAI} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-purple-600">
@@ -6185,10 +6304,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 </button>
                             )}
 
-                            <button onClick={() => { setActiveMobileSubMenu('image'); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center gap-1 p-2 min-w-[4rem] ${activeMobileSubMenu === 'image' ? 'text-blue-600' : 'text-gray-400'}`}>
-                                <ImageIcon className="w-6 h-6" />
-                                <span className="text-[10px] font-medium">圖片</span>
-                            </button>
+
 
                             <button onClick={centerObject} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-gray-500 active:text-blue-600">
                                 <AlignCenter className="w-6 h-6" />
@@ -6312,7 +6428,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     onClick={mobileActions?.onOpenFrames}
                                     className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
                                 >
-                                    <Shapes className="w-6 h-6" />
+                                    <Frame className="w-6 h-6" />
                                     <span className="text-[10px] font-medium">相框</span>
                                 </button>
                             )}

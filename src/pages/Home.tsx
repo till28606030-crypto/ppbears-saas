@@ -4,10 +4,10 @@ import { supabase } from '../lib/supabase';
 import { update, get } from 'idb-keyval';
 import { listDesignTemplates, DesignTemplate, ensureDesignTemplatesReadable } from '../lib/designTemplates';
 import { listAssets, listAssetCategories } from '../lib/assets';
-import { listFrames, listFrameCategories, Frame } from '../lib/frameService';
+import { listFrames, listFrameCategories, Frame, lastFrameDebug, clearFrameCache } from '../lib/frameService';
 // @ts-ignore
 import { readPsd } from 'ag-psd';
-import { Upload, Layers, Smartphone, Type, Wand2, Sparkles, X, ShoppingCart, Check, Sticker, Image, ScanBarcode, Scissors, Circle, Heart, Square, Ban, ChevronRight, ChevronLeft, Copy, Search, SlidersHorizontal, ChevronDown, ChevronUp, Palette, FileImage, Shapes, Lock, Unlock, Plus } from 'lucide-react';
+import { Upload, Layers, Smartphone, Type, Wand2, Sparkles, X, ShoppingCart, Check, Sticker, Image, ScanBarcode, Scissors, Circle, Heart, Square, Ban, ChevronRight, ChevronLeft, Copy, Search, SlidersHorizontal, ChevronDown, ChevronUp, Palette, FileImage, Shapes, Lock, Unlock, Plus, Frame as FrameIcon } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import CanvasEditor, { CanvasEditorRef } from '../components/CanvasEditor';
 import SaveDesignModal from '../components/SaveDesignModal';
@@ -119,6 +119,7 @@ export default function Home() {
     const [hasClipPath, setHasClipPath] = useState(false);
     const [isImageSelected, setIsImageSelected] = useState(false);
     const [isTemplateLoading, setIsTemplateLoading] = useState(false);
+    const [canvasHasUserImage, setCanvasHasUserImage] = useState(false);
 
     // Assets State
     const [products, setProducts] = useState<any[]>([]);
@@ -149,13 +150,13 @@ export default function Home() {
     const [isOffline, setIsOffline] = useState(false);
 
     const [dbCheckResult, setDbCheckResult] = useState<any>(null);
-
+    const [frameDebugInfo, setFrameDebugInfo] = useState<{ rowCount: number; error: any; source: string } | null>(null);
 
 
     // Dynamic Categories for Assets
     const [stickerCategories, setStickerCategories] = useState<string[]>(['熱門活動', '主題設計', '合作設計師', '未分類']);
     const [backgroundCategories, setBackgroundCategories] = useState<string[]>(['風格類型', '節慶氛圍', '未分類']);
-    const [frameCategories, setFrameCategories] = useState<string[]>(['基本相框', '復古風格', '可愛邊框', '未分類']);
+    const [frameCategories, setFrameCategories] = useState<string[]>(['基本相框', '節慶主題', '特殊造型', '未分類']);
     const [designCategories, setDesignCategories] = useState<string[]>(['熱門設計', '節慶主題', '風格插畫', '未分類']);
 
     const [activePanel, setActivePanel] = useState<'none' | 'stickers' | 'backgrounds' | 'barcode' | 'frames' | 'products' | 'designs' | 'ai'>('none');
@@ -179,10 +180,16 @@ export default function Home() {
 
             try {
                 if (activePanel === 'frames') {
+                    // Clear stale cache to ensure fresh data from Supabase
+                    await clearFrameCache(productId || undefined);
                     const { data, source } = await listFrames(productId || undefined);
+                    console.log('%c[相框面板] 載入結果', 'color: blue; font-weight: bold; font-size: 14px', `共 ${data.length} 個相框`, '| 來源:', source);
+                    if (data.length > 0) console.table(data.map(f => ({ id: f.id, name: f.name, category: f.category, url: f.url })));
+                    else console.warn('⚠️ [相框面板] 沒有資料！請確認 Supabase assets 表中有 type="frame" 的記錄，且 RLS 允許匿名用戶讀取。');
                     if (mounted) {
                         setFrames(data);
                         setIsOffline(source === 'cache');
+                        setFrameDebugInfo({ rowCount: data.length, error: lastFrameDebug.error, source });
                     }
                 } else {
                     setIsOffline(false);
@@ -1050,7 +1057,7 @@ export default function Home() {
                         className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'frames' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
                         title="相框"
                     >
-                        <Shapes className="w-6 h-6 mb-1" />
+                        <FrameIcon className="w-6 h-6 mb-1" />
                         <span className="text-xs font-medium">
                             相框
                         </span>
@@ -1139,7 +1146,7 @@ export default function Home() {
                                 {activePanel === 'stickers' && <><Sticker className="w-4 h-4" /> 貼圖</>}
                                 {activePanel === 'backgrounds' && <><Image className="w-4 h-4" /> 背景</>}
                                 {activePanel === 'barcode' && <><ScanBarcode className="w-4 h-4" /> 手機條碼</>}
-                                {activePanel === 'frames' && <><Shapes className="w-4 h-4" /> 精選相框 {isOffline && <span className="ml-2 text-[10px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full font-normal">離線/快取</span>}</>}
+                                {activePanel === 'frames' && <><FrameIcon className="w-4 h-4" /> 精選相框 {isOffline && <span className="ml-2 text-[10px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full font-normal">離線/快取</span>}</>}
                                 {activePanel === 'ai' && <><Sparkles className="w-4 h-4" /> AI 魔法</>}
                             </h3>
                             <button onClick={() => setActivePanel('none')} className="text-gray-400 hover:text-gray-600">
@@ -1391,28 +1398,28 @@ export default function Home() {
 
                                 {/* Basic Shapes for Frames Panel */}
                                 {activePanel === 'frames' && (
-                                    <div className="p-3 border-b border-gray-100 bg-white z-10">
-                                        <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">基本形狀</div>
-                                        <div className="grid grid-cols-4 gap-2">
-                                            <button onClick={() => handleApplyCrop('rounded')} className={`flex flex-col items-center gap-1 group p-2 rounded-lg transition-all border ${selectedShape === 'rounded' ? 'bg-blue-50 border-blue-200' : 'border-transparent hover:bg-gray-50'}`}>
-                                                <div className={`w-10 h-10 border-2 rounded-lg transition-all ${selectedShape === 'rounded' ? 'border-blue-500 bg-blue-100' : 'border-gray-300 group-hover:border-blue-500 group-hover:bg-white'}`}></div>
-                                                <span className={`text-[10px] ${selectedShape === 'rounded' ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>圓角</span>
+                                    <div className="p-2 border-b border-gray-100 bg-white z-10">
+                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">基本形狀</div>
+                                        <div className="grid grid-cols-4 gap-1">
+                                            <button onClick={() => handleApplyCrop('rounded')} className={`flex flex-col items-center gap-0.5 group p-1.5 rounded-lg transition-all border ${selectedShape === 'rounded' ? 'bg-blue-50 border-blue-200' : 'border-transparent hover:bg-gray-50'}`}>
+                                                <div className={`w-6 h-6 border-2 rounded-lg transition-all ${selectedShape === 'rounded' ? 'border-blue-500 bg-blue-100' : 'border-gray-300 group-hover:border-blue-500 group-hover:bg-white'}`}></div>
+                                                <span className={`text-[9px] ${selectedShape === 'rounded' ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>圓角</span>
                                             </button>
-                                            <button onClick={() => handleApplyCrop('circle')} className={`flex flex-col items-center gap-1 group p-2 rounded-lg transition-all border ${selectedShape === 'circle' ? 'bg-blue-50 border-blue-200' : 'border-transparent hover:bg-gray-50'}`}>
-                                                <div className={`w-10 h-10 border-2 rounded-full transition-all ${selectedShape === 'circle' ? 'border-blue-500 bg-blue-100' : 'border-gray-300 group-hover:border-blue-500 group-hover:bg-white'}`}></div>
-                                                <span className={`text-[10px] ${selectedShape === 'circle' ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>圓形</span>
+                                            <button onClick={() => handleApplyCrop('circle')} className={`flex flex-col items-center gap-0.5 group p-1.5 rounded-lg transition-all border ${selectedShape === 'circle' ? 'bg-blue-50 border-blue-200' : 'border-transparent hover:bg-gray-50'}`}>
+                                                <div className={`w-6 h-6 border-2 rounded-full transition-all ${selectedShape === 'circle' ? 'border-blue-500 bg-blue-100' : 'border-gray-300 group-hover:border-blue-500 group-hover:bg-white'}`}></div>
+                                                <span className={`text-[9px] ${selectedShape === 'circle' ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>圓形</span>
                                             </button>
-                                            <button onClick={() => handleApplyCrop('heart')} className={`flex flex-col items-center gap-1 group p-2 rounded-lg transition-all border ${selectedShape === 'heart' ? 'bg-blue-50 border-blue-200' : 'border-transparent hover:bg-gray-50'}`}>
-                                                <Heart className={`w-10 h-10 p-1 transition-all ${selectedShape === 'heart' ? 'text-blue-500 fill-blue-100' : 'text-gray-300 group-hover:text-blue-500'}`} />
-                                                <span className={`text-[10px] ${selectedShape === 'heart' ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>愛心</span>
+                                            <button onClick={() => handleApplyCrop('heart')} className={`flex flex-col items-center gap-0.5 group p-1.5 rounded-lg transition-all border ${selectedShape === 'heart' ? 'bg-blue-50 border-blue-200' : 'border-transparent hover:bg-gray-50'}`}>
+                                                <Heart className={`w-6 h-6 p-0.5 transition-all ${selectedShape === 'heart' ? 'text-blue-500 fill-blue-100' : 'text-gray-300 group-hover:text-blue-500'}`} />
+                                                <span className={`text-[9px] ${selectedShape === 'heart' ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>愛心</span>
                                             </button>
-                                            <button onClick={() => handleApplyCrop('star')} className={`flex flex-col items-center gap-1 group p-2 rounded-lg transition-all border ${selectedShape === 'star' ? 'bg-blue-50 border-blue-200' : 'border-transparent hover:bg-gray-50'}`}>
-                                                <div className={`w-10 h-10 flex items-center justify-center border-2 rounded-lg transition-all ${selectedShape === 'star' ? 'border-blue-200 bg-blue-100' : 'border-transparent group-hover:bg-white'}`}>
-                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`w-8 h-8 ${selectedShape === 'star' ? 'text-blue-500 fill-blue-100' : 'text-gray-300 group-hover:text-blue-500'}`}>
+                                            <button onClick={() => handleApplyCrop('star')} className={`flex flex-col items-center gap-0.5 group p-1.5 rounded-lg transition-all border ${selectedShape === 'star' ? 'bg-blue-50 border-blue-200' : 'border-transparent hover:bg-gray-50'}`}>
+                                                <div className={`w-6 h-6 flex items-center justify-center border-2 rounded-lg transition-all ${selectedShape === 'star' ? 'border-blue-200 bg-blue-100' : 'border-transparent group-hover:bg-white'}`}>
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`w-4 h-4 ${selectedShape === 'star' ? 'text-blue-500 fill-blue-100' : 'text-gray-300 group-hover:text-blue-500'}`}>
                                                         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                                                     </svg>
                                                 </div>
-                                                <span className={`text-[10px] ${selectedShape === 'star' ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>五角星</span>
+                                                <span className={`text-[9px] ${selectedShape === 'star' ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>五角星</span>
                                             </button>
                                         </div>
 
@@ -1507,9 +1514,9 @@ export default function Home() {
                                 )}
 
                                 {/* Category Tabs (Responsive: Moved below specific settings like colors/shapes) */}
-                                <div className="p-3 border-b border-gray-100 bg-white z-10">
+                                <div className="p-2 border-b border-gray-100 bg-white z-10">
                                     <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                                        <div className="flex items-center px-3 py-1.5 bg-gray-100 text-gray-600 rounded-md text-xs font-medium whitespace-nowrap shrink-0">
+                                        <div className="flex items-center px-2 py-1 bg-gray-100 text-gray-600 rounded-md text-[10px] font-medium whitespace-nowrap shrink-0">
                                             {activePanel === 'stickers' ? '貼圖風格' : activePanel === 'backgrounds' ? '背景風格' : activePanel === 'frames' ? '相框風格' : '設計分類'}
                                         </div>
                                         <button
@@ -1525,7 +1532,7 @@ export default function Home() {
                                             else if (activePanel === 'frames') cats = frameCategories;
                                             else if (activePanel === 'designs') cats = designCategories;
 
-                                            return cats.map(cat => (
+                                            return cats.filter(c => c !== '全部').map(cat => (
                                                 <button
                                                     key={cat}
                                                     onClick={() => setSelectedAssetCategory(cat)}
@@ -1607,12 +1614,14 @@ export default function Home() {
                                             )}
 
                                             {/* Empty State for Assets */}
+                                            {/* Empty State for Assets */}
                                             {!loadingAssets && !assetError && activePanel !== 'designs' && activePanel !== 'none' &&
                                                 (activePanel === 'stickers' ? stickers : activePanel === 'backgrounds' ? backgrounds : frames).length === 0 && (
                                                     <div className="col-span-full text-center text-gray-400 py-8">
                                                         找不到相關素材。
                                                     </div>
                                                 )}
+
                                         </>
                                     )}
 
@@ -1753,6 +1762,7 @@ export default function Home() {
                         currentProduct={currentProduct}
                         onCropModeChange={setIsCropping}
                         onTemplateLoadingChange={setIsTemplateLoading}
+                        onImageLayerChange={setCanvasHasUserImage}
                         onSelectionChange={(obj) => {
                             setHasClipPath(!!obj?.clipPath);
                             setIsImageSelected(obj?.type === 'image');

@@ -1048,42 +1048,8 @@ export default function SaveDesignModal({
                             </div>
 
                             <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-8">
-                                {/* Step 3: Product Specs Accordion */}
-                                {currentStep === 3 && (
-                                    <div className="mb-6 md:hidden">
-                                        <details open className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-                                            <summary className="flex cursor-pointer items-center justify-between p-4 font-semibold text-gray-900 bg-gray-50 hover:bg-gray-100 transition-colors select-none">
-                                                商品規格
-                                                <span className="text-gray-400 transform transition-transform group-open:rotate-180">▼</span>
-                                            </summary>
+                                {/* Step 3: Product Specs Accordion - REMOVED (Redundant) */}
 
-                                            <div className="px-4 pb-4 pt-4 space-y-4">
-                                                <div className="text-sm">
-                                                    <div className="font-semibold text-gray-900">{productName}</div>
-                                                    {specLines[0] && <div className="text-red-600 font-semibold mt-1">{specLines[0].label}</div>}
-                                                </div>
-
-                                                <dl className="divide-y divide-gray-100 text-sm border-t border-gray-100 mt-2">
-                                                    {specList.map(([k, v], idx) => (
-                                                        <div key={`${k}-${idx}`} className="flex items-center py-2.5">
-                                                            <dt className="w-24 shrink-0 text-gray-500 font-medium">{k}</dt>
-                                                            <dd className="flex-1 text-right text-gray-700">{v}</dd>
-                                                        </div>
-                                                    ))}
-                                                </dl>
-
-                                                <div className="text-sm pt-2 border-t border-gray-100">
-                                                    <div className="font-semibold mb-2 text-gray-800">材質</div>
-                                                    <ul className="list-disc pl-5 text-gray-600 space-y-1 text-xs leading-relaxed">
-                                                        <li>手機殼：聚酯彈性體結合PCTG+複合塑膠</li>
-                                                        <li>鏡頭環：鋁合金</li>
-                                                        <li>按鍵：鋁合金</li>
-                                                    </ul>
-                                                </div>
-                                            </div>
-                                        </details>
-                                    </div>
-                                )}
 
                                 {currentStepGroups.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4">
