@@ -865,21 +865,22 @@ export default function Home() {
             console.log('[Cart] Price:', finalPrice);
             console.log('[Cart] Options:', finalOptions);
 
-            // Product ID: 123835 - 客製化手機殼 (line3)
+            // Product ID: 123835 - 客製化手機殼
             const WOOCOMMERCE_PRODUCT_ID = 123835;
+            const WOOCOMMERCE_URL = 'https://ppbears.com';
 
-            console.log('[Cart] Saving design to Supabase...');
+            console.log('[Cart] Saving design to Supabase (upsert)...');
 
-            // Save complete design to Supabase
+            // Use upsert: if design_id already exists, update it instead of failing
             const { data: designData, error: designError } = await supabase
                 .from('custom_designs')
-                .insert({
+                .upsert({
                     design_id: designId,
                     product_name: currentProduct?.name || '客製化手機殼',
                     phone_model: currentProduct?.name || 'Unknown',
                     price: finalPrice,
                     options: finalOptions
-                })
+                }, { onConflict: 'design_id' })
                 .select()
                 .single();
 
@@ -889,14 +890,6 @@ export default function Home() {
             }
 
             console.log('[Cart] Design saved successfully:', designData);
-
-            // Build WooCommerce add-to-cart URL (只傳 design_id)
-            const checkoutUrl = new URL('https://ppbears.com/');
-            checkoutUrl.searchParams.set('add-to-cart', String(WOOCOMMERCE_PRODUCT_ID));
-            checkoutUrl.searchParams.set('quantity', '1');
-            checkoutUrl.searchParams.set('design_id', designId);
-
-            console.log('[Cart] Checkout URL:', checkoutUrl.toString());
 
             // Save images to IndexedDB for reference
             const { update } = await import('idb-keyval');
@@ -910,7 +903,61 @@ export default function Home() {
                 return currentImages;
             });
 
-            // Redirect to WooCommerce
+            // Try new WP REST API first (each option stored as separate order meta line)
+            console.log('[Cart] Calling WP add-to-cart API...');
+            try {
+                const response = await fetch(`${WOOCOMMERCE_URL}/wp-json/ppbears/v1/add-to-cart`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_id: WOOCOMMERCE_PRODUCT_ID,
+                        price: finalPrice,
+                        design_id: designId,
+                        phone_model: currentProduct?.name || '',
+                        options: finalOptions,
+                    }),
+                    credentials: 'include',
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && result.checkout_url) {
+                        console.log('[Cart] WP API success, redirecting to:', result.checkout_url);
+
+                        // Save order to IndexedDB mock_orders for admin order management panel
+                        const { get: idbGet, set: idbSet } = await import('idb-keyval');
+                        const existingOrders = (await idbGet('mock_orders')) || [];
+                        const newOrder = {
+                            id: `ORD-${Date.now()}`,
+                            designId: designId,
+                            productName: currentProduct?.name || '客製化手機殼',
+                            timestamp: new Date().toISOString(),
+                            previewImage: previewImage || '',
+                            printImage: printImage || '',
+                            price: finalPrice,
+                        };
+                        await idbSet('mock_orders', [newOrder, ...existingOrders]);
+                        console.log('[Cart] Order saved to mock_orders:', newOrder);
+
+                        window.location.href = result.checkout_url;
+                        return;
+                    }
+                }
+
+                // API failed (404 = plugin not yet uploaded) → fallback to URL redirect
+                const errText = await response.text().catch(() => '');
+                console.warn(`[Cart] WP API failed (${response.status}), using URL fallback. Response:`, errText);
+            } catch (apiErr) {
+                console.warn('[Cart] WP API unreachable, using URL fallback:', apiErr);
+            }
+
+            // Fallback: classic WooCommerce add-to-cart URL with design_id
+            console.log('[Cart] Using URL fallback redirect...');
+            const checkoutUrl = new URL(`${WOOCOMMERCE_URL}/`);
+            checkoutUrl.searchParams.set('add-to-cart', String(WOOCOMMERCE_PRODUCT_ID));
+            checkoutUrl.searchParams.set('quantity', '1');
+            checkoutUrl.searchParams.set('design_id', designId);
+            console.log('[Cart] Fallback URL:', checkoutUrl.toString());
             window.location.href = checkoutUrl.toString();
 
         } catch (error: any) {
@@ -918,6 +965,8 @@ export default function Home() {
             alert(`處理失敗: ${error.message}\n\n請查看瀏覽器 Console (F12) 了解詳細錯誤訊息。`);
         }
     };
+
+
 
     const toggleCategoryExpand = (id: string) => {
         setExpandedCategoryIds(prev => {

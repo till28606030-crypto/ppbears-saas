@@ -1579,43 +1579,73 @@ export default function SaveDesignModal({
                                                             const storageKey = `ppbears_checkout_progress_${productId || 'default'}`;
                                                             localStorage.removeItem(storageKey);
 
-                                                            // Generate label mapping for WordPress
-                                                            const optionsWithLabels: Record<string, any> = {};
+                                                            const customOptions: Record<string, any> = {};
 
-                                                            Object.entries(selectedOptions).forEach(([key, val]) => {
-                                                                // Store original selection
-                                                                optionsWithLabels[key] = val;
+                                                            // 1. Add Product Name as Header
+                                                            customOptions[productName] = productName;
 
-                                                                // Add label mapping
-                                                                if (key.includes(':')) {
-                                                                    // subAttribute (e.g., "code_123:attr_456" or "code_123:ca:attr_789")
-                                                                    const parts = key.split(':');
-                                                                    const isCustomAttr = parts[1] === 'ca';
-                                                                    const gKey = parts[0];
-                                                                    const attrId = isCustomAttr ? parts[2] : parts[1];
+                                                            // 2. Iterate Steps to ensure order (Main Specs -> Add-ons)
+                                                            availableSteps.forEach(step => {
+                                                                const groupsInStep = stepGroups.get(step) || [];
 
-                                                                    const group = validGroups.find(g => getGroupKey(g) === gKey);
-                                                                    const attr = group?.subAttributes?.find(a => String(a.id) === String(attrId));
-                                                                    const opt = attr?.options?.find(o => String(o.id) === String(val));
+                                                                groupsInStep.forEach(group => {
+                                                                    const groupKey = getGroupKey(group);
+                                                                    const selectedVal = selectedOptions[groupKey];
 
-                                                                    if (attr && opt) {
-                                                                        const labelKey = `${key}__label`;
-                                                                        optionsWithLabels[labelKey] = `${attr.name}: ${opt.name}`;
+                                                                    // 2a. Main Item of the Group
+                                                                    if (selectedVal) {
+                                                                        const item = items.find(i => i.id === selectedVal);
+                                                                        if (item) {
+                                                                            if (step === 1) {
+                                                                                // Main Spec: Just Group Name (e.g. "版本")
+                                                                                customOptions[group.name] = item.name;
+                                                                            } else {
+                                                                                // Add-on: Group Name with Brackets (e.g. "【保護圖層】")
+                                                                                customOptions[`【${group.name}】`] = item.name;
+                                                                            }
+                                                                        }
                                                                     }
-                                                                } else {
-                                                                    // main group selection
-                                                                    const group = validGroups.find(g => getGroupKey(g) === key);
-                                                                    const item = items.find(i => i.id === val);
 
-                                                                    if (group && item) {
-                                                                        const labelKey = `${key}__label`;
-                                                                        optionsWithLabels[labelKey] = `${group.name}: ${item.name}`;
+                                                                    // 2b. Sub-Attributes of the Group
+                                                                    if (group.subAttributes) {
+                                                                        group.subAttributes.forEach(attr => {
+                                                                            // Find keys in selectedOptions that match this attribute
+                                                                            const relevantKeys = Object.keys(selectedOptions).filter(k => {
+                                                                                if (k.endsWith('_label')) return false;
+                                                                                if (!k.startsWith(`${groupKey}:`)) return false;
+
+                                                                                const parts = k.split(':');
+                                                                                // k = groupKey:attrId OR groupKey:ca:attrId
+                                                                                const isCustomAttr = parts[1] === 'ca';
+                                                                                const attrId = isCustomAttr ? parts[2] : parts[1];
+                                                                                return String(attrId) === String(attr.id);
+                                                                            });
+
+                                                                            relevantKeys.forEach(k => {
+                                                                                const val = selectedOptions[k];
+                                                                                let displayVal = val;
+
+                                                                                if (attr.type === 'select') {
+                                                                                    const opt = attr.options?.find(o => String(o.id) === String(val));
+                                                                                    if (opt) displayVal = opt.name;
+                                                                                }
+
+                                                                                if (step === 1) {
+                                                                                    // Main Spec Sub-Attr: Just Attr Name
+                                                                                    customOptions[attr.name] = displayVal;
+                                                                                } else {
+                                                                                    // Add-on Sub-Attr: Group Context (e.g. "【保護圖層】樣式")
+                                                                                    // Use a separator that looks good? Space is fine.
+                                                                                    customOptions[`【${group.name}】${attr.name}`] = displayVal;
+                                                                                }
+                                                                            });
+                                                                        });
                                                                     }
-                                                                }
+                                                                });
                                                             });
 
-                                                            console.log('[SaveDesignModal] Options with labels:', optionsWithLabels);
-                                                            onAddToCart(currentTotal, optionsWithLabels);
+                                                            console.log('[SaveDesignModal] Submitting Ordered Options:', customOptions);
+                                                            onAddToCart(currentTotal, customOptions);
                                                         }}
                                                         className="flex-1 md:flex-none md:w-auto px-8 py-3 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg"
                                                         title="加入購物車"
