@@ -789,6 +789,7 @@ if (FabricObject && FabricObject.prototype && FabricObject.prototype.controls) {
 interface CanvasEditorProps {
     uploadedImage: string | null;
     activeTool?: string | null;
+    activePanel?: string | null;
     onToolUsed?: () => void;
     onTemplateLoadingChange?: (isLoading: boolean) => void;
     currentProduct?: any;
@@ -838,6 +839,7 @@ export interface CanvasEditorRef {
     removeBackground: () => void;
     addBarcode: (text: string) => void;
     addLayer: (layer: { image: string; left: number; top: number; width: number; height: number; name?: string; scaleX?: number; scaleY?: number }) => void;
+    addDesignLayers: (layers: any[]) => Promise<void>;
     addFrame: (frame: FrameTemplate) => void;
     applyCrop: (shape: 'circle' | 'heart' | 'rounded' | 'star' | 'none', value?: number) => void;
     updateFrameParams: (value: number) => void;
@@ -855,6 +857,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const {
         uploadedImage,
         activeTool,
+        activePanel,
         onToolUsed,
         onTemplateLoadingChange,
         mobileActions,
@@ -886,7 +889,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const latestBaseUrlRef = useRef<string>("");
     const latestMaskUrlRef = useRef<string>("");
     const toggleCropModeRef = useRef<() => void>(() => { });
-    const framePhotoInputRef = useRef<HTMLInputElement>(null);
     const toolbarRef = useRef<HTMLDivElement>(null);
 
     const DEFAULT_PERMS = {
@@ -918,6 +920,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const [showMobilePropertyBar, setShowMobilePropertyBar] = useState(true); // Mobile property bar visibility
     const [showBrightnessSlider, setShowBrightnessSlider] = useState(false); // Show brightness slider popover
     const [brightness, setBrightness] = useState(0); // Brightness value: -1 (dark) to 1 (bright)
+    const [showClearConfirm, setShowClearConfirm] = useState(false); // Clear confirm dialog
 
     useEffect(() => {
         onTemplateLoadingChange?.(isTemplateLoading);
@@ -1684,116 +1687,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const filteredFrames = customFrames.filter(f =>
         selectedCategory === '全部' || f.category === selectedCategory
     );
-
-    const handleFramePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-
-        // Ensure we clear the input value so the same file can be selected again
-        // Do this BEFORE any early returns
-        e.target.value = '';
-
-        if (!file || !fabricCanvas.current || !selectedObject) {
-            console.warn("Upload aborted: missing file or state", { file: !!file, canvas: !!fabricCanvas.current, selectedObject: !!selectedObject });
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = async (f) => {
-            const dataUrl = f.target?.result as string;
-            const canvas = fabricCanvas.current;
-            if (!canvas) return;
-
-            // Add to history
-            setUploadedHistory(prev => [dataUrl, ...prev].slice(0, 20));
-            setShowGalleryModal(false); // Close modal
-
-            await withHistoryTransaction(async () => {
-                try {
-                    const img = await FabricImage.fromURL(dataUrl);
-                    const frame = selectedObject;
-
-                    ensureObjectId(img, 'img');
-
-                    // Center image to frame
-                    img.set({
-                        left: frame.left,
-                        top: frame.top,
-                        originX: frame.originX,
-                        originY: frame.originY,
-                        lockUniScaling: true,
-                        // @ts-ignore
-                        frameId: frame.id, // Link to frame
-                        isCropLocked: true // Default: Locked to frame
-                    });
-
-                    // Scale to cover frame area
-                    const frameW = frame.getScaledWidth();
-                    const frameH = frame.getScaledHeight();
-                    const scaleX = frameW / (img.width || 1);
-                    const scaleY = frameH / (img.height || 1);
-                    const scale = Math.max(scaleX, scaleY);
-
-                    img.scale(scale);
-
-                    // Apply Absolute ClipPath matching the Frame
-                    // This ensures the image is ALWAYS clipped to the frame's current bounds
-                    const clipPoints = (frame as any).clipPathPoints;
-
-                    if (clipPoints) {
-                        img.clipPath = new Polygon(clipPoints, {
-                            left: frame.left,
-                            top: frame.top,
-                            originX: frame.originX,
-                            originY: frame.originY,
-                            scaleX: frame.scaleX,
-                            scaleY: frame.scaleY,
-                            angle: frame.angle,
-                            absolutePositioned: true
-                        });
-                    } else {
-                        img.clipPath = new Rect({
-                            left: frame.left,
-                            top: frame.top,
-                            originX: frame.originX,
-                            originY: frame.originY,
-                            width: frame.width,
-                            height: frame.height,
-                            scaleX: frame.scaleX,
-                            scaleY: frame.scaleY,
-                            angle: frame.angle,
-                            absolutePositioned: true
-                        });
-                    }
-
-                    canvas.add(img);
-
-                    // Layering: Place BEHIND the frame
-                    const objects = canvas.getObjects();
-                    const frameIndex = objects.indexOf(frame);
-
-                    if (frameIndex > -1) {
-                        canvas.moveObjectTo(img, frameIndex);
-                    } else {
-                        canvas.sendObjectToBack(img);
-                        if (baseLayerRef.current) {
-                            const baseIndex = objects.indexOf(baseLayerRef.current);
-                            if (baseIndex > -1) canvas.moveObjectTo(img, baseIndex + 1);
-                        }
-                    }
-
-                    if (maskLayerRef.current) canvas.bringObjectToFront(maskLayerRef.current);
-
-                    canvas.setActiveObject(img);
-                    canvas.requestRenderAll();
-
-                } catch (err) {
-                    console.error("Failed to add frame photo", err);
-                }
-            });
-        };
-        reader.readAsDataURL(file);
-    };
-
     // Get parameters from Store (Default)
     const {
         canvasWidth: STORE_WIDTH,
@@ -2545,48 +2438,51 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
     const clearCanvas = () => {
         console.log('[CLEAR] Request to clear canvas');
+        setShowClearConfirm(true);
+    };
 
-        if (confirm('確定要清空所有設計嗎？這將無法復原。')) {
-            const canvas = fabricCanvas.current;
-            if (!canvas) {
-                console.warn('[CLEAR] No canvas available');
-                return;
-            }
+    const confirmClearCanvas = () => {
+        const canvas = fabricCanvas.current;
+        if (!canvas) {
+            console.warn('[CLEAR] No canvas available');
+            setShowClearConfirm(false);
+            return;
+        }
 
-            console.log('[CLEAR] Clearing user objects');
+        console.log('[CLEAR] Clearing user objects');
 
-            // Temporarily allow operation (clear should not be blocked)
-            const wasProcessing = isHistoryProcessing.current;
-            const wasRestoring = isRestoring.current;
-            isHistoryProcessing.current = false;
-            isRestoring.current = false;
+        // Temporarily allow operation (clear should not be blocked)
+        const wasProcessing = isHistoryProcessing.current;
+        const wasRestoring = isRestoring.current;
+        isHistoryProcessing.current = false;
+        isRestoring.current = false;
 
-            const objects = canvas.getObjects();
-            // Remove all objects except Base and Mask layers
-            // We iterate backwards or use a filter to avoid index issues during removal
-            [...objects].forEach(obj => {
-                if ((obj as any).isBaseLayer || (obj as any).isMaskLayer || (obj as any).isUserBackground) {
-                    // Keep background if it's user background? usually Clear All means clear user additions.
-                    // If isUserBackground is true, it means it's a background image added by user. 
-                    // Let's decide to clear user background too if "Clear All".
-                    // But let's keep it simple: Clear everything that is selectable/user added.
-                    if ((obj as any).isUserBackground) {
-                        canvas.remove(obj);
-                        return;
-                    }
+        const objects = canvas.getObjects();
+        // Remove all objects except Base and Mask layers
+        // We iterate backwards or use a filter to avoid index issues during removal
+        [...objects].forEach(obj => {
+            if ((obj as any).isBaseLayer || (obj as any).isMaskLayer || (obj as any).isUserBackground) {
+                // Keep background if it's user background? usually Clear All means clear user additions.
+                // If isUserBackground is true, it means it's a background image added by user. 
+                // Let's decide to clear user background too if "Clear All".
+                // But let's keep it simple: Clear everything that is selectable/user added.
+                if ((obj as any).isUserBackground) {
+                    canvas.remove(obj);
                     return;
                 }
-                canvas.remove(obj);
-            });
+                return;
+            }
+            canvas.remove(obj);
+        });
 
-            canvas.discardActiveObject();
-            canvas.requestRenderAll();
-            setSelectedObject(null);
+        canvas.discardActiveObject();
+        canvas.requestRenderAll();
+        setSelectedObject(null);
 
-            saveHistory();
+        saveHistory();
 
-            console.log('[CLEAR] Canvas cleared successfully');
-        }
+        console.log('[CLEAR] Canvas cleared successfully');
+        setShowClearConfirm(false);
     };
 
     // --- Toolbar Logic ---
@@ -2943,16 +2839,80 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         });
     };
 
-    // --- Toolbar Logic ---
+    const handleInsertImageFromSrc = async (src: string) => {
+        if (!fabricCanvas.current) return;
+        const canvas = fabricCanvas.current;
+        try {
+            const img = await FabricImage.fromURL(src, { crossOrigin: "anonymous" });
+            ensureObjectId(img, 'img');
 
-    useImperativeHandle(ref, () => ({
-        insertImageFromSrc: async (src: string) => {
-            if (!fabricCanvas.current) return;
-            const canvas = fabricCanvas.current;
-            try {
-                const img = await FabricImage.fromURL(src, { crossOrigin: "anonymous" });
-                ensureObjectId(img, 'img');
+            const selectedObj = canvas.getActiveObject();
+            if (selectedObj && (selectedObj as any).isFrameLayer) {
+                const frame = selectedObj;
+                img.set({
+                    left: frame.left,
+                    top: frame.top,
+                    originX: frame.originX,
+                    originY: frame.originY,
+                    lockUniScaling: true,
+                    // @ts-ignore
+                    frameId: frame.id
+                });
 
+                const frameW = frame.getScaledWidth();
+                const frameH = frame.getScaledHeight();
+                const scaleX = frameW / (img.width || 1);
+                const scaleY = frameH / (img.height || 1);
+                const scale = Math.max(scaleX, scaleY);
+
+                img.scale(scale);
+
+                const clipPoints = (frame as any).clipPathPoints;
+                if (clipPoints) {
+                    img.clipPath = new Polygon(clipPoints, {
+                        left: frame.left,
+                        top: frame.top,
+                        originX: frame.originX,
+                        originY: frame.originY,
+                        scaleX: frame.scaleX,
+                        scaleY: frame.scaleY,
+                        angle: frame.angle,
+                        absolutePositioned: true
+                    });
+                } else {
+                    img.clipPath = new Rect({
+                        left: frame.left,
+                        top: frame.top,
+                        originX: frame.originX,
+                        originY: frame.originY,
+                        width: frame.width,
+                        height: frame.height,
+                        scaleX: frame.scaleX,
+                        scaleY: frame.scaleY,
+                        angle: frame.angle,
+                        absolutePositioned: true
+                    });
+                }
+
+                canvas.add(img);
+
+                const objects = canvas.getObjects();
+                const frameIndex = objects.indexOf(frame);
+
+                if (frameIndex > -1) {
+                    canvas.moveObjectTo(img, frameIndex);
+                } else {
+                    canvas.sendObjectToBack(img);
+                    if (baseLayerRef.current) {
+                        const baseIndex = objects.indexOf(baseLayerRef.current);
+                        if (baseIndex > -1) canvas.moveObjectTo(img, baseIndex + 1);
+                    }
+                }
+
+                if (maskLayerRef.current) canvas.bringObjectToFront(maskLayerRef.current);
+
+                canvas.setActiveObject(img);
+            } else {
                 img.set({
                     scaleX: 0.5,
                     scaleY: 0.5,
@@ -2973,15 +2933,21 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     // Ensure mask is ALWAYS on top
                     canvas.bringObjectToFront(maskLayerRef.current);
                 }
-
-                canvas.requestRenderAll();
-                saveHistory();
-                updateLayers();
-            } catch (err) {
-                console.error("Failed to insert image", err);
-                throw err;
             }
-        },
+
+            canvas.requestRenderAll();
+            saveHistory();
+            updateLayers();
+        } catch (err) {
+            console.error("Failed to insert image", err);
+            throw err;
+        }
+    };
+
+    // --- Toolbar Logic ---
+
+    useImperativeHandle(ref, () => ({
+        insertImageFromSrc: handleInsertImageFromSrc,
         generatePreview: () => {
             if (!fabricCanvas.current) return '';
             const canvas = fabricCanvas.current;
@@ -3131,7 +3097,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                             absolutePositioned: true,
                         }),
                         lockUniScaling: true,
-                        data: { kind: 'user_image', source: 'sticker' }
+                        data: { kind: 'user_image', source: 'sticker' },
+                        isStickerLayer: true
                     });
                     img.setControlsVisibility({
                         mt: false,
@@ -3212,7 +3179,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                             ry: CASE_RADIUS,
                             absolutePositioned: true,
                         }),
-                        lockUniScaling: true
+                        lockUniScaling: true,
+                        isBarcodeLayer: true
                     });
                     img.setControlsVisibility({
                         mt: false,
@@ -3333,6 +3301,94 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             }
         },
 
+        addDesignLayers: async (layers: any[]) => {
+            const canvas = fabricCanvas.current;
+            if (!canvas) return;
+
+            await withHistoryTransaction(async () => {
+                const loadedObjects: FabricObject[] = [];
+
+                for (const layer of layers) {
+                    try {
+                        let obj: FabricObject;
+                        if (layer.type === 'i-text' || layer.type === 'text') {
+                            obj = new IText(layer.text || '', {
+                                ...layer,
+                                left: layer.left,
+                                top: layer.top,
+                                originX: layer.originX || 'left',
+                                originY: layer.originY || 'top',
+                            });
+                        } else {
+                            if (!layer.image) continue;
+                            obj = await FabricImage.fromURL(layer.image, { crossOrigin: 'anonymous' });
+                            const scaleX = layer.scaleX || 1;
+                            const scaleY = layer.scaleY || 1;
+                            obj.set({
+                                ...layer,
+                                left: layer.left,
+                                top: layer.top,
+                                originX: layer.originX || 'center',
+                                originY: layer.originY || 'center',
+                                scaleX: scaleX,
+                                scaleY: scaleY,
+                            });
+                        }
+
+                        // Apply clip path for mold
+                        obj.set({
+                            clipPath: new Rect({
+                                left: REAL_WIDTH / 2,
+                                top: REAL_HEIGHT / 2,
+                                originX: 'center',
+                                originY: 'center',
+                                width: REAL_WIDTH,
+                                height: REAL_HEIGHT,
+                                rx: CASE_RADIUS,
+                                ry: CASE_RADIUS,
+                                absolutePositioned: true,
+                            }),
+                            lockUniScaling: true
+                        });
+
+                        ensureObjectId(obj, 'layer');
+                        loadedObjects.push(obj);
+                    } catch (err) {
+                        console.error("Failed to load a design layer", err);
+                    }
+                }
+
+                if (loadedObjects.length === 0) return;
+
+                // Add all to canvas first
+                loadedObjects.forEach(obj => canvas.add(obj));
+
+                // Create ActiveSelection to group them
+                const activeSelection = new ActiveSelection(loadedObjects, {
+                    canvas: canvas,
+                });
+
+                // Center the entire selection to the middle of the case
+                activeSelection.set({
+                    left: REAL_WIDTH / 2,
+                    top: REAL_HEIGHT / 2,
+                    originX: 'center',
+                    originY: 'center',
+                });
+
+                // Update coordinates of children
+                activeSelection.setCoords();
+
+                // Bring mask to front
+                if (maskLayerRef.current) {
+                    canvas.bringObjectToFront(maskLayerRef.current);
+                }
+
+                canvas.setActiveObject(activeSelection);
+                canvas.requestRenderAll();
+            });
+        },
+
         addLayer: async (layer: any) => {
             const canvas = fabricCanvas.current;
             if (!canvas) return;
@@ -3346,10 +3402,11 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     const isExplicit = layer.scaleX !== undefined;
 
                     img.set({
+                        ...layer,
                         left: layer.left,
                         top: layer.top,
-                        originX: 'center',
-                        originY: 'center',
+                        originX: layer.originX || 'center',
+                        originY: layer.originY || 'center',
                         scaleX: scaleX,
                         scaleY: scaleY,
                         clipPath: new Rect({
@@ -5581,7 +5638,12 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         if (files && files.length > 0) {
             const file = files[0];
             if (file.type.startsWith('image/')) {
-                handleFramePhotoUpload({ target: { files: [file] } } as any);
+                const reader = new FileReader();
+                reader.onload = async (f) => {
+                    const dataUrl = f.target?.result as string;
+                    if (dataUrl) await handleInsertImageFromSrc(dataUrl);
+                };
+                reader.readAsDataURL(file);
             }
         }
     };
@@ -5594,6 +5656,33 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
     return (
         <div className="relative h-full w-full flex flex-col md:flex-row overflow-hidden">
+            {/* Clear Confirm Modal */}
+            {showClearConfirm && (
+                <div className="absolute inset-0 z-[200] bg-black/50 flex flex-col items-center justify-center backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
+                        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4 text-red-600">
+                            <Eraser className="w-6 h-6" />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">確定要清空設計嗎？</h3>
+                        <p className="text-sm text-gray-500 mb-6">這將會清除您在畫布上的所有設計，且<span className="font-semibold text-red-500">無法復原</span>。確定要繼續嗎？</p>
+                        <div className="flex gap-3 w-full">
+                            <button
+                                onClick={() => setShowClearConfirm(false)}
+                                className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={confirmClearCanvas}
+                                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl shadow-sm shadow-red-200 transition-colors"
+                            >
+                                確定清空
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Template Loading Overlay (Prevents Flash) */}
             {isTemplateLoading && (
                 <div className="absolute inset-0 z-50 bg-white/80 flex items-center justify-center backdrop-blur-sm">
@@ -5616,7 +5705,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 ref={containerRef}
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
-                className="flex-1 flex items-center justify-center bg-[radial-gradient(circle_at_center,_#ffffff_0%,_#d1d5db_100%)] px-4 pb-20 pt-24 md:p-4 overflow-hidden relative order-first md:order-none"
+                className="flex-1 flex flex-col md:flex-row items-center justify-start md:justify-center bg-[radial-gradient(circle_at_center,_#ffffff_0%,_#d1d5db_100%)] px-4 pb-32 pt-24 md:p-4 overflow-y-auto md:overflow-hidden relative order-first md:order-none"
             >
                 <div
                     className={`shadow-2xl rounded-lg overflow-hidden bg-white max-w-full max-h-full transition-opacity duration-300 ${hasTemplateLoaded ? 'opacity-100' : 'opacity-0'
@@ -5781,174 +5870,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     )}
                 </div>
 
-                {/* Floating Property Toolbar (Desktop Only) - Fixed at Bottom Center */}
-                {showToolbar && selectedObject && (
-                    <div
-                        className="hidden md:flex absolute bottom-8 left-1/2 -translate-x-1/2 z-40 bg-white rounded-full shadow-lg border border-gray-200 items-center p-1 gap-1 animate-in fade-in slide-in-from-bottom-4 duration-200"
-                    >
-                        {/* Frames Popover - Removed and moved to Sidebar */}
-
-                        <button onClick={deleteSelected} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors" title="刪除">
-                            <Trash2 className="w-5 h-5" />
-                        </button>
-                        <div className="w-px h-4 bg-gray-200"></div>
-
-                        <button onClick={duplicateObject} className="p-2 text-gray-600 hover:bg-gray-50 rounded-full transition-colors" title="複製">
-                            <Copy className="w-5 h-5" />
-                        </button>
-
-                        {/* Frame Upload Button */}
-                        {(selectedObject as any).isFrameLayer && (
-                            <>
-                                <div className="w-px h-4 bg-gray-200"></div>
-                                <button onClick={() => setShowGalleryModal(true)} className="p-2 text-gray-600 hover:bg-gray-50 rounded-full transition-colors" title="上傳照片">
-                                    <Upload className="w-5 h-5" />
-                                </button>
-                            </>
-                        )}
-
-                        {selectedObject.type === 'image' && (
-                            <>
-                                <div className="w-px h-4 bg-gray-200"></div>
-
-                                <button onClick={toggleFillCanvas} className="p-2 text-gray-600 hover:bg-gray-50 rounded-full transition-colors" title={(selectedObject as any).isMaximized ? "還原大小" : "符合畫布"}>
-                                    {(selectedObject as any).isMaximized ? <Minimize2 className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
-                                </button>
-
-                                <button onClick={flipObject} className="p-2 text-gray-600 hover:bg-gray-50 rounded-full transition-colors" title="水平翻轉">
-                                    <FlipHorizontal className="w-5 h-5" />
-                                </button>
-
-                                <button onClick={() => {
-                                    const obj = selectedObject;
-                                    // Rotate 90
-                                    obj.rotate((obj.angle || 0) + 90);
-                                    fabricCanvas.current?.requestRenderAll();
-                                    saveHistory();
-                                }} className="p-2 text-gray-600 hover:bg-gray-50 rounded-full transition-colors" title="旋轉">
-                                    <RefreshCw className="w-5 h-5" />
-                                </button>
-
-                                {/* Brightness button desktop */}
-                                <div className="relative">
-                                    <button onClick={() => setShowBrightnessSlider(v => !v)} className={`p-2 rounded-full transition-colors ${showBrightnessSlider ? 'text-amber-600 bg-amber-50' : 'text-gray-600 hover:bg-gray-50'}`} title="亮度">
-                                        <Sun className="w-5 h-5" />
-                                    </button>
-                                    {showBrightnessSlider && (
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white rounded-xl shadow-xl border border-gray-200 p-3 z-50 w-52 animate-in fade-in slide-in-from-bottom-2 duration-150">
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="text-xs font-bold text-gray-700">亮度</span>
-                                                <span className="text-xs font-mono text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">{Math.round(brightness * 100)}%</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <Sun className="w-3 h-3 text-gray-400" />
-                                                <input
-                                                    type="range"
-                                                    min="-1" max="1" step="0.01"
-                                                    value={brightness}
-                                                    onChange={(e) => {
-                                                        const val = parseFloat(e.target.value);
-                                                        setBrightness(val);
-                                                        applyBrightness(val);
-                                                    }}
-                                                    onMouseUp={saveHistory}
-                                                    className="flex-1 accent-amber-500"
-                                                />
-                                                <Sun className="w-4 h-4 text-amber-400" />
-                                            </div>
-                                            <button onClick={() => { setBrightness(0); applyBrightness(0); saveHistory(); }} className="mt-2 w-full text-[10px] text-center text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded py-1">重置</button>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="w-px h-4 bg-gray-200"></div>
-
-                                {/* Only show Lock/Unlock if object has a clipPath (Crop/Frame) */}
-                                {selectedObject.clipPath && (
-                                    <button onClick={toggleCropMode} className={`p-2 rounded-full hover:bg-gray-50 transition-colors ${isCropping ? 'text-blue-600 bg-blue-50' : 'text-gray-600'}`} title="鎖定/解鎖">
-                                        {isCropping ? <Unlock className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
-                                    </button>
-                                )}
-                            </>
-                        )}
-
-                        {/* Text Specific: Edit Button */}
-                        {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
-                            <>
-                                <div className="w-px h-4 bg-gray-200"></div>
-
-                                <button onClick={() => setShowMobileTextInput(true)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-full transition-colors" title="編輯文字">
-                                    <Pencil className="w-5 h-5" />
-                                </button>
-
-                                {/* Font Style */}
-                                <button onClick={() => updateSelectedObject('fontWeight', (selectedObject as any).fontWeight === 'bold' ? 'normal' : 'bold')} className={`p-2 rounded-full transition-colors ${(selectedObject as any).fontWeight === 'bold' ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-50'}`} title="粗體">
-                                    <Bold className="w-5 h-5" />
-                                </button>
-
-                                <button onClick={() => updateSelectedObject('fontStyle', (selectedObject as any).fontStyle === 'italic' ? 'normal' : 'italic')} className={`p-2 rounded-full transition-colors ${(selectedObject as any).fontStyle === 'italic' ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-50'}`} title="斜體">
-                                    <Italic className="w-5 h-5" />
-                                </button>
-
-                                {/* Color Picker Popover Trigger (Simple implementation for now, using native color input hidden or custom UI) */}
-                                <div className="relative group">
-                                    <label className="cursor-pointer p-2 rounded-full hover:bg-gray-50 flex items-center justify-center" title="Text Color">
-                                        <div className="w-5 h-5 rounded-full border border-gray-300 shadow-sm" style={{ backgroundColor: selectedObject.fill as string }}></div>
-                                        <input
-                                            type="color"
-                                            className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                                            value={selectedObject.fill as string}
-                                            onChange={(e) => updateSelectedObject('fill', e.target.value)}
-                                        />
-                                    </label>
-                                </div>
-
-                                {/* Background Color Picker */}
-                                <div className="relative group">
-                                    <label className="cursor-pointer p-2 rounded-full hover:bg-gray-50 flex items-center justify-center" title="Background Color">
-                                        <div className="w-5 h-5 rounded-md border border-gray-300 shadow-sm relative overflow-hidden" style={{ backgroundColor: (selectedObject.backgroundColor as string) || 'transparent' }}>
-                                            {(!selectedObject.backgroundColor || selectedObject.backgroundColor === 'transparent') && (
-                                                <div className="absolute inset-0 flex items-center justify-center">
-                                                    <div className="w-full h-[1px] bg-red-500 rotate-45 transform scale-150"></div>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <input
-                                            type="color"
-                                            className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                                            value={(selectedObject.backgroundColor as string) || '#ffffff'}
-                                            onChange={(e) => updateSelectedObject('backgroundColor', e.target.value)}
-                                        />
-                                    </label>
-                                </div>
-
-                                {/* Corner Radius (Visible when background is set) */}
-                                {selectedObject.backgroundColor && selectedObject.backgroundColor !== 'transparent' && (
-                                    <div className="flex items-center gap-1 mx-1">
-                                        <div className="w-px h-4 bg-gray-200 mr-1"></div>
-                                        <span className="text-[10px] text-gray-500 font-medium">R</span>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            max="50"
-                                            className="w-10 text-xs border border-gray-300 rounded px-1 py-0.5 text-center focus:border-blue-500 outline-none"
-                                            value={(selectedObject as any).bgCornerRadius || 0}
-                                            onChange={(e) => updateSelectedObject('bgCornerRadius', parseInt(e.target.value))}
-                                            title="Corner Radius"
-                                        />
-                                    </div>
-                                )}
-
-                                {/* Font Family Dropdown (Custom) */}
-                                <FontPicker
-                                    value={(selectedObject as any).fontFamily}
-                                    onChange={(val) => updateSelectedObject('fontFamily', val)}
-                                    options={FONT_OPTIONS}
-                                />
-                            </>
-                        )}
-                    </div>
-                )}
             </div>
 
             {/* --- Mobile Only: Bottom Tab Bar OR Context Edit Panel --- */}
@@ -6237,90 +6158,92 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             </div>
 
             {/* 4. Tab Bar (Always visible when selected) */}
-            {selectedObject && !isMobileLayersOpen && !showCropMenu && (
-                <div className="md:hidden fixed bottom-0 left-0 right-0 z-[120] bg-white border-t border-gray-200 pb-safe pt-2 pb-2 h-[72px] flex justify-center items-center overflow-x-auto">
+            {selectedObject && !isMobileLayersOpen && !showCropMenu &&
+                ((selectedObject.type === 'i-text' || selectedObject.type === 'text') ||
+                    (selectedObject.type === 'image' && !(selectedObject as any).isStickerLayer && !(selectedObject as any).isBarcodeLayer && (!activePanel || activePanel === 'none'))) && (
+                    <div className="md:hidden fixed bottom-0 left-0 right-0 z-[120] bg-white border-t border-gray-200 pb-safe pt-2 pb-2 h-[72px] flex justify-center items-center overflow-x-auto">
 
-                    {/* TEXT TOOLS */}
-                    {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
-                        <div className="flex w-full justify-around">
-                            <button onClick={() => { setActiveMobileSubMenu('edit'); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center gap-1 p-2 min-w-[4rem] ${activeMobileSubMenu === 'edit' ? 'text-blue-600' : 'text-gray-400'}`}>
-                                <Pencil className="w-6 h-6" />
-                                <span className="text-[10px] font-medium">編輯</span>
-                            </button>
-                            <button onClick={() => { setActiveMobileSubMenu('font'); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center gap-1 p-2 min-w-[4rem] ${activeMobileSubMenu === 'font' ? 'text-blue-600' : 'text-gray-400'}`}>
-                                <Type className="w-6 h-6" />
-                                <span className="text-[10px] font-medium">字體</span>
-                            </button>
-                            <button onClick={() => { setActiveMobileSubMenu('color'); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center gap-1 p-2 min-w-[4rem] ${activeMobileSubMenu === 'color' ? 'text-blue-600' : 'text-gray-400'}`}>
-                                <Palette className="w-6 h-6" />
-                                <span className="text-[10px] font-medium">顏色</span>
-                            </button>
-                            <button onClick={() => { setActiveMobileSubMenu('align'); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center gap-1 p-2 min-w-[4rem] ${activeMobileSubMenu === 'align' ? 'text-blue-600' : 'text-gray-400'}`}>
-                                <AlignLeft className="w-6 h-6" />
-                                <span className="text-[10px] font-medium">對齊</span>
-                            </button>
-                        </div>
-                    )}
-
-                    {/* IMAGE TOOLS */}
-                    {selectedObject.type === 'image' && (
-                        <div className="flex items-center gap-4 px-4 w-full justify-around">
-                            {/* Frame Upload Button */}
-                            {(selectedObject as any).isFrameLayer && (
-                                <button onClick={() => setShowGalleryModal(true)} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-blue-600">
-                                    <Upload className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">上傳照片</span>
+                        {/* TEXT TOOLS */}
+                        {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
+                            <div className="flex w-full justify-around">
+                                <button onClick={() => { setActiveMobileSubMenu('edit'); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center gap-1 p-2 min-w-[4rem] ${activeMobileSubMenu === 'edit' ? 'text-blue-600' : 'text-gray-400'}`}>
+                                    <Pencil className="w-6 h-6" />
+                                    <span className="text-[10px] font-medium">編輯</span>
                                 </button>
-                            )}
-                            {/* AI Tools: Cartoonize */}
-                            {mobileActions?.onAiCartoon && (
-                                <button onClick={mobileActions?.onAiCartoon} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-purple-600">
-                                    <Wand2 className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">卡通化</span>
+                                <button onClick={() => { setActiveMobileSubMenu('font'); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center gap-1 p-2 min-w-[4rem] ${activeMobileSubMenu === 'font' ? 'text-blue-600' : 'text-gray-400'}`}>
+                                    <Type className="w-6 h-6" />
+                                    <span className="text-[10px] font-medium">字體</span>
                                 </button>
-                            )}
-
-                            {/* AI Tools: Remove BG */}
-                            {mobileActions?.onAiRemoveBg && (
-                                <button onClick={mobileActions?.onAiRemoveBg} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-red-600">
-                                    <Scissors className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">去背</span>
+                                <button onClick={() => { setActiveMobileSubMenu('color'); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center gap-1 p-2 min-w-[4rem] ${activeMobileSubMenu === 'color' ? 'text-blue-600' : 'text-gray-400'}`}>
+                                    <Palette className="w-6 h-6" />
+                                    <span className="text-[10px] font-medium">顏色</span>
                                 </button>
-                            )}
-
-                            {/* 相框 Button - shown when image is selected */}
-                            {mobileActions?.onOpenFrames && !(selectedObject as any).isFrameLayer && (
-                                <button onClick={mobileActions?.onOpenFrames} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-amber-600">
-                                    <Frame className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">相框</span>
+                                <button onClick={() => { setActiveMobileSubMenu('align'); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center gap-1 p-2 min-w-[4rem] ${activeMobileSubMenu === 'align' ? 'text-blue-600' : 'text-gray-400'}`}>
+                                    <AlignLeft className="w-6 h-6" />
+                                    <span className="text-[10px] font-medium">對齊</span>
                                 </button>
-                            )}
+                            </div>
+                        )}
 
-                            {/* Fallback Legacy AI */}
-                            {!mobileActions?.onAiCartoon && !mobileActions?.onAiRemoveBg && mobileActions?.onOpenAI && (
-                                <button onClick={mobileActions?.onOpenAI} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-purple-600">
-                                    <Sparkles className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">AI 魔法</span>
+                        {/* IMAGE TOOLS */}
+                        {selectedObject.type === 'image' && !(selectedObject as any).isStickerLayer && (!activePanel || activePanel === 'none') && (
+                            <div className="flex items-center gap-4 px-4 w-full justify-around">
+                                {/* Frame Upload Button */}
+                                {(selectedObject as any).isFrameLayer && mobileActions?.onUpload && (
+                                    <button onClick={mobileActions.onUpload} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-blue-600">
+                                        <Upload className="w-6 h-6" />
+                                        <span className="text-[10px] font-medium">上傳照片</span>
+                                    </button>
+                                )}
+                                {/* AI Tools: Cartoonize */}
+                                {mobileActions?.onAiCartoon && (
+                                    <button onClick={mobileActions?.onAiCartoon} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-purple-600">
+                                        <Wand2 className="w-6 h-6" />
+                                        <span className="text-[10px] font-medium">卡通化</span>
+                                    </button>
+                                )}
+
+                                {/* AI Tools: Remove BG */}
+                                {mobileActions?.onAiRemoveBg && (
+                                    <button onClick={mobileActions?.onAiRemoveBg} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-red-600">
+                                        <Scissors className="w-6 h-6" />
+                                        <span className="text-[10px] font-medium">去背</span>
+                                    </button>
+                                )}
+
+                                {/* 相框 Button - shown when image is selected */}
+                                {mobileActions?.onOpenFrames && !(selectedObject as any).isFrameLayer && (
+                                    <button onClick={mobileActions?.onOpenFrames} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-amber-600">
+                                        <Frame className="w-6 h-6" />
+                                        <span className="text-[10px] font-medium">相框</span>
+                                    </button>
+                                )}
+
+                                {/* Fallback Legacy AI */}
+                                {!mobileActions?.onAiCartoon && !mobileActions?.onAiRemoveBg && mobileActions?.onOpenAI && (
+                                    <button onClick={mobileActions?.onOpenAI} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-purple-600">
+                                        <Sparkles className="w-6 h-6" />
+                                        <span className="text-[10px] font-medium">AI 魔法</span>
+                                    </button>
+                                )}
+
+
+
+                                <button onClick={centerObject} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-gray-500 active:text-blue-600">
+                                    <AlignCenter className="w-6 h-6" />
+                                    <span className="text-[10px] font-medium">置中</span>
                                 </button>
-                            )}
-
-
-
-                            <button onClick={centerObject} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-gray-500 active:text-blue-600">
-                                <AlignCenter className="w-6 h-6" />
-                                <span className="text-[10px] font-medium">置中</span>
-                            </button>
-                        </div>
-                    )}
-                </div>
-            )}
+                            </div>
+                        )}
+                    </div>
+                )}
 
             {/* 4. Main Mobile Bottom Tab Bar (Visible when NO Object Selected) */}
             <div className={`
         md:hidden fixed bottom-0 left-0 right-0 h-auto bg-white border-t border-gray-200 z-[100] 
         flex flex-col w-full
         transition-transform duration-300 touch-pan-x snap-x snap-mandatory overscroll-x-contain
-        ${selectedObject || isMobileLayersOpen || showCropMenu ? 'translate-y-full' : 'translate-y-0'}
+        ${(selectedObject && !(selectedObject as any).isStickerLayer && !(selectedObject as any).isBarcodeLayer) || isMobileLayersOpen || showCropMenu ? 'translate-y-full' : 'translate-y-0'}
       `}>
                 {/* Mobile Product Info Bar (Top of Toolbar) */}
                 {currentProduct && !showCropMenu && (
@@ -6592,161 +6515,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     </div>
                 </div>
             )}
-
-            {/* Gallery Modal */}
-            {showGalleryModal && (
-                <div className="absolute inset-0 z-[150] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh] animate-in fade-in zoom-in duration-200">
-                        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                <Upload className="w-5 h-5" />
-                                我的圖庫
-                            </h3>
-                            <button onClick={() => setShowGalleryModal(false)} className="p-1 hover:bg-gray-100 rounded-full text-gray-500">
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <div className="p-4 flex gap-2 border-b border-gray-100 bg-gray-50 overflow-x-auto">
-                            <button
-                                onClick={() => framePhotoInputRef.current?.click()}
-                                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:text-blue-600 transition-colors shadow-sm whitespace-nowrap"
-                            >
-                                <Upload className="w-4 h-4" />
-                                電腦上傳
-                            </button>
-                            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:border-blue-500 hover:text-blue-600 transition-colors shadow-sm whitespace-nowrap text-gray-400 cursor-not-allowed">
-                                <Smartphone className="w-4 h-4" />
-                                手機上傳
-                            </button>
-                            <button className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 font-medium shadow-sm whitespace-nowrap">
-                                <RefreshCw className="w-4 h-4" />
-                                從歷史圖片中選擇
-                            </button>
-                        </div>
-
-                        {/* Frame Slider (PC Mode - Optional if needed here, but mostly mobile requested) */}
-                        {/* Actually, user requested mobile slider in toolbar, this modal is for gallery upload */}
-
-                        <div className="p-2 bg-blue-50/50 text-xs text-blue-600 px-4 py-2">
-                            已選擇: 0 張, 共: {uploadedHistory.length} 張
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-4 bg-white min-h-[200px]">
-                            {uploadedHistory.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
-                                    <Upload className="w-12 h-12 text-gray-200" />
-                                    <p>尚無歷史圖片</p>
-                                    <button onClick={() => framePhotoInputRef.current?.click()} className="text-blue-500 hover:underline">
-                                        立即上傳
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-3 gap-3">
-                                    {uploadedHistory.map((url, idx) => (
-                                        <button
-                                            key={idx}
-                                            onClick={async () => {
-                                                if (!fabricCanvas.current || !selectedObject) return;
-                                                const canvas = fabricCanvas.current;
-                                                setShowGalleryModal(false);
-
-                                                await withHistoryTransaction(async () => {
-                                                    try {
-                                                        const img = await FabricImage.fromURL(url);
-                                                        const frame = selectedObject;
-
-                                                        ensureObjectId(img, 'img');
-
-                                                        img.set({
-                                                            left: frame.left,
-                                                            top: frame.top,
-                                                            originX: frame.originX,
-                                                            originY: frame.originY,
-                                                            lockUniScaling: true,
-                                                            // @ts-ignore
-                                                            frameId: frame.id
-                                                        });
-
-                                                        const frameW = frame.getScaledWidth();
-                                                        const frameH = frame.getScaledHeight();
-                                                        const scaleX = frameW / (img.width || 1);
-                                                        const scaleY = frameH / (img.height || 1);
-                                                        const scale = Math.max(scaleX, scaleY);
-
-                                                        img.scale(scale);
-
-                                                        const clipPoints = (frame as any).clipPathPoints;
-                                                        if (clipPoints) {
-                                                            img.clipPath = new Polygon(clipPoints, {
-                                                                left: frame.left,
-                                                                top: frame.top,
-                                                                originX: frame.originX,
-                                                                originY: frame.originY,
-                                                                scaleX: frame.scaleX,
-                                                                scaleY: frame.scaleY,
-                                                                angle: frame.angle,
-                                                                absolutePositioned: true
-                                                            });
-                                                        } else {
-                                                            img.clipPath = new Rect({
-                                                                left: frame.left,
-                                                                top: frame.top,
-                                                                originX: frame.originX,
-                                                                originY: frame.originY,
-                                                                width: frame.width,
-                                                                height: frame.height,
-                                                                scaleX: frame.scaleX,
-                                                                scaleY: frame.scaleY,
-                                                                angle: frame.angle,
-                                                                absolutePositioned: true
-                                                            });
-                                                        }
-
-                                                        canvas.add(img);
-
-                                                        const objects = canvas.getObjects();
-                                                        const frameIndex = objects.indexOf(frame);
-
-                                                        if (frameIndex > -1) {
-                                                            canvas.moveObjectTo(img, frameIndex);
-                                                        } else {
-                                                            canvas.sendObjectToBack(img);
-                                                            if (baseLayerRef.current) {
-                                                                const baseIndex = objects.indexOf(baseLayerRef.current);
-                                                                if (baseIndex > -1) canvas.moveObjectTo(img, baseIndex + 1);
-                                                            }
-                                                        }
-
-                                                        if (maskLayerRef.current) canvas.bringObjectToFront(maskLayerRef.current);
-
-                                                        canvas.setActiveObject(img);
-                                                        canvas.requestRenderAll();
-                                                    } catch (err) {
-                                                        console.error("Failed to add history photo", err);
-                                                    }
-                                                });
-                                            }}
-                                            className="aspect-square rounded-lg overflow-hidden border border-gray-200 hover:border-blue-500 hover:ring-2 hover:ring-blue-200 transition-all relative group"
-                                        >
-                                            <img src={url} className="w-full h-full object-cover" />
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Hidden File Input for Frame Photo Upload */}
-            <input
-                type="file"
-                ref={framePhotoInputRef}
-                onChange={handleFramePhotoUpload}
-                accept="image/*"
-                className="hidden"
-            />
         </div>
     );
 });

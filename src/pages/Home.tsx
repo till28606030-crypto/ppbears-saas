@@ -605,12 +605,14 @@ export default function Home() {
         if (canvasRef.current) {
             if (type === 'sticker') {
                 canvasRef.current.addSticker(item.url || item);
+                if (window.innerWidth < 768) setActivePanel('none');
             } else if (type === 'frame') {
                 // @ts-ignore
                 if (canvasRef.current.addFrame) {
                     // @ts-ignore
                     canvasRef.current.addFrame(item);
                 }
+                if (window.innerWidth < 768) setActivePanel('none');
             } else {
                 const url = item.url || item;
                 console.log('[handleAddAsset] Setting background:', { url, currentBg: currentBgRef.current });
@@ -621,6 +623,7 @@ export default function Home() {
                 currentBgRef.current = url;
                 console.log('[handleAddAsset] Calling setCanvasBgImage');
                 canvasRef.current.setCanvasBgImage(url);
+                if (window.innerWidth < 768) setActivePanel('none');
             }
         } else {
             console.error('[handleAddAsset] canvasRef.current is null!');
@@ -660,37 +663,59 @@ export default function Home() {
                 canvasRef.current.clearLayers();
             }
 
-            if (psdWidth > 0 && psdHeight > 0 && productConfig && canvasRef.current?.addLayer) {
-                const targetWidth = productConfig.width;
-                const targetHeight = productConfig.height;
+            if (canvasRef.current?.addDesignLayers) {
+                let scale = 1;
+                if (psdWidth > 0 && psdHeight > 0 && productConfig) {
+                    const targetWidth = productConfig.width;
+                    const targetHeight = productConfig.height;
+                    const scaleX = targetWidth / psdWidth;
+                    const scaleY = targetHeight / psdHeight;
+                    scale = Math.max(scaleX, scaleY);
+                }
 
-                const scaleX = targetWidth / psdWidth;
-                const scaleY = targetHeight / psdHeight;
-                const scale = Math.max(scaleX, scaleY);
+                const scaledLayers = design.layers.map((layer: any) => ({
+                    ...layer,
+                    left: layer.left * scale,
+                    top: layer.top * scale,
+                    scaleX: (layer.scaleX || 1) * scale,
+                    scaleY: (layer.scaleY || 1) * scale,
+                }));
 
-                design.layers.forEach((layer: any) => {
-                    // @ts-ignore
-                    canvasRef.current.addLayer({
-                        ...layer,
-                        left: layer.left * scale,
-                        top: layer.top * scale,
-                        scaleX: scale,
-                        scaleY: scale,
-                    });
-                });
+                // @ts-ignore
+                canvasRef.current.addDesignLayers(scaledLayers).catch(console.error);
             } else {
-                // Legacy Fallback (No dimensions saved)
-                design.layers.forEach((layer: any) => {
-                    // @ts-ignore
-                    if (canvasRef.current?.addLayer) {
+                if (psdWidth > 0 && psdHeight > 0 && productConfig && canvasRef.current?.addLayer) {
+                    const targetWidth = productConfig.width;
+                    const targetHeight = productConfig.height;
+
+                    const scaleX = targetWidth / psdWidth;
+                    const scaleY = targetHeight / psdHeight;
+                    const scale = Math.max(scaleX, scaleY);
+
+                    design.layers.forEach((layer: any) => {
                         // @ts-ignore
                         canvasRef.current.addLayer({
                             ...layer,
-                            scaleX: 1,
-                            scaleY: 1
+                            left: layer.left * scale,
+                            top: layer.top * scale,
+                            scaleX: (layer.scaleX || 1) * scale,
+                            scaleY: (layer.scaleY || 1) * scale,
                         });
-                    }
-                });
+                    });
+                } else {
+                    // Legacy Fallback (No dimensions saved)
+                    design.layers.forEach((layer: any) => {
+                        // @ts-ignore
+                        if (canvasRef.current?.addLayer) {
+                            // @ts-ignore
+                            canvasRef.current.addLayer({
+                                ...layer,
+                                scaleX: layer.scaleX || 1,
+                                scaleY: layer.scaleY || 1
+                            });
+                        }
+                    });
+                }
             }
 
             if (window.innerWidth < 768) setActivePanel('none');
@@ -733,6 +758,7 @@ export default function Home() {
 
                     // Add layers (Reverse order: Bottom to Top)
                     const layers = [...psd.children].reverse();
+                    const parsedPsdLayers: any[] = [];
 
                     for (const layer of layers) {
                         if (layer.hidden) continue;
@@ -740,8 +766,7 @@ export default function Home() {
                             const layerUrl = layer.canvas.toDataURL();
                             const l = layer as any;
 
-                            // @ts-ignore
-                            await canvasRef.current.addLayer({
+                            parsedPsdLayers.push({
                                 image: layerUrl,
                                 left: (l.left || 0) * scale,
                                 top: (l.top || 0) * scale,
@@ -751,6 +776,15 @@ export default function Home() {
                                 scaleY: scale,
                                 name: l.name
                             });
+                        }
+                    }
+
+                    if (canvasRef.current?.addDesignLayers) {
+                        await canvasRef.current.addDesignLayers(parsedPsdLayers);
+                    } else {
+                        for (const l of parsedPsdLayers) {
+                            // @ts-ignore
+                            await canvasRef.current.addLayer(l);
                         }
                     }
                 } else {
@@ -1806,15 +1840,16 @@ export default function Home() {
                         ref={canvasRef}
                         uploadedImage={uploadedImage}
                         activeTool={activeTool}
+                        activePanel={activePanel}
                         onToolUsed={() => setActiveTool(null)}
                         previewConfig={productConfig || undefined}
                         currentProduct={currentProduct}
                         onCropModeChange={setIsCropping}
                         onTemplateLoadingChange={setIsTemplateLoading}
                         onImageLayerChange={setCanvasHasUserImage}
-                        onSelectionChange={(obj) => {
+                        onSelectionChange={(obj: any) => {
                             setHasClipPath(!!obj?.clipPath);
-                            setIsImageSelected(obj?.type === 'image');
+                            setIsImageSelected(obj?.type === 'image' && !obj?.isStickerLayer && !obj?.isBarcodeLayer);
                         }}
                         mobileActions={{
                             onUpload: () => setShowGalleryModal(true),
