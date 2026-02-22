@@ -54,18 +54,25 @@ export default function AdminOrders() {
         try {
             if (deleteTarget === 'bulk') {
                 const idsToDelete = Array.from(selectedIds);
-                const { error } = await supabase
-                    .from('custom_designs')
-                    .delete()
-                    .in('design_id', idsToDelete);
+                // Call the RPC function to bypass RLS and delete securely
+                const { error } = await supabase.rpc('delete_custom_designs_admin', {
+                    design_ids: idsToDelete
+                });
 
                 if (error) throw error;
 
+                // Update UI state
                 setDesigns(prev => prev.filter(d => !selectedIds.has(d.design_id)));
                 setSelectedIds(new Set());
             } else {
-                const { error } = await supabase.from('custom_designs').delete().eq('design_id', deleteTarget);
+                // Delete single item via RPC
+                const { error } = await supabase.rpc('delete_custom_designs_admin', {
+                    design_ids: [deleteTarget]
+                });
+
                 if (error) throw error;
+
+                // Update UI state
                 setDesigns(prev => prev.filter(d => d.design_id !== deleteTarget));
                 setSelectedIds(prev => {
                     const newSet = new Set(prev);
@@ -74,13 +81,15 @@ export default function AdminOrders() {
                 });
             }
         } catch (err: any) {
-            alert('刪除失敗：' + err.message);
+            console.error('Delete failed:', err);
+            alert('刪除失敗：' + (err.message || String(err)));
         } finally {
             setDeleteTarget(null);
         }
     };
 
     const handleDelete = (designId: string) => {
+        if (!designId) return;
         setDeleteTarget(designId);
     };
 
