@@ -932,6 +932,45 @@ export default function Home() {
             console.log('[Cart] Price:', finalPrice);
             console.log('[Cart] Options:', finalOptions);
 
+            // 1. Convert Base64 to Blobs and Upload to Supabase Storage
+            console.log('[Cart] Uploading images to Supabase Storage...');
+
+            const base64ToBlob = (base64: string, mime: string) => {
+                const parts = base64.split(',');
+                const byteString = atob(parts[1]);
+                const ab = new ArrayBuffer(byteString.length);
+                const ia = new Uint8Array(ab);
+                for (let i = 0; i < byteString.length; i++) {
+                    ia[i] = byteString.charCodeAt(i);
+                }
+                return new Blob([ab], { type: mime });
+            };
+
+            let previewUrl = previewImage;
+            let printUrl = printImage;
+
+            try {
+                const previewBlob = base64ToBlob(previewImage, 'image/jpeg');
+                const printBlob = base64ToBlob(printImage, 'image/png');
+
+                const [previewUpload, printUpload] = await Promise.all([
+                    supabase.storage.from('designs').upload(`${designId}/preview.jpg`, previewBlob, { upsert: true, contentType: 'image/jpeg' }),
+                    supabase.storage.from('designs').upload(`${designId}/print.png`, printBlob, { upsert: true, contentType: 'image/png' })
+                ]);
+
+                if (previewUpload.error) console.error('[Cart] Preview upload failed:', previewUpload.error);
+                if (printUpload.error) console.error('[Cart] Print upload failed:', printUpload.error);
+
+                if (!previewUpload.error) {
+                    previewUrl = supabase.storage.from('designs').getPublicUrl(`${designId}/preview.jpg`).data.publicUrl;
+                }
+                if (!printUpload.error) {
+                    printUrl = supabase.storage.from('designs').getPublicUrl(`${designId}/print.png`).data.publicUrl;
+                }
+            } catch (uploadErr) {
+                console.warn('[Cart] Image upload to storage failed, falling back to base64 for database:', uploadErr);
+            }
+
             // Product ID: 123835 - 客製化手機殼
             const WOOCOMMERCE_PRODUCT_ID = 123835;
             const WOOCOMMERCE_URL = 'https://ppbears.com';
@@ -952,7 +991,8 @@ export default function Home() {
                     price: finalPrice,
                     options: finalOptions,
                     canvas_json: canvasJson,
-                    preview_image: previewImage || null,
+                    preview_image: previewUrl,
+                    print_image: printUrl,
                 }, { onConflict: 'design_id' })
                 .select()
                 .single();
