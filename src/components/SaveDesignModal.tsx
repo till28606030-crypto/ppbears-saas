@@ -484,38 +484,34 @@ export default function SaveDesignModal({
         return groupItems;
     };
 
-    // Auto-select defaults
-    // MODIFIED: Only set defaults if nothing is selected yet. 
-    // This prevents "Stuck Selection" where selecting a different group (e.g., RhinoShield) 
-    // is overridden by the default (e.g., DevilCase) on every re-render.
-    /*
+    // Auto-select first item for 'list' type groups if not already selected
     useEffect(() => {
         if (!loading && validGroups.length > 0) {
             setSelectedOptions(prev => {
                 const next = { ...prev };
                 let hasChanges = false;
 
-                // ✅ 只對 Step 1 自動選第一個選項（Step2/3 不要自動全選）
-                const step1Groups = stepGroups.get(1) || [];
-                step1Groups.forEach(group => {
-                    const groupKey = getGroupKey(group);
-                    if (!next[groupKey]) {
-                        const validItems = getFilteredItems(group.id);
-                        if (validItems.length > 0) {
-                            next[groupKey] = validItems[0].id;
-                            hasChanges = true;
+                validGroups.forEach(group => {
+                    const ui = getUI(group);
+                    const displayType = normalizeDisplayType(ui.displayType || ui.display_type);
+
+                    // IF it's a list, we pre-select the first available option
+                    if (displayType === 'list') {
+                        const groupKey = getGroupKey(group);
+                        if (!next[groupKey]) {
+                            const validItems = getFilteredItems(group.id);
+                            if (validItems.length > 0) {
+                                next[groupKey] = validItems[0].id;
+                                hasChanges = true;
+                            }
                         }
                     }
                 });
 
                 return hasChanges ? next : prev;
             });
-            
-            // Only set step to 'case' if it's the very first load (no step state logic here to avoid reset)
-            // Actually, we don't want to force reset step here.
         }
-    }, [loading, validGroups, items, availability, productId, stepGroups]);
-    */
+    }, [loading, validGroups, items, availability, productId]);
 
     if (!isOpen) return null;
 
