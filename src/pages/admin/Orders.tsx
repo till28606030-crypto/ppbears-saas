@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { ShoppingBag, Download, Clock, Search, Trash2, ExternalLink, RefreshCw } from 'lucide-react';
+import { ShoppingBag, Download, Clock, Search, Trash2, ExternalLink, RefreshCw, CheckSquare, Square } from 'lucide-react';
 
 interface Design {
     id: string;
@@ -20,10 +20,14 @@ export default function AdminOrders() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+    const [deleteTarget, setDeleteTarget] = useState<'bulk' | string | null>(null);
 
     const fetchDesigns = async () => {
         setLoading(true);
         setError(null);
+        setSelectedIds(new Set()); // Reset selection on refresh
         try {
             const { data, error: supabaseError } = await supabase
                 .from('custom_designs')
@@ -44,32 +48,124 @@ export default function AdminOrders() {
         fetchDesigns();
     }, []);
 
-    const handleDelete = async (designId: string) => {
-        if (!window.confirm('確定要刪除此設計？此操作無法復原。')) return;
+    const confirmDelete = async () => {
+        if (!deleteTarget) return;
+
         try {
-            const { error } = await supabase.from('custom_designs').delete().eq('design_id', designId);
-            if (error) throw error;
-            setDesigns(prev => prev.filter(d => d.design_id !== designId));
+            if (deleteTarget === 'bulk') {
+                const idsToDelete = Array.from(selectedIds);
+                const { error } = await supabase
+                    .from('custom_designs')
+                    .delete()
+                    .in('design_id', idsToDelete);
+
+                if (error) throw error;
+
+                setDesigns(prev => prev.filter(d => !selectedIds.has(d.design_id)));
+                setSelectedIds(new Set());
+            } else {
+                const { error } = await supabase.from('custom_designs').delete().eq('design_id', deleteTarget);
+                if (error) throw error;
+                setDesigns(prev => prev.filter(d => d.design_id !== deleteTarget));
+                setSelectedIds(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(deleteTarget);
+                    return newSet;
+                });
+            }
         } catch (err: any) {
             alert('刪除失敗：' + err.message);
+        } finally {
+            setDeleteTarget(null);
         }
     };
 
-    const handleDownload = (design: Design) => {
+    const handleDelete = (designId: string) => {
+        setDeleteTarget(designId);
+    };
+
+    const handleBulkDelete = () => {
+        if (selectedIds.size === 0) return;
+        setDeleteTarget('bulk');
+    };
+
+    const handleDownload = async (design: Design) => {
         if (!design.preview_image) {
             alert('此設計無預覽圖可下載');
             return;
         }
-        const link = document.createElement('a');
-        link.href = design.preview_image;
-        link.download = `design-${design.design_id}-PREVIEW.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+
+        try {
+            // Fetch the image as a blob
+            const response = await fetch(design.preview_image);
+            const blob = await response.blob();
+
+            // Create a temporary object URL
+            const url = window.URL.createObjectURL(blob);
+
+            // Create a link and trigger download
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `design-${design.design_id}-PREVIEW.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            // Clean up the object URL
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Download failed:', error);
+            // Fallback to direct navigation if blob download fails, but set target blank
+            window.open(design.preview_image, '_blank');
+        }
+    };
+
+    const handleBulkDownload = async () => {
+        if (selectedIds.size === 0) return;
+
+        const selectedDesigns = designs.filter(d => selectedIds.has(d.design_id) && d.preview_image);
+
+        if (selectedDesigns.length === 0) {
+            alert('選取的設計中沒有可下載的預覽圖。');
+            return;
+        }
+
+        // Let the user know download is starting if many files
+        if (selectedDesigns.length > 3) {
+            alert(`準備下載 ${selectedDesigns.length} 份預覽圖，這可能需要一點時間。`);
+        }
+
+        for (const design of selectedDesigns) {
+            await handleDownload(design);
+            // Add a small delay between downloads to prevent browser from blocking
+            await new Promise(resolve => setTimeout(resolve, 300));
+        }
+    };
+
+    const toggleSelection = (designId: string) => {
+        setSelectedIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(designId)) {
+                newSet.delete(designId);
+            } else {
+                newSet.add(designId);
+            }
+            return newSet;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === filteredDesigns.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(filteredDesigns.map(d => d.design_id)));
+        }
     };
 
     const getEditUrl = (design: Design): string => {
-        const base = `${window.location.origin}/`;
+        const basePath = import.meta.env.VITE_BASE_PATH || '/';
+        const formattedBasePath = basePath.endsWith('/') ? basePath : `${basePath}/`;
+        const base = `${window.location.origin}${formattedBasePath}`;
         const params = new URLSearchParams();
         if (design.product_id) params.set('productId', design.product_id);
         params.set('load_design_id', design.design_id);
@@ -82,18 +178,45 @@ export default function AdminOrders() {
         d.phone_model.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
+    const isAllSelected = filteredDesigns.length > 0 && selectedIds.size === filteredDesigns.length;
+
     return (
         <>
             <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 shadow-sm">
                 <h1 className="text-xl font-semibold text-gray-800">客戶設計管理</h1>
-                <button
-                    onClick={fetchDesigns}
-                    className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors text-sm"
-                    title="重新整理"
-                >
-                    <RefreshCw className="w-4 h-4" />
-                    重新整理
-                </button>
+                <div className="flex items-center gap-3">
+                    {selectedIds.size > 0 && (
+                        <div className="flex items-center bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 mr-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                            <span className="text-sm text-blue-800 font-medium mr-4">
+                                已選取 {selectedIds.size} 項
+                            </span>
+                            <button
+                                onClick={handleBulkDownload}
+                                className="flex items-center gap-1.5 px-3 py-1.5 mr-2 bg-white text-gray-700 hover:text-blue-600 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-md transition-colors text-sm font-medium shadow-sm"
+                                title="批次下載"
+                            >
+                                <Download className="w-4 h-4" />
+                                下載
+                            </button>
+                            <button
+                                onClick={handleBulkDelete}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-red-600 hover:bg-red-50 border border-gray-200 rounded-md transition-colors text-sm font-medium shadow-sm"
+                                title="批次刪除"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                刪除
+                            </button>
+                        </div>
+                    )}
+                    <button
+                        onClick={fetchDesigns}
+                        className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors text-sm"
+                        title="重新整理"
+                    >
+                        <RefreshCw className="w-4 h-4" />
+                        重新整理
+                    </button>
+                </div>
             </header>
 
             <div className="p-8 max-w-6xl mx-auto">
@@ -151,76 +274,114 @@ CREATE POLICY IF NOT EXISTS "admin read all custom_designs"
                             <p className="text-sm text-gray-400 mt-2">當客戶完成設計並加入購物車後，設計將顯示在此頁面。</p>
                         </div>
                     ) : (
-                        <div className="divide-y divide-gray-100">
-                            {filteredDesigns.map((design) => (
-                                <div key={design.design_id} className="p-6 flex items-center gap-6 hover:bg-gray-50 transition-colors">
-                                    {/* Thumbnail */}
-                                    <div className="w-20 h-28 bg-gray-100 rounded-lg overflow-hidden border border-gray-200 flex-shrink-0 flex items-center justify-center">
-                                        {design.preview_image ? (
-                                            <img src={design.preview_image} alt="Preview" className="w-full h-full object-contain" />
-                                        ) : (
-                                            <ShoppingBag className="w-8 h-8 text-gray-300" />
-                                        )}
-                                    </div>
+                        <div>
+                            {/* List Header with Select All */}
+                            <div className="bg-gray-50 px-6 py-3 border-b border-gray-100 flex items-center gap-6 sticky top-0 z-10">
+                                <button
+                                    onClick={toggleSelectAll}
+                                    className="flex items-center justify-center text-gray-500 hover:text-blue-600 transition-colors"
+                                >
+                                    {isAllSelected ? (
+                                        <CheckSquare className="w-5 h-5 text-blue-600" />
+                                    ) : (
+                                        <Square className="w-5 h-5" />
+                                    )}
+                                </button>
+                                <span className="text-sm font-medium text-gray-600 flex-1">
+                                    全選
+                                </span>
+                            </div>
 
-                                    {/* Info */}
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-3 mb-1 flex-wrap">
-                                            <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium">已付款</span>
-                                        </div>
-                                        <p className="font-semibold text-gray-800 truncate">{design.product_name || design.phone_model}</p>
-                                        <p className="text-xs text-gray-500 font-mono mt-1 bg-gray-100 inline-block px-2 py-1 rounded select-all">
-                                            設計 ID: {design.design_id}
-                                        </p>
-                                        <div className="flex items-center gap-4 mt-2 text-sm text-gray-400 flex-wrap">
-                                            <span className="flex items-center gap-1">
-                                                <Clock className="w-3 h-3" />
-                                                {design.created_at
-                                                    ? new Date(design.created_at).toLocaleString('zh-TW')
-                                                    : '—'}
-                                            </span>
-                                            <span>NT$ {design.price}</span>
-                                            {!design.canvas_json && (
-                                                <span className="text-amber-500 text-xs">⚠ 舊版設計（無法重新編輯）</span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Actions */}
-                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                        {/* Open in Editor */}
-                                        {design.canvas_json && design.product_id && (
-                                            <a
-                                                href={getEditUrl(design)}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors shadow-sm text-sm"
-                                                title="在設計器中開啟此設計"
+                            {/* List Items */}
+                            <div className="divide-y divide-gray-100">
+                                {filteredDesigns.map((design) => {
+                                    const isSelected = selectedIds.has(design.design_id);
+                                    return (
+                                        <div
+                                            key={design.design_id}
+                                            className={`p-6 flex items-center gap-6 transition-colors ${isSelected ? 'bg-blue-50/50' : 'hover:bg-gray-50'}`}
+                                        >
+                                            {/* Checkbox */}
+                                            <button
+                                                onClick={() => toggleSelection(design.design_id)}
+                                                className="flex-shrink-0 text-gray-400 hover:text-blue-600 transition-colors"
                                             >
-                                                <ExternalLink className="w-4 h-4" />
-                                                開啟編輯
-                                            </a>
-                                        )}
-                                        {/* Download Preview */}
-                                        <button
-                                            onClick={() => handleDownload(design)}
-                                            disabled={!design.preview_image}
-                                            className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors shadow-sm text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-                                        >
-                                            <Download className="w-4 h-4" />
-                                            下載預覽
-                                        </button>
-                                        {/* Delete */}
-                                        <button
-                                            onClick={() => handleDelete(design.design_id)}
-                                            className="p-2 bg-white border border-gray-200 text-red-500 rounded-lg hover:bg-red-50 hover:border-red-200 transition-colors shadow-sm"
-                                            title="刪除"
-                                        >
-                                            <Trash2 className="w-5 h-5" />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
+                                                {isSelected ? (
+                                                    <CheckSquare className="w-5 h-5 text-blue-600" />
+                                                ) : (
+                                                    <Square className="w-5 h-5" />
+                                                )}
+                                            </button>
+
+                                            {/* Thumbnail */}
+                                            <div className="w-20 h-28 bg-gray-100 rounded-lg overflow-hidden border border-gray-200 flex-shrink-0 flex items-center justify-center">
+                                                {design.preview_image ? (
+                                                    <img src={design.preview_image} alt="Preview" className="w-full h-full object-contain" />
+                                                ) : (
+                                                    <ShoppingBag className="w-8 h-8 text-gray-300" />
+                                                )}
+                                            </div>
+
+                                            {/* Info */}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-3 mb-1 flex-wrap">
+                                                    <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium">已付款</span>
+                                                </div>
+                                                <p className="font-semibold text-gray-800 truncate">{design.product_name || design.phone_model}</p>
+                                                <p className="text-xs text-gray-500 font-mono mt-1 bg-gray-100 inline-block px-2 py-1 rounded select-all">
+                                                    設計 ID: {design.design_id}
+                                                </p>
+                                                <div className="flex items-center gap-4 mt-2 text-sm text-gray-400 flex-wrap">
+                                                    <span className="flex items-center gap-1">
+                                                        <Clock className="w-3 h-3" />
+                                                        {design.created_at
+                                                            ? new Date(design.created_at).toLocaleString('zh-TW')
+                                                            : '—'}
+                                                    </span>
+                                                    <span>NT$ {design.price}</span>
+                                                    {!design.canvas_json && (
+                                                        <span className="text-amber-500 text-xs">⚠ 舊版設計（無法重新編輯）</span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Actions */}
+                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                                {/* Open in Editor */}
+                                                {design.canvas_json && design.product_id && (
+                                                    <a
+                                                        href={getEditUrl(design)}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors shadow-sm text-sm"
+                                                        title="在設計器中開啟此設計"
+                                                    >
+                                                        <ExternalLink className="w-4 h-4" />
+                                                        開啟編輯
+                                                    </a>
+                                                )}
+                                                {/* Download Preview */}
+                                                <button
+                                                    onClick={() => handleDownload(design)}
+                                                    disabled={!design.preview_image}
+                                                    className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors shadow-sm text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                                                >
+                                                    <Download className="w-4 h-4" />
+                                                    下載預覽
+                                                </button>
+                                                {/* Delete */}
+                                                <button
+                                                    onClick={() => handleDelete(design.design_id)}
+                                                    className="p-2 bg-white border border-gray-200 text-red-500 rounded-lg hover:bg-red-50 hover:border-red-200 transition-colors shadow-sm"
+                                                    title="刪除"
+                                                >
+                                                    <Trash2 className="w-5 h-5" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     )}
                 </div>
@@ -231,6 +392,38 @@ CREATE POLICY IF NOT EXISTS "admin read all custom_designs"
                     </p>
                 )}
             </div>
+
+            {/* Custom Confirm Modal for Delete */}
+            {deleteTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6">
+                            <h3 className="text-lg font-bold text-gray-900 mb-2">確認刪除</h3>
+                            <p className="text-gray-600 text-sm">
+                                {deleteTarget === 'bulk'
+                                    ? `確定要刪除選取的 ${selectedIds.size} 筆設計嗎？`
+                                    : '確定要刪除此設計？'}
+                                <br />
+                                <span className="text-red-500 font-medium mt-1 inline-block">此操作無法復原。</span>
+                            </p>
+                        </div>
+                        <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 border-t border-gray-100">
+                            <button
+                                onClick={() => setDeleteTarget(null)}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={confirmDelete}
+                                className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-lg hover:bg-red-700 shadow-sm transition-colors"
+                            >
+                                確定刪除
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }

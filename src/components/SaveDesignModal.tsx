@@ -60,7 +60,7 @@ interface SaveDesignModalProps {
     productId?: string;
     productName: string;
     previewImage: string;
-    onAddToCart: (finalPrice: number, selectedOptions: any) => void;
+    onAddToCart: (finalPrice: number, selectedOptions: any) => Promise<void> | void;
 }
 
 // Storage Keys
@@ -80,6 +80,7 @@ export default function SaveDesignModal({
     const [currentStep, setCurrentStep] = useState(1);
     const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
     const [inlineError, setInlineError] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Lightbox State
     const [zoomedImage, setZoomedImage] = useState<string | null>(null);
@@ -1643,7 +1644,7 @@ export default function SaveDesignModal({
                                                 {isLastStep && (
                                                     <button
                                                         type="button"
-                                                        onClick={() => {
+                                                        onClick={async () => {
                                                             if (!validateCurrentStep()) return;
 
                                                             const storageKey = `ppbears_checkout_progress_${productId || 'default'}`;
@@ -1715,13 +1716,31 @@ export default function SaveDesignModal({
                                                             });
 
                                                             console.log('[SaveDesignModal] Submitting Ordered Options:', customOptions);
-                                                            onAddToCart(currentTotal, customOptions);
+                                                            try {
+                                                                setIsSubmitting(true);
+                                                                await onAddToCart(currentTotal, customOptions);
+                                                            } finally {
+                                                                // We only reset this if the modal stays open (e.g. error),
+                                                                // otherwise the redirect will handle the navigation lock.
+                                                                setIsSubmitting(false);
+                                                            }
                                                         }}
-                                                        className="flex-1 md:flex-none md:w-auto px-8 py-3 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg"
+                                                        disabled={isSubmitting}
+                                                        className={`flex-1 md:flex-none md:w-auto px-8 py-3 text-white rounded-2xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg ${isSubmitting ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                                                            }`}
                                                         title="加入購物車"
                                                     >
-                                                        <ShoppingCart className="w-5 h-5" />
-                                                        加入購物車
+                                                        {isSubmitting ? (
+                                                            <>
+                                                                <Loader2 className="w-5 h-5 animate-spin" />
+                                                                處理中...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <ShoppingCart className="w-5 h-5" />
+                                                                加入購物車
+                                                            </>
+                                                        )}
                                                         <span className="md:inline hidden ml-1">(NT$ {currentTotal})</span>
                                                         <span className="md:hidden ml-1">(${currentTotal})</span>
                                                     </button>

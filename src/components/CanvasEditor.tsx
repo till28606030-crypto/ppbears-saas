@@ -853,6 +853,7 @@ export interface CanvasEditorRef {
     insertImageFromSrc: (src: string) => Promise<void>;
     getCanvasJSON: () => object;
     restoreFromJSON: (json: object) => Promise<void>;
+    clearDraft: () => void;
 }
 
 const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedRef<CanvasEditorRef>) => {
@@ -2985,19 +2986,57 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             }
             return json;
         },
-        restoreFromJSON: async (json: object) => {
+        restoreFromJSON: async (json: any) => {
             const canvas = fabricCanvas.current;
-            if (!canvas) return;
+            if (!canvas || !json.objects) return;
             try {
-                await new Promise<void>((resolve, reject) => {
-                    (canvas as any).loadFromJSON(json, () => {
-                        canvas.requestRenderAll();
-                        resolve();
-                    });
+                // Clear existing user objects
+                const objectsToRemove = canvas.getObjects().filter((obj: any) => {
+                    const sid = String(obj.data?.systemId || obj.id || '').trim();
+                    const kind = obj.data?.kind;
+                    const role = obj.data?.role;
+                    return !(
+                        obj.data?.isSystem === true ||
+                        sid.startsWith('system_') ||
+                        ['system_base_image', 'system_mask_image', 'system_template_group'].includes(sid) ||
+                        ['product_base', 'product_overlay', 'guide'].includes(kind) ||
+                        role === 'product_base' ||
+                        role === 'product_overlay' ||
+                        obj.isBaseLayer === true ||
+                        obj.isMaskLayer === true
+                    );
                 });
+                objectsToRemove.forEach(obj => canvas.remove(obj));
+
+                if (json.backgroundColor) {
+                    canvas.backgroundColor = json.backgroundColor;
+                }
+
+                try {
+                    const objs = await util.enlivenObjects(json.objects);
+                    if (Array.isArray(objs)) {
+                        objs.forEach(obj => canvas.add(obj as any));
+                    }
+                } catch (enlivenErr) {
+                    console.error("Failed to enliven objects:", enlivenErr);
+                }
+
+                // Enforce proper ordering
+                const oldBase = baseLayerRef.current;
+                const oldMask = maskLayerRef.current;
+                if (oldBase) canvas.sendObjectToBack(oldBase);
+                if (oldMask) canvas.bringObjectToFront(oldMask);
+
+                canvas.requestRenderAll();
                 updateLayers();
             } catch (e) {
                 console.error('[CanvasEditor] restoreFromJSON failed:', e);
+            }
+        },
+        clearDraft: () => {
+            const key = getDraftKey();
+            if (key) {
+                removeDraft(key);
             }
         },
         generatePreview: () => {
@@ -3507,6 +3546,11 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
             canvas.discardActiveObject();
             canvas.requestRenderAll();
+
+            const key = getDraftKey();
+            if (key) {
+                removeDraft(key);
+            }
             saveHistory();
         },
         removeUserObjects: (predicate?: (obj: any) => boolean) => {

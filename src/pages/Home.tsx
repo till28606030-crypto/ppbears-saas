@@ -1031,6 +1031,7 @@ export default function Home() {
             checkoutUrl.searchParams.set('quantity', '1');
             checkoutUrl.searchParams.set('design_id', designId);
             console.log('[Cart] Fallback URL:', checkoutUrl.toString());
+
             window.location.href = checkoutUrl.toString();
 
         } catch (error: any) {
