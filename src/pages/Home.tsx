@@ -459,7 +459,7 @@ export default function Home() {
                         return;
                     }
 
-                    // console.log("Loaded Product:", dbProduct);
+                    console.log("[DEBUG] Loaded Product:", dbProduct);
                     setCurrentProduct(dbProduct);
 
                     // Map DB fields to Editor Config

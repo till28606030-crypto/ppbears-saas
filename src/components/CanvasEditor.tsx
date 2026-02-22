@@ -3908,10 +3908,14 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             removeTemplateObjects(canvas);
             canvas.requestRenderAll();
 
-            const [baseEl, maskEl] = await Promise.all([
-                loadImageElement(baseFinal),
-                loadImageElement(maskFinal),
-            ]);
+            const loadPromises = [];
+            if (baseFinal) loadPromises.push(loadImageElement(baseFinal).catch(e => { console.warn('Base image failed to load:', e); return null; }));
+            else loadPromises.push(Promise.resolve(null));
+
+            if (maskFinal) loadPromises.push(loadImageElement(maskFinal).catch(e => { console.warn('Mask image failed to load:', e); return null; }));
+            else loadPromises.push(Promise.resolve(null));
+
+            const [baseEl, maskEl] = await Promise.all(loadPromises);
 
             if (isAborted()) {
                 try { if (baseEl) baseEl.src = ''; } catch { }
@@ -3919,81 +3923,84 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 return;
             }
 
-            const baseImg = new FabricImage(baseEl, { selectable: false, evented: false });
-            const maskImg = new FabricImage(maskEl, { selectable: false, evented: false });
+            let baseImg;
+            if (baseEl) {
+                baseImg = new FabricImage(baseEl, { selectable: false, evented: false });
+                baseImg.set({ objectCaching: false, noScaleCache: true });
+                baseImg.scaleX = REAL_WIDTH / (baseImg.width || 1);
+                baseImg.scaleY = REAL_HEIGHT / (baseImg.height || 1);
+                baseImg.set({
+                    left: REAL_WIDTH / 2,
+                    top: REAL_HEIGHT / 2,
+                    originX: 'center',
+                    originY: 'center',
+                    opacity: 0,
+                    selectable: false,
+                    evented: false,
+                    excludeFromExport: true,
+                    id: 'system_base_image',
+                    data: {
+                        systemId: 'system_base_image',
+                        kind: 'product_base',
+                        role: TEMPLATE_ROLE,
+                        system: true,
+                        isSystem: true
+                    }
+                });
+                (baseImg as any).isBaseLayer = true;
+            }
 
-            baseImg.set({ objectCaching: false, noScaleCache: true });
-            maskImg.set({ objectCaching: false, noScaleCache: true });
+            let maskImg;
+            if (maskEl) {
+                maskImg = new FabricImage(maskEl, { selectable: false, evented: false });
+                maskImg.set({ objectCaching: false, noScaleCache: true });
+                maskImg.scaleX = REAL_WIDTH / (maskImg.width || 1);
+                maskImg.scaleY = REAL_HEIGHT / (maskImg.height || 1);
+                maskImg.set({
+                    left: REAL_WIDTH / 2,
+                    top: REAL_HEIGHT / 2,
+                    originX: 'center',
+                    originY: 'center',
+                    opacity: 0,
+                    selectable: false,
+                    evented: false,
+                    excludeFromExport: true,
+                    id: 'system_mask_image',
+                    data: {
+                        systemId: 'system_mask_image',
+                        kind: 'product_overlay',
+                        role: TEMPLATE_ROLE,
+                        system: true,
+                        isSystem: true
+                    }
+                });
+                (maskImg as any).isMaskLayer = true;
+            }
 
-            if (isAborted()) { safeDisposeLocal(undefined, [baseImg, maskImg]); return; }
+            if (isAborted()) { safeDisposeLocal(undefined, [baseImg, maskImg].filter(Boolean) as FabricObject[]); return; }
 
-            // [TPL] T2: (3) 三重標記
-            baseImg.scaleX = REAL_WIDTH / (baseImg.width || 1);
-            baseImg.scaleY = REAL_HEIGHT / (baseImg.height || 1);
-            baseImg.set({
-                left: REAL_WIDTH / 2,
-                top: REAL_HEIGHT / 2,
-                originX: 'center',
-                originY: 'center',
-                opacity: 0,
-                selectable: false,
-                evented: false,
-                excludeFromExport: true,
-                id: 'system_base_image',
-                data: {
-                    systemId: 'system_base_image',
-                    kind: 'product_base',
-                    role: TEMPLATE_ROLE,
-                    system: true,
-                    isSystem: true
-                }
-            });
+            if (baseImg) {
+                activeBaseImageRef.current = baseImg;
+                baseLayerRef.current = baseImg;
+                canvas.add(baseImg);
+                canvas.sendObjectToBack(baseImg);
+            }
 
-            // CRITICAL: Set isBaseLayer flag for history serialization
-            (baseImg as any).isBaseLayer = true;
+            if (maskImg) {
+                activeMaskImageRef.current = maskImg;
+                maskLayerRef.current = maskImg;
+                canvas.add(maskImg);
+                canvas.bringObjectToFront(maskImg);
+            }
 
-            maskImg.scaleX = REAL_WIDTH / (maskImg.width || 1);
-            maskImg.scaleY = REAL_HEIGHT / (maskImg.height || 1);
-            maskImg.set({
-                left: REAL_WIDTH / 2,
-                top: REAL_HEIGHT / 2,
-                originX: 'center',
-                originY: 'center',
-                opacity: 0,
-                selectable: false,
-                evented: false,
-                excludeFromExport: true,
-                id: 'system_mask_image',
-                data: {
-                    systemId: 'system_mask_image',
-                    kind: 'product_overlay',
-                    role: TEMPLATE_ROLE,
-                    system: true,
-                    isSystem: true
-                }
-            });
-
-            // CRITICAL: Set isMaskLayer flag for history serialization
-            (maskImg as any).isMaskLayer = true;
-
-            activeBaseImageRef.current = baseImg;
-            baseLayerRef.current = baseImg;
-            canvas.add(baseImg);
-            canvas.sendObjectToBack(baseImg);
-
-            activeMaskImageRef.current = maskImg;
-            maskLayerRef.current = maskImg;
-            canvas.add(maskImg);
-            canvas.bringObjectToFront(maskImg);
-
-            if (isAborted()) { safeDisposeLocal(undefined, [baseImg, maskImg]); return; }
+            if (isAborted()) { safeDisposeLocal(undefined, [baseImg, maskImg].filter(Boolean) as FabricObject[]); return; }
 
             canvas.requestRenderAll();
 
             await new Promise<void>((resolve) => {
                 requestAnimationFrame(() => {
                     if (isAborted()) {
-                        safeDisposeLocal(undefined, [baseImg, maskImg]);
+                        safeDisposeLocal(undefined, [baseImg, maskImg].filter(Boolean) as FabricObject[]);
                         resolve();
                         return;
                     }
@@ -4002,10 +4009,14 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         resolve();
                         return;
                     }
-                    baseImg.set({ opacity: 1 });
-                    maskImg.set({ opacity: 1 });
-                    baseImg.setCoords();
-                    maskImg.setCoords();
+                    if (baseImg) {
+                        baseImg.set({ opacity: 1 });
+                        baseImg.setCoords();
+                    }
+                    if (maskImg) {
+                        maskImg.set({ opacity: 1 });
+                        maskImg.setCoords();
+                    }
 
                     canvas.renderOnAddRemove = prevRenderOnAddRemove;
                     canvas.requestRenderAll();
@@ -4759,7 +4770,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 enterInFlightRef.current = true;
 
                 // (1) Template first
-                if (baseImage && maskImage) {
+                if (baseImage || maskImage) {
                     const productForTemplate = currentProduct || { id: 'unknown', updated_at: Date.now() };
                     await applyTemplateForProduct({
                         ...productForTemplate,
@@ -4770,7 +4781,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     // Don't create fallback rectangles during initialization!
                     // Fallbacks should only be created when actual image loading fails (in catch block)
                     // Just wait for product data to load, then apply template in next sequence
-                    console.log('[ENTER] No base/mask URLs yet, skipping template application');
+                    console.log('[ENTER] No base or mask URLs yet, skipping template application');
                     // if (!baseImage) addFallbackBase(canvas, CENTER_X, CENTER_Y);
                     // if (!maskImage) addFallbackMask(canvas, CENTER_X, CENTER_Y);
                 }
