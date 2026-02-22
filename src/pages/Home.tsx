@@ -978,6 +978,9 @@ export default function Home() {
 
             // Try new WP REST API first (each option stored as separate order meta line)
             console.log('[Cart] Calling WP add-to-cart API...');
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+
             try {
                 const response = await fetch(`${WOOCOMMERCE_URL}/wp-json/ppbears/v1/add-to-cart`, {
                     method: 'POST',
@@ -990,6 +993,7 @@ export default function Home() {
                         options: finalOptions,
                     }),
                     credentials: 'include',
+                    signal: controller.signal
                 });
 
                 if (response.ok) {
@@ -1020,8 +1024,14 @@ export default function Home() {
                 // API failed (404 = plugin not yet uploaded) → fallback to URL redirect
                 const errText = await response.text().catch(() => '');
                 console.warn(`[Cart] WP API failed (${response.status}), using URL fallback. Response:`, errText);
-            } catch (apiErr) {
-                console.warn('[Cart] WP API unreachable, using URL fallback:', apiErr);
+            } catch (apiErr: any) {
+                if (apiErr.name === 'AbortError') {
+                    console.warn('[Cart] WP API fetch timed out after 15s. Falling back to URL redirect.');
+                } else {
+                    console.warn('[Cart] WP API unreachable, using URL fallback:', apiErr);
+                }
+            } finally {
+                clearTimeout(timeoutId);
             }
 
             // Fallback: classic WooCommerce add-to-cart URL with design_id

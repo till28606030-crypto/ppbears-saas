@@ -184,17 +184,8 @@ if (!isValid) {
                 } catch (retryErr: any) {
                     // If it fails again, suppress it to prevent app crash
                     if (isAbortLike(retryErr)) {
-                        console.warn('[patchedFetch] Suppressing AbortError after retry:', retryErr);
-                        // Return empty success response instead of error to prevent UI showing errors
-                        return new Response(JSON.stringify({
-                            data: [],
-                            error: null,
-                            count: 0
-                        }), {
-                            status: 200,
-                            statusText: 'OK',
-                            headers: { 'content-type': 'application/json' }
-                        });
+                        console.warn('[patchedFetch] Request aborted or timed out after retry', retryErr);
+                        throw new Error('網路連線不穩或請求超時，請檢查網路狀態後再試。');
                     }
                     throw retryErr;
                 }

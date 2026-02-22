@@ -3047,9 +3047,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             const currentZoom = canvas.getZoom();
             const multiplier = 2 / currentZoom;
             return canvas.toDataURL({
-                format: 'png',
-                quality: 1,
-                multiplier: multiplier,
+                format: 'jpeg',
+                quality: 0.6,
+                multiplier: multiplier * 0.5,
                 enableRetinaScaling: true
             });
         },
