@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useProductEditor } from '../hooks/useProductEditor';
-import { Loader2, ArrowLeft, Save, AlertCircle, Upload, Image as ImageIcon, Check, ChevronRight, Layout, Info, ExternalLink, Share2 } from 'lucide-react';
+import { Loader2, ArrowLeft, Save, AlertCircle, Upload, Image as ImageIcon, Check, ChevronRight, Layout, Info, ExternalLink, Share2, Sparkles } from 'lucide-react';
 import VisualTab from './tabs/VisualTab';
 import PreviewTab from './tabs/PreviewTab';
 import AttributeSettingsTab from './tabs/AttributeSettingsTab';
@@ -262,6 +262,26 @@ const ProductEditorV2: React.FC = () => {
                         className="w-full px-4 py-2.5 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white font-mono shadow-sm"
                         placeholder="例如: 162.0"
                       />
+                    </div>
+                  </div>
+
+                  <div className="mt-6 pt-6 border-t border-blue-100">
+                    <label className="block text-sm font-bold text-blue-900 mb-2 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-blue-600" />
+                      AI 每日使用上限 (次數)
+                    </label>
+                    <div className="flex items-center gap-4">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={draft?.specs?.ai_usage_limit ?? 10}
+                        onChange={(e) => updateSpecs({ ai_usage_limit: Number(e.target.value) })}
+                        className="w-32 px-4 py-2.5 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white font-mono shadow-sm"
+                      />
+                      <p className="text-xs text-blue-700/70">
+                        設定使用者每天可免費使用「卡通化」或「去背」的總次數。預設為 10 次。
+                      </p>
                     </div>
                   </div>
                 </div>

@@ -7,7 +7,7 @@ import { listAssets, listAssetCategories } from '../lib/assets';
 import { listFrames, listFrameCategories, Frame, lastFrameDebug, clearFrameCache } from '../lib/frameService';
 // @ts-ignore
 import { readPsd } from 'ag-psd';
-import { Upload, Layers, Smartphone, Type, Wand2, Sparkles, X, ShoppingCart, Check, Sticker, Image, ScanBarcode, Scissors, Circle, Heart, Square, Ban, ChevronRight, ChevronLeft, Copy, Search, SlidersHorizontal, ChevronDown, ChevronUp, Palette, FileImage, Shapes, Lock, Unlock, Plus, Frame as FrameIcon } from 'lucide-react';
+import { Upload, Layers, Smartphone, Type, Wand2, Sparkles, X, ShoppingCart, Check, Sticker, Image, ScanBarcode, Scissors, Circle, Heart, Square, Ban, ChevronRight, ChevronLeft, Copy, Search, SlidersHorizontal, ChevronDown, ChevronUp, Palette, FileImage, Shapes, Lock, Unlock, Plus, Frame as FrameIcon, AlertTriangle, ExternalLink } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import CanvasEditor, { CanvasEditorRef } from '../components/CanvasEditor';
 import SaveDesignModal from '../components/SaveDesignModal';
@@ -276,15 +276,37 @@ export default function Home() {
         }
     };
 
+    const [showAiDisclaimer, setShowAiDisclaimer] = useState(false);
+    const [aiProcessingAction, setAiProcessingAction] = useState<{ action: string, payload?: any } | null>(null);
+
     // AI Action Handler
     const handleAiAction = async (action: string, payload?: any) => {
         if (!canvasRef.current) return;
 
-        // Close menu for style actions, but maybe keep open for background input? 
-        // User didn't specify, but closing is safer to see result.
-        // if (action !== 'set_bg_url_input') {
-        //    setIsAiMenuOpen(false);
-        // }
+        // Check Daily Usage Limit first for "Generation" actions
+        const isGenerationAction = ['toon_mochi', 'toon_ink', 'toon_anime', 'remove_bg'].includes(action);
+
+        if (isGenerationAction) {
+            const today = new Date().toISOString().split('T')[0];
+            const usageKey = `ppbears_ai_usage_${today}`;
+            const currentUsage = Number(localStorage.getItem(usageKey) || '0');
+            const limit = currentProduct?.specs?.ai_usage_limit ?? 10;
+
+            if (currentUsage >= limit) {
+                alert(`您的免費 AI 生成次數已用盡。為了提供更好的服務，若需無限次修改並確保最佳印刷品質，請於結帳購物車加購【專業設計師精修去背】服務。`);
+                return;
+            }
+
+            // Defense Line 1: Background Removal Disclaimer
+            if (action === 'remove_bg' && !localStorage.getItem('ppbears_ai_bg_disclaimer_accepted')) {
+                setAiProcessingAction({ action, payload });
+                setShowAiDisclaimer(true);
+                return;
+            }
+
+            // Increment usage
+            localStorage.setItem(usageKey, (currentUsage + 1).toString());
+        }
 
         try {
             switch (action) {
@@ -1957,6 +1979,54 @@ export default function Home() {
                     />
                 </div>
             </main>
+
+            {/* AI Disclaimer Modal (Defense Line 1) */}
+            {showAiDisclaimer && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6">
+                            <div className="flex items-center gap-3 mb-4 text-orange-600">
+                                <div className="p-2 bg-orange-100 rounded-lg">
+                                    <AlertTriangle className="w-6 h-6" />
+                                </div>
+                                <h3 className="text-xl font-bold">⚠️ AI 去背功能測試中</h3>
+                            </div>
+                            <div className="space-y-4 text-gray-600 leading-relaxed">
+                                <p>
+                                    AI 去背可協助您快速預覽效果！但若您的圖片背景較複雜（如：髮絲、陰影、相近色），可能會殘留白邊。
+                                </p>
+                                <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 flex items-start gap-2">
+                                    <Sparkles className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+                                    <p className="text-sm text-blue-800">
+                                        👉 <strong>若您追求完美的印刷品質</strong>，強烈建議您在結帳購物車時勾選 <strong>【專業設計師精修去背】</strong> 服務，印出最完美的商品！
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="mt-8 flex flex-col gap-3">
+                                <button
+                                    onClick={() => {
+                                        localStorage.setItem('ppbears_ai_bg_disclaimer_accepted', 'true');
+                                        setShowAiDisclaimer(false);
+                                        if (aiProcessingAction) {
+                                            handleAiAction(aiProcessingAction.action, aiProcessingAction.payload);
+                                            setAiProcessingAction(null);
+                                        }
+                                    }}
+                                    className="w-full py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all shadow-lg"
+                                >
+                                    我知道了，繼續使用 AI 預覽去背
+                                </button>
+                                <button
+                                    onClick={() => setShowAiDisclaimer(false)}
+                                    className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-all"
+                                >
+                                    暫時不需要
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
