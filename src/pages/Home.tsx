@@ -1079,32 +1079,26 @@ export default function Home() {
                         console.log('[Cart] Order saved to mock_orders:', newOrder);
 
                         window.location.href = result.checkout_url;
+                        // 讓 Promise 永遠不 resolve，這樣外層的 finally { setIsSubmitting(false) } 就不會執行，保持載入動畫直到跳轉完成
+                        await new Promise(() => { });
                         return;
+                    } else {
+                        throw new Error(result.message || '無法獲取結帳連結');
                     }
                 }
 
-                // API failed (404 = plugin not yet uploaded) → fallback to URL redirect
+                // API failed
                 const errText = await response.text().catch(() => '');
-                console.warn(`[Cart] WP API failed (${response.status}), using URL fallback. Response:`, errText);
+                throw new Error(`伺服器錯誤 (${response.status}): ${errText}`);
             } catch (apiErr: any) {
                 if (apiErr.name === 'AbortError') {
-                    console.warn('[Cart] WP API fetch timed out after 15s. Falling back to URL redirect.');
+                    throw new Error('加入購物車超時 (15秒)，請重新嘗試。');
                 } else {
-                    console.warn('[Cart] WP API unreachable, using URL fallback:', apiErr);
+                    throw apiErr;
                 }
             } finally {
                 clearTimeout(timeoutId);
             }
-
-            // Fallback: classic WooCommerce add-to-cart URL with design_id
-            console.log('[Cart] Using URL fallback redirect...');
-            const checkoutUrl = new URL(`${WOOCOMMERCE_URL}/`);
-            checkoutUrl.searchParams.set('add-to-cart', String(WOOCOMMERCE_PRODUCT_ID));
-            checkoutUrl.searchParams.set('quantity', '1');
-            checkoutUrl.searchParams.set('design_id', designId);
-            console.log('[Cart] Fallback URL:', checkoutUrl.toString());
-
-            window.location.href = checkoutUrl.toString();
 
         } catch (error: any) {
             console.error("[Cart] Order processing error:", error);
