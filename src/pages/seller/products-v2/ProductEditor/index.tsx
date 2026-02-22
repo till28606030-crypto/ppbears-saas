@@ -47,16 +47,22 @@ const ProductEditorV2: React.FC = () => {
     }
   }, [id, load]);
 
-  const handleSave = async () => {
+  const handleSaveDraft = async () => {
     const result = await save();
     if (result.success) {
-      if (id === 'new') {
-        navigate(`/seller/products-v2`);
-      } else {
-        alert('儲存成功！');
-      }
+      alert('草稿儲存成功！');
     } else {
       alert(`儲存失敗: ${result.error}`);
+    }
+  };
+
+  const handlePublish = async () => {
+    const result = await save();
+    if (result.success) {
+      alert('產品已成功發佈！');
+      navigate(`/seller/products-v2`);
+    } else {
+      alert(`發佈失敗: ${result.error}`);
     }
   };
 
@@ -155,14 +161,14 @@ const ProductEditorV2: React.FC = () => {
                 onClick={() => setCurrentStep(step.id)}
               >
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm border-2 transition-colors ${isActive ? 'border-blue-600 bg-blue-600 text-white shadow-md shadow-blue-200' :
-                    isCompleted ? 'border-green-500 bg-green-500 text-white' :
-                      'border-gray-200 bg-white text-gray-400 hover:border-blue-300'
+                  isCompleted ? 'border-green-500 bg-green-500 text-white' :
+                    'border-gray-200 bg-white text-gray-400 hover:border-blue-300'
                   }`}>
                   {isCompleted ? <Check className="w-5 h-5" /> : step.id}
                 </div>
                 <div className={`text-xs font-medium whitespace-nowrap ${isActive ? 'text-blue-700 font-bold' :
-                    isCompleted ? 'text-green-600' :
-                      'text-gray-400'
+                  isCompleted ? 'text-green-600' :
+                    'text-gray-400'
                   }`}>
                   {step.title}
                 </div>
@@ -546,7 +552,7 @@ const ProductEditorV2: React.FC = () => {
           </button>
           <div className="flex gap-4">
             <button
-              onClick={handleSave}
+              onClick={handleSaveDraft}
               disabled={saving || !isDirty}
               className="flex items-center gap-2 px-6 py-2.5 border border-gray-300 bg-white rounded-lg text-gray-700 hover:bg-gray-50 shadow-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -563,7 +569,7 @@ const ProductEditorV2: React.FC = () => {
               </button>
             ) : (
               <button
-                onClick={handleSave}
+                onClick={handlePublish}
                 disabled={isSaveDisabled}
                 className={`flex items-center justify-center gap-2 px-8 py-2.5 rounded-lg font-bold transition-all shadow-md ${isSaveDisabled
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
