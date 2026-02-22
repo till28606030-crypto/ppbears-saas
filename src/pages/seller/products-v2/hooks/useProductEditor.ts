@@ -80,8 +80,19 @@ export const useProductEditor = (): UseProductEditorReturn => {
         .single();
 
       if (fetchError) throw fetchError;
-      setProduct(data);
-      setDraftState(data);
+
+      // Auto-migrate standard CM specs to MM if missing
+      const loadedData = { ...data };
+      loadedData.specs = loadedData.specs || {};
+      if (loadedData.specs.width && !loadedData.specs.width_mm) {
+        loadedData.specs.width_mm = loadedData.specs.width * 10;
+      }
+      if (loadedData.specs.height && !loadedData.specs.height_mm) {
+        loadedData.specs.height_mm = loadedData.specs.height * 10;
+      }
+
+      setProduct(loadedData);
+      setDraftState(loadedData);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -113,7 +124,12 @@ export const useProductEditor = (): UseProductEditorReturn => {
     if (!draft.name?.trim()) errors.push('名稱為必填');
     if (!draft.base_image) errors.push('必須上傳產品底圖 (base_image)');
 
-    if (typeof draft.specs !== 'object') errors.push('Specs 格式錯誤');
+    if (typeof draft.specs !== 'object') {
+      errors.push('Specs 格式錯誤');
+    } else {
+      if (!draft.specs.width_mm || draft.specs.width_mm <= 0) errors.push('實體寬度 (MM) 為必填且必須大於 0');
+      if (!draft.specs.height_mm || draft.specs.height_mm <= 0) errors.push('實體高度 (MM) 為必填且必須大於 0');
+    }
     if (typeof draft.mask_config !== 'object') errors.push('Mask Config 格式錯誤');
     if (typeof draft.permissions !== 'object') errors.push('Permissions 格式錯誤');
 

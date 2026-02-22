@@ -473,8 +473,8 @@ export default function Home() {
                         return Math.round(val * dpi / 2.54);
                     };
 
-                    const widthPx = toPx(specs.width, 7.69);
-                    const heightPx = toPx(specs.height, 16.20);
+                    const widthPx = toPx(specs.width_mm ? specs.width_mm / 10 : specs.width, 7.69);
+                    const heightPx = toPx(specs.height_mm ? specs.height_mm / 10 : specs.height, 16.20);
                     const radiusPx = specs.cornerRadius !== undefined ? specs.cornerRadius : 0.5; // Default 0.5cm? No, keep logic consistent
                     // Note: original code used 50 as fallback for radiusPx (which is raw pixel?), but here we use specs.cornerRadius (cm)
                     // Let's assume specs.cornerRadius is in CM, need to convert to PX?
