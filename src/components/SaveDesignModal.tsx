@@ -1648,8 +1648,8 @@ export default function SaveDesignModal({
 
                                                             const customOptions: Record<string, any> = {};
 
-                                                            // 1. Add Product Name as Header
-                                                            customOptions[productName] = productName;
+                                                            // Do NOT add Product Name as a duplicate header option anymore
+                                                            // customOptions[productName] = productName;
 
                                                             // 2. Iterate Steps to ensure order (Main Specs -> Add-ons)
                                                             availableSteps.forEach(step => {

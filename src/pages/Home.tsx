@@ -1051,7 +1051,7 @@ export default function Home() {
                         product_id: WOOCOMMERCE_PRODUCT_ID,
                         price: finalPrice,
                         design_id: designId,
-                        phone_model: currentProduct?.name || '',
+                        product_name: currentProduct?.name || '客製化商品',
                         options: finalOptions,
                     }),
                     credentials: 'include',
