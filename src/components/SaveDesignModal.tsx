@@ -79,6 +79,7 @@ export default function SaveDesignModal({
 }: SaveDesignModalProps) {
     const [currentStep, setCurrentStep] = useState(1);
     const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
+    const [inlineError, setInlineError] = useState<string | null>(null);
 
     // Lightbox State
     const [zoomedImage, setZoomedImage] = useState<string | null>(null);
@@ -704,6 +705,7 @@ export default function SaveDesignModal({
     const showEmbossing = protectionItem && !protectionItem.name.includes('亮面');
 
     const handleSelectOption = (groupKey: string, itemId: string) => {
+        setInlineError(null); // Clear errors when user makes a selection
         setSelectedOptions(prev => {
             let next = { ...prev };
 
@@ -717,17 +719,29 @@ export default function SaveDesignModal({
             const isStep1 = step === 1;
             const isSame = next[groupKey] === itemId;
 
+            const clearSubAttributes = (gKey: string) => {
+                Object.keys(next).forEach(k => {
+                    if (k.startsWith(`${gKey}:`)) {
+                        delete next[k];
+                    }
+                });
+            };
+
             // Step1：維持「必選」+ 同層互斥
             if (isStep1) {
                 (stepGroups.get(1) || []).forEach(g => {
                     const k = getGroupKey(g);
-                    if (k !== groupKey) delete next[k];
+                    if (k !== groupKey) {
+                        delete next[k];
+                        clearSubAttributes(k);
+                    }
                 });
                 next[groupKey] = itemId;
             } else {
                 // ✅ Step2/3：允許「不選」→ 點同一個選項可取消
                 if (isSame) {
                     delete next[groupKey];
+                    clearSubAttributes(groupKey);
                 } else {
                     next[groupKey] = itemId;
                 }
@@ -767,7 +781,7 @@ export default function SaveDesignModal({
         return (
             <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-4 mt-4">
                 <h4 className="font-bold text-gray-800 flex items-center gap-2">
-                    <Settings className="w-4 h-4" /> 自訂屬性
+                    <Settings className="w-4 h-4" /> 選項
                 </h4>
                 <div className="space-y-4">
                     {group.subAttributes.map(attr => {
@@ -787,7 +801,10 @@ export default function SaveDesignModal({
                                                     <button
                                                         key={opt.id}
                                                         type="button"
-                                                        onClick={() => setSelectedOptions(prev => ({ ...prev, [`${groupKey}:ca:${attr.id}`]: opt.id }))}
+                                                        onClick={() => {
+                                                            setInlineError(null);
+                                                            setSelectedOptions(prev => ({ ...prev, [`${groupKey}:ca:${attr.id}`]: opt.id }));
+                                                        }}
                                                         className={`relative flex flex-col items-center p-2 rounded-xl border-2 transition-all ${isSelected
                                                             ? 'border-black bg-white shadow-sm'
                                                             : 'border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50'
@@ -804,9 +821,11 @@ export default function SaveDesignModal({
                                                         )}
                                                         <div className="text-center w-full">
                                                             <div className="text-xs font-bold text-gray-900 truncate w-full">{opt.name}</div>
-                                                            <div className="text-[10px] text-gray-500">
-                                                                {opt.priceModifier > 0 ? `+$${opt.priceModifier}` : '免費'}
-                                                            </div>
+                                                            {opt.priceModifier > 0 && (
+                                                                <div className="text-[10px] text-gray-500">
+                                                                    +${opt.priceModifier}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                         {isSelected && (
                                                             <div className="absolute top-2 right-2 bg-black text-white rounded-full p-0.5">
@@ -822,13 +841,16 @@ export default function SaveDesignModal({
                                         <select
                                             className="w-full p-2 border rounded-lg text-sm bg-white"
                                             value={selectedOptions[`${groupKey}:ca:${attr.id}`] || ''}
-                                            onChange={(e) =>
-                                                setSelectedOptions(prev => ({ ...prev, [`${groupKey}:ca:${attr.id}`]: e.target.value }))
-                                            }
+                                            onChange={(e) => {
+                                                setInlineError(null);
+                                                setSelectedOptions(prev => ({ ...prev, [`${groupKey}:ca:${attr.id}`]: e.target.value }));
+                                            }}
                                         >
                                             <option value="">請選擇...</option>
                                             {attr.options?.map(opt => (
-                                                <option key={opt.id} value={opt.id}>{opt.name} (+${opt.priceModifier})</option>
+                                                <option key={opt.id} value={opt.id}>
+                                                    {opt.name}{opt.priceModifier > 0 ? ` (+$${opt.priceModifier})` : ''}
+                                                </option>
                                             ))}
                                         </select>
                                     )
@@ -836,9 +858,10 @@ export default function SaveDesignModal({
                                     <input
                                         className="w-full p-2 border rounded-lg text-sm bg-white"
                                         value={selectedOptions[`${groupKey}:ca:${attr.id}`] || ''}
-                                        onChange={(e) =>
-                                            setSelectedOptions(prev => ({ ...prev, [`${groupKey}:ca:${attr.id}`]: e.target.value }))
-                                        }
+                                        onChange={(e) => {
+                                            setInlineError(null);
+                                            setSelectedOptions(prev => ({ ...prev, [`${groupKey}:ca:${attr.id}`]: e.target.value }));
+                                        }}
                                     />
                                 )}
                             </div>
@@ -876,7 +899,9 @@ export default function SaveDesignModal({
                                 >
                                     <option value="">請選擇...</option>
                                     {attr.options?.map(opt => (
-                                        <option key={opt.id} value={opt.id}>{opt.name} (+${opt.priceModifier})</option>
+                                        <option key={opt.id} value={opt.id}>
+                                            {opt.name}{opt.priceModifier > 0 ? ` (+$${opt.priceModifier})` : ''}
+                                        </option>
                                     ))}
                                 </select>
                             ) : (
@@ -1212,42 +1237,8 @@ export default function SaveDesignModal({
                                                     if (displayType === 'cards' && currentStep !== 1) {
                                                         return (
                                                             <div key={group.id} className="mb-8">
-                                                                {/* Description Images */}
-                                                                {descriptionImages.length > 0 && (
-                                                                    <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
-                                                                        {descriptionImages.map((img: string, idx: number) => (
-                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
-                                                                                <img
-                                                                                    src={img}
-                                                                                    className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
-                                                                                    alt={`${group.name} 說明圖片 ${idx + 1}`}
-                                                                                />
-                                                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
-                                                                                    <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
-                                                                                </div>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                )}
-
-                                                                {/* Lightbox moved to global scope */}
-
                                                                 <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">{group.name}</h3>
-                                                                {ui?.description && (
-                                                                    <div
-                                                                        className="text-xs text-gray-400 mb-2 prose prose-xs max-w-none [&>p]:mb-1 [&>a]:text-blue-500 [&>a]:underline"
-                                                                        dangerouslySetInnerHTML={{
-                                                                            __html: DOMPurify.sanitize(
-                                                                                ui.description
-                                                                                    .replace(/&amp;/g, '&')
-                                                                                    .replace(/&lt;/g, '<')
-                                                                                    .replace(/&gt;/g, '>')
-                                                                                    .replace(/&quot;/g, '"'),
-                                                                                { ADD_ATTR: ['target', 'style'] }
-                                                                            )
-                                                                        }}
-                                                                    />
-                                                                )}
+
                                                                 {validItems.length > 0 ? (
                                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                                         {validItems.map(item => (
@@ -1297,6 +1288,42 @@ export default function SaveDesignModal({
                                                                     </div>
                                                                 )}
 
+                                                                {/* Description Images */}
+                                                                {descriptionImages.length > 0 && (
+                                                                    <div className={`mt-4 mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                                                                        {descriptionImages.map((img: string, idx: number) => (
+                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
+                                                                                <img
+                                                                                    src={img}
+                                                                                    className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
+                                                                                    alt={`${group.name} 說明圖片 ${idx + 1}`}
+                                                                                />
+                                                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
+                                                                                    <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Lightbox moved to global scope */}
+
+                                                                {ui?.description && (
+                                                                    <div
+                                                                        className="mt-3 text-xs text-gray-400 mb-2 prose prose-xs max-w-none [&>p]:mb-1 [&>a]:text-blue-500 [&>a]:underline"
+                                                                        dangerouslySetInnerHTML={{
+                                                                            __html: DOMPurify.sanitize(
+                                                                                ui.description
+                                                                                    .replace(/&amp;/g, '&')
+                                                                                    .replace(/&lt;/g, '<')
+                                                                                    .replace(/&gt;/g, '>')
+                                                                                    .replace(/&quot;/g, '"'),
+                                                                                { ADD_ATTR: ['target', 'style'] }
+                                                                            )
+                                                                        }}
+                                                                    />
+                                                                )}
+
                                                                 {/* Custom Attributes (Step 2+) - Only show if group is selected */}
                                                                 {selectedOptions[groupKey] && group.subAttributes && group.subAttributes.length > 0 && (
                                                                     <div className="mt-4 rounded-xl border border-gray-200 bg-white overflow-hidden animate-in slide-in-from-top-2">
@@ -1313,25 +1340,7 @@ export default function SaveDesignModal({
                                                     if (displayType === 'checkbox') {
                                                         return (
                                                             <div key={group.id} className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
-                                                                {/* Description Images */}
-                                                                {descriptionImages.length > 0 && (
-                                                                    <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
-                                                                        {descriptionImages.map((img: string, idx: number) => (
-                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
-                                                                                <img
-                                                                                    src={img}
-                                                                                    className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
-                                                                                    alt={`${group.name} 說明圖片 ${idx + 1}`}
-                                                                                />
-                                                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
-                                                                                    <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
-                                                                                </div>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                )}
-
-                                                                <h3 className="font-bold text-gray-900 mb-4 text-lg border-b pb-2">{group.name}</h3>
+                                                                {/* Removed redundant group.name heading for checkbox type */}
 
                                                                 {validItems.length > 0 ? (
                                                                     <div className="space-y-3 mb-6">
@@ -1362,8 +1371,26 @@ export default function SaveDesignModal({
                                                                     </div>
                                                                 )}
 
+                                                                {/* Description Images */}
+                                                                {descriptionImages.length > 0 && (
+                                                                    <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                                                                        {descriptionImages.map((img: string, idx: number) => (
+                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
+                                                                                <img
+                                                                                    src={img}
+                                                                                    className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
+                                                                                    alt={`${group.name} 說明圖片 ${idx + 1}`}
+                                                                                />
+                                                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
+                                                                                    <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+
                                                                 {ui?.description && (
-                                                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
                                                                         <div className="text-sm text-gray-600 leading-relaxed mb-3">
                                                                             <span className="font-semibold text-gray-800 block mb-1">說明：</span>
                                                                             <div
@@ -1400,42 +1427,8 @@ export default function SaveDesignModal({
                                                     // Default: Grid / List (Standard Buttons)
                                                     return (
                                                         <div key={group.id} className="mb-8">
-                                                            {/* Description Images */}
-                                                            {descriptionImages.length > 0 && (
-                                                                <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
-                                                                    {descriptionImages.map((img: string, idx: number) => (
-                                                                        <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
-                                                                            <img
-                                                                                src={img}
-                                                                                className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
-                                                                                alt={`${group.name} 說明圖片 ${idx + 1}`}
-                                                                            />
-                                                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
-                                                                                <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
-                                                                            </div>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-
                                                             <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">{group.name}</h3>
-                                                            {ui?.description && (
-                                                                <>
-                                                                    <div
-                                                                        className="text-xs text-gray-400 mb-2 prose prose-xs max-w-none [&>p]:mb-1 [&>a]:text-blue-500 [&>a]:underline"
-                                                                        dangerouslySetInnerHTML={{
-                                                                            __html: DOMPurify.sanitize(
-                                                                                ui.description
-                                                                                    .replace(/&amp;/g, '&')
-                                                                                    .replace(/&lt;/g, '<')
-                                                                                    .replace(/&gt;/g, '>')
-                                                                                    .replace(/&quot;/g, '"'),
-                                                                                { ADD_ATTR: ['target', 'style'] }
-                                                                            )
-                                                                        }}
-                                                                    />
-                                                                </>
-                                                            )}
+
                                                             {validItems.length > 0 ? (
                                                                 <div className={`grid gap-3 ${group.code === 'lanyard' || displayType === 'list' ? 'grid-cols-1' : 'grid-cols-3'}`}>
                                                                     {validItems.map(item => (
@@ -1461,6 +1454,42 @@ export default function SaveDesignModal({
                                                                         <span>尚無選項 (請至後台新增子項目)</span>
                                                                     )}
                                                                 </div>
+                                                            )}
+
+                                                            {/* Description Images */}
+                                                            {descriptionImages.length > 0 && (
+                                                                <div className={`mt-4 mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                                                                    {descriptionImages.map((img: string, idx: number) => (
+                                                                        <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
+                                                                            <img
+                                                                                src={img}
+                                                                                className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
+                                                                                alt={`${group.name} 說明圖片 ${idx + 1}`}
+                                                                            />
+                                                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
+                                                                                <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+
+                                                            {ui?.description && (
+                                                                <>
+                                                                    <div
+                                                                        className="mt-3 text-xs text-gray-400 mb-2 prose prose-xs max-w-none [&>p]:mb-1 [&>a]:text-blue-500 [&>a]:underline"
+                                                                        dangerouslySetInnerHTML={{
+                                                                            __html: DOMPurify.sanitize(
+                                                                                ui.description
+                                                                                    .replace(/&amp;/g, '&')
+                                                                                    .replace(/&lt;/g, '<')
+                                                                                    .replace(/&gt;/g, '>')
+                                                                                    .replace(/&quot;/g, '"'),
+                                                                                { ADD_ATTR: ['target', 'style'] }
+                                                                            )
+                                                                        }}
+                                                                    />
+                                                                </>
                                                             )}
 
                                                             {/* Custom Attributes (Step 2+) */}
@@ -1531,8 +1560,8 @@ export default function SaveDesignModal({
                             </div>
 
                             {/* Navigation */}
-                            <div className="shrink-0 border-t border-gray-100 bg-white md:bg-gray-50 px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] md:shadow-none">
-                                <div className="flex gap-3 md:justify-between items-center">
+                            <div className="relative shrink-0 border-t border-gray-100 bg-white md:bg-gray-50 px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] md:shadow-none">
+                                <div className="flex gap-3 md:justify-between items-center relative">
                                     {/* Previous Button: Find previous available step */}
                                     {(() => {
                                         const currentIndex = availableSteps.indexOf(currentStep);
@@ -1554,13 +1583,52 @@ export default function SaveDesignModal({
                                         const isLastStep = currentIndex === availableSteps.length - 1;
                                         const nextStep = !isLastStep ? availableSteps[currentIndex + 1] : null;
 
+                                        const validateCurrentStep = () => {
+                                            const currentGroups = stepGroups.get(currentStep) || [];
+                                            for (const group of currentGroups) {
+                                                const groupKey = getGroupKey(group);
+                                                const isGroupSelected = !!selectedOptions[groupKey];
+                                                if (isGroupSelected && group.subAttributes?.length) {
+                                                    for (const attr of group.subAttributes) {
+                                                        const attrKeyCa = `${groupKey}:ca:${attr.id}`;
+                                                        const attrKeyNormal = `${groupKey}:${attr.id}`;
+                                                        const valCa = selectedOptions[attrKeyCa];
+                                                        const valNormal = selectedOptions[attrKeyNormal];
+
+                                                        const isSelected = (valCa && valCa.toString().trim() !== '') || (valNormal && valNormal.toString().trim() !== '');
+
+                                                        if (!isSelected) {
+                                                            setInlineError(`請完成【${group.name}】的選項：${attr.name}`);
+                                                            return false;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            setInlineError(null);
+                                            return true;
+                                        };
+
                                         return (
                                             <>
+                                                {/* Inline Error Display */}
+                                                {inlineError && (
+                                                    <div className="absolute bottom-full left-0 right-0 flex justify-center w-full px-4 md:px-0 mb-4 pointer-events-none">
+                                                        <div className="bg-red-50 text-red-600 px-4 py-3 rounded-xl font-bold text-sm shadow-md border border-red-200 flex items-start gap-2 animate-in slide-in-from-bottom-2 fade-in w-full max-w-sm mx-auto shadow-red-500/10 pointer-events-auto">
+                                                            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                                                            <span className="leading-snug flex-1 break-words">{inlineError}</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 {/* "Next" button - Show if not last step */}
                                                 {!isLastStep && (
                                                     <button
                                                         type="button"
-                                                        onClick={() => nextStep && setCurrentStep(nextStep)}
+                                                        onClick={() => {
+                                                            if (!nextStep) return;
+                                                            if (!validateCurrentStep()) return;
+                                                            setCurrentStep(nextStep);
+                                                        }}
                                                         disabled={currentStep === 1 && !hasChosenSpec}
                                                         className={`flex-1 md:flex-none md:w-auto px-8 py-3 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg ${currentStep === 1 && !hasChosenSpec
                                                             ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
@@ -1576,6 +1644,8 @@ export default function SaveDesignModal({
                                                     <button
                                                         type="button"
                                                         onClick={() => {
+                                                            if (!validateCurrentStep()) return;
+
                                                             const storageKey = `ppbears_checkout_progress_${productId || 'default'}`;
                                                             localStorage.removeItem(storageKey);
 

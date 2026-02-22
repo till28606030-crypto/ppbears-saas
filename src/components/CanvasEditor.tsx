@@ -851,6 +851,8 @@ export interface CanvasEditorRef {
     removeBackgroundFromSelection: () => Promise<void>;
     setBackgroundImage: (url: string) => Promise<void> | void;
     insertImageFromSrc: (src: string) => Promise<void>;
+    getCanvasJSON: () => object;
+    restoreFromJSON: (json: object) => Promise<void>;
 }
 
 const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedRef<CanvasEditorRef>) => {
@@ -2948,6 +2950,56 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
     useImperativeHandle(ref, () => ({
         insertImageFromSrc: handleInsertImageFromSrc,
+        getCanvasJSON: () => {
+            const canvas = fabricCanvas.current;
+            if (!canvas) return {};
+            const JSON_PROPERTIES = [
+                'id', 'selectable', 'evented', 'locked', 'excludeFromExport',
+                'isUserBackground', 'isBaseLayer', 'isMaskLayer', 'isFrameLayer', 'frameId', 'perPixelTargetFind',
+                'lockMovementX', 'lockMovementY', 'lockRotation', 'lockScalingX', 'lockScalingY',
+                'lockUniScaling', 'lockSkewingX', 'lockSkewingY', 'hasControls', 'hasBorders',
+                'hoverCursor', 'moveCursor', 'clipPath', 'visible', 'bgCornerRadius', 'padding', 'originX', 'originY',
+                'name', 'scaleX', 'scaleY', 'left', 'top', 'width', 'height', 'angle', 'fill', 'stroke', 'strokeWidth',
+                'data', 'hasClipPath', 'isCropLocked', 'frameMeta', '__baseScale'
+            ];
+            const json = (canvas as any).toJSON(JSON_PROPERTIES);
+            // Strip system objects before saving
+            if (json.objects) {
+                json.objects = json.objects.filter((obj: any) => {
+                    const sid = String(obj.data?.systemId || obj.id || '').trim();
+                    const kind = obj.data?.kind;
+                    const role = obj.data?.role;
+                    return !(
+                        obj.excludeFromExport === true ||
+                        obj.data?.isSystem === true ||
+                        sid.startsWith('system_') ||
+                        ['system_base_image', 'system_mask_image', 'system_template_group'].includes(sid) ||
+                        ['product_base', 'product_overlay', 'guide'].includes(kind) ||
+                        role === 'template' ||
+                        role === 'product_base' ||
+                        role === 'product_overlay' ||
+                        obj.isBaseLayer === true ||
+                        obj.isMaskLayer === true
+                    );
+                });
+            }
+            return json;
+        },
+        restoreFromJSON: async (json: object) => {
+            const canvas = fabricCanvas.current;
+            if (!canvas) return;
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    (canvas as any).loadFromJSON(json, () => {
+                        canvas.requestRenderAll();
+                        resolve();
+                    });
+                });
+                updateLayers();
+            } catch (e) {
+                console.error('[CanvasEditor] restoreFromJSON failed:', e);
+            }
+        },
         generatePreview: () => {
             if (!fabricCanvas.current) return '';
             const canvas = fabricCanvas.current;

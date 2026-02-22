@@ -551,6 +551,39 @@ export default function Home() {
         loadTemplate();
     }, [searchParams, currentProduct, productConfig]);
 
+    // [Task 5] Load a specific design by design_id for admin re-editing
+    useEffect(() => {
+        const loadDesignById = async () => {
+            const loadDesignId = searchParams.get('load_design_id');
+            if (!loadDesignId || !canvasRef.current || !productConfig) return;
+
+            try {
+                console.log('[DesignLoad] Loading design for admin re-edit:', loadDesignId);
+                const { data: design, error } = await supabase
+                    .from('custom_designs')
+                    .select('canvas_json, product_id, product_name')
+                    .eq('design_id', loadDesignId)
+                    .single();
+
+                if (error || !design) {
+                    console.error('[DesignLoad] Design not found:', error);
+                    return;
+                }
+
+                if (design.canvas_json) {
+                    // Small delay to ensure canvas is fully initialized
+                    setTimeout(async () => {
+                        await canvasRef.current?.restoreFromJSON?.(design.canvas_json);
+                        console.log('[DesignLoad] Design restored successfully');
+                    }, 1000);
+                }
+            } catch (e: any) {
+                console.error('[DesignLoad] Error loading design:', e);
+            }
+        };
+        loadDesignById();
+    }, [searchParams, productConfig]);
+
     const handleCopyId = () => {
         if (designId) {
             navigator.clipboard.writeText(designId);
@@ -905,15 +938,21 @@ export default function Home() {
 
             console.log('[Cart] Saving design to Supabase (upsert)...');
 
+            // Capture canvas state for admin re-edit
+            const canvasJson = canvasRef.current?.getCanvasJSON?.() || null;
+
             // Use upsert: if design_id already exists, update it instead of failing
             const { data: designData, error: designError } = await supabase
                 .from('custom_designs')
                 .upsert({
                     design_id: designId,
+                    product_id: productId || null,
                     product_name: currentProduct?.name || '客製化手機殼',
                     phone_model: currentProduct?.name || 'Unknown',
                     price: finalPrice,
-                    options: finalOptions
+                    options: finalOptions,
+                    canvas_json: canvasJson,
+                    preview_image: previewImage || null,
                 }, { onConflict: 'design_id' })
                 .select()
                 .single();
@@ -1831,7 +1870,7 @@ export default function Home() {
                         <button
                             onClick={handlePreviewBuy}
                             className="px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-gray-800 transition-colors shadow-md whitespace-nowrap"
-                        >預覽 / 購買</button>
+                        >完成設計</button>
                     </div>
                 </header>
 

@@ -326,7 +326,15 @@ export default function AdminOptionManager() {
         };
 
         // Save to Supabase
-        const { error } = await supabase.from('option_groups').upsert(toDbGroup(groupToSave));
+        let error;
+        const dbPayload = toDbGroup(groupToSave);
+        if (editingGroupData.id) {
+            const { error: updateError } = await supabase.from('option_groups').update(dbPayload).eq('id', groupToSave.id);
+            error = updateError;
+        } else {
+            const { error: insertError } = await supabase.from('option_groups').insert(dbPayload);
+            error = insertError;
+        }
 
         if (error) {
             console.error('Error saving group:', error);
@@ -445,7 +453,15 @@ export default function AdminOptionManager() {
         };
 
         // Save to Supabase
-        const { error } = await supabase.from('option_items').upsert(toDbItem(itemToSave));
+        let error;
+        const dbPayload = toDbItem(itemToSave);
+        if (editingItemData.id) {
+            const { error: updateError } = await supabase.from('option_items').update(dbPayload).eq('id', itemToSave.id);
+            error = updateError;
+        } else {
+            const { error: insertError } = await supabase.from('option_items').insert(dbPayload);
+            error = insertError;
+        }
 
         if (error) {
             console.error('Error saving item:', error);
@@ -691,6 +707,11 @@ export default function AdminOptionManager() {
                                         <span className="text-[10px] text-gray-500 font-bold uppercase">Step</span>
                                         <span className="text-lg font-bold leading-none text-gray-800">{group.uiConfig?.step || 1}</span>
                                     </div>
+                                    {group.thumbnail && (
+                                        <div className="w-10 h-10 rounded shrink-0 border border-gray-200 overflow-hidden bg-white flex items-center justify-center">
+                                            <img src={group.thumbnail} alt={group.name} className="w-full h-full object-cover" />
+                                        </div>
+                                    )}
                                     <div>
                                         <h3 className="font-bold text-gray-900">{group.name}</h3>
                                         {group.uiConfig?.displayType && (
@@ -963,7 +984,7 @@ export default function AdminOptionManager() {
                         <div className="border-t border-gray-100 pt-4">
                             <label className="block text-sm font-bold mb-2 flex items-center gap-2">
                                 <ListPlus className="w-4 h-4" />
-                                自訂屬性 (Custom Attributes)
+                                選項 (Options)
                             </label>
                             <p className="text-xs text-gray-500 mb-3">例如: 磁吸功能、鏡頭框顏色、按鍵顏色等。</p>
 
