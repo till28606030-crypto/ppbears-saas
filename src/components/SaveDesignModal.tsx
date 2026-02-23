@@ -1663,7 +1663,7 @@ export default function SaveDesignModal({
                                                             <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">{group.name}</h3>
 
                                                             {validItems.length > 0 ? (
-                                                                <div className={`grid gap-3 ${group.code === 'lanyard' || displayType === 'list' || displayType === 'ai_recognition' ? 'grid-cols-1' : 'grid-cols-3'}`}>
+                                                                <div className={`grid gap-3 ${group.code === 'lanyard' || displayType === 'list' ? 'grid-cols-1' : 'grid-cols-3'}`}>
                                                                     {validItems.map(item => (
                                                                         <button
                                                                             type="button"
