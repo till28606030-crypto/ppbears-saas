@@ -25,7 +25,7 @@ export interface SubAttribute {
 // --- Types (Matched with AdminOptionManager) ---
 export interface OptionGroupUIConfig {
     step?: number;
-    displayType?: 'cards' | 'grid' | 'list' | 'checkbox';
+    displayType?: 'cards' | 'grid' | 'list' | 'checkbox' | 'ai_recognition';
     description?: string;
     descriptionImage?: string;
 }
@@ -124,18 +124,19 @@ export default function SaveDesignModal({
         return raw && typeof raw === 'object' ? raw : {};
     };
 
-    const normalizeDisplayType = (dt: any): 'cards' | 'grid' | 'list' | 'checkbox' | undefined => {
+    const normalizeDisplayType = (dt: any): 'cards' | 'grid' | 'list' | 'checkbox' | 'ai_recognition' | undefined => {
         if (!dt) return undefined;
         const s = String(dt).trim();
 
         // already normalized
-        if (s === 'cards' || s === 'grid' || s === 'list' || s === 'checkbox') return s as any;
+        if (s === 'cards' || s === 'grid' || s === 'list' || s === 'checkbox' || s === 'ai_recognition') return s as any;
 
         // Chinese labels from admin dropdown
         if (s.includes('大卡片')) return 'cards';
         if (s.includes('網格')) return 'grid';
         if (s.includes('列表')) return 'list';
         if (s.includes('勾選框') || s.includes('勾選')) return 'checkbox';
+        if (s.includes('圖片辨識')) return 'ai_recognition';
 
         return undefined;
     };
@@ -1291,6 +1292,9 @@ export default function SaveDesignModal({
                                                     const groupKey = getGroupKey(group);
 
                                                     let displayType = normalizeDisplayType(ui.displayType || ui.display_type) || (currentStep === 1 ? 'cards' : 'grid');
+                                                    if (currentStep !== 1 && (displayType === ('cards' as any) || displayType === ('grid' as any))) {
+                                                        // Ensure displayType is correctly typed for subsequent checks
+                                                    }
 
                                                     // Determine items (before filtering) to check if we have items at all
                                                     const rawGroupItems = items.filter(i => i.parentId === group.id);
@@ -1526,13 +1530,140 @@ export default function SaveDesignModal({
                                                         );
                                                     }
 
+                                                    // Render AI Recognition (New Feature)
+                                                    if (displayType === 'ai_recognition') {
+                                                        return (
+                                                            <div key={group.id} className="mb-6 bg-white border-2 border-dashed border-purple-200 rounded-2xl p-6 text-center">
+                                                                <h3 className="text-lg font-bold text-gray-900 mb-2">{group.name}</h3>
+
+                                                                {ui?.description && (
+                                                                    <div
+                                                                        className="mb-6 text-sm text-gray-500 prose prose-sm max-w-none [&>p]:mb-1"
+                                                                        dangerouslySetInnerHTML={{
+                                                                            __html: DOMPurify.sanitize(
+                                                                                ui.description
+                                                                                    .replace(/&amp;/g, '&')
+                                                                                    .replace(/&lt;/g, '<')
+                                                                                    .replace(/&gt;/g, '>')
+                                                                                    .replace(/&quot;/g, '"'),
+                                                                                { ADD_ATTR: ['target', 'style'] }
+                                                                            )
+                                                                        }}
+                                                                    />
+                                                                )}
+
+                                                                {/* Description Images (Instructional Screenshots) */}
+                                                                {descriptionImages.length > 0 && (
+                                                                    <div className={`mb-6 grid gap-3 max-w-lg mx-auto ${descriptionImages.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                                                                        {descriptionImages.map((img: string, idx: number) => (
+                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
+                                                                                <img
+                                                                                    src={img}
+                                                                                    className="w-full aspect-[4/3] object-cover rounded-xl border border-gray-100 shadow-sm transition-transform group-hover:scale-[1.02]"
+                                                                                    alt={`${group.name} 範例圖片 ${idx + 1}`}
+                                                                                />
+                                                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
+                                                                                    <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+
+                                                                <div className="max-w-md mx-auto">
+                                                                    <input
+                                                                        type="file"
+                                                                        accept="image/*"
+                                                                        ref={aiFileInputRef}
+                                                                        className="hidden"
+                                                                        onChange={handleAISpecRecognition}
+                                                                    />
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => aiFileInputRef.current?.click()}
+                                                                        disabled={isRecognizing}
+                                                                        className={`w-full py-4 px-6 bg-gradient-to-r from-purple-high to-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-purple-100 hover:shadow-purple-200 transition-all flex items-center justify-center gap-3 ${isRecognizing ? 'opacity-70 cursor-not-allowed' : 'hover:-translate-y-1'}`}
+                                                                    >
+                                                                        {isRecognizing ? (
+                                                                            <Loader2 className="w-6 h-6 animate-spin" />
+                                                                        ) : (
+                                                                            <Sparkles className="w-6 h-6" />
+                                                                        )}
+                                                                        <span className="text-lg">{isRecognizing ? '正在辨識規格...' : '上傳截圖辨識規格'}</span>
+                                                                    </button>
+                                                                    <p className="mt-4 text-xs text-gray-400">
+                                                                        請上傳包含產品完整規格的官網截圖<br />
+                                                                        AI 將自動為您填入所有選項
+                                                                    </p>
+                                                                </div>
+
+                                                                {/* Custom Attributes rendered below if group is "active" or needed */}
+                                                                {group.subAttributes && group.subAttributes.length > 0 && (
+                                                                    <div className="mt-8 text-left border-t border-gray-100 pt-6">
+                                                                        <h4 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
+                                                                            <Settings className="w-4 h-4" /> 您也可以手動調整：
+                                                                        </h4>
+                                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                                            {group.subAttributes.map(attr => {
+                                                                                const fieldKey = `${groupKey}:${attr.id}`;
+                                                                                const isMatched = matchedFields.has(fieldKey);
+                                                                                return (
+                                                                                    <div key={attr.id} className="space-y-1">
+                                                                                        <label className="text-xs font-bold text-gray-500 flex items-center justify-between">
+                                                                                            {attr.name}
+                                                                                            {isMatched && <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-full animate-pulse">AI 辨識</span>}
+                                                                                        </label>
+                                                                                        {attr.type === 'select' ? (
+                                                                                            <select
+                                                                                                className={`w-full p-2 border rounded-lg text-sm bg-white transition-all duration-500 ${isMatched ? 'border-purple-500 ring-1 ring-purple-100' : 'border-gray-200'}`}
+                                                                                                value={selectedOptions[fieldKey] || ''}
+                                                                                                onChange={(e) => {
+                                                                                                    setMatchedFields(prev => {
+                                                                                                        const next = new Set(prev);
+                                                                                                        next.delete(fieldKey);
+                                                                                                        return next;
+                                                                                                    });
+                                                                                                    setSelectedOptions(prev => ({ ...prev, [fieldKey]: e.target.value }));
+                                                                                                }}
+                                                                                            >
+                                                                                                <option value="">請選擇...</option>
+                                                                                                {attr.options?.map(opt => (
+                                                                                                    <option key={opt.id} value={opt.id}>
+                                                                                                        {opt.name}{opt.priceModifier > 0 ? ` (+$${opt.priceModifier})` : ''}
+                                                                                                    </option>
+                                                                                                ))}
+                                                                                            </select>
+                                                                                        ) : (
+                                                                                            <input
+                                                                                                className={`w-full p-2 border rounded-lg text-sm bg-white transition-all duration-500 ${isMatched ? 'border-purple-500 ring-1 ring-purple-100' : 'border-gray-200'}`}
+                                                                                                value={selectedOptions[fieldKey] || ''}
+                                                                                                onChange={(e) => {
+                                                                                                    setMatchedFields(prev => {
+                                                                                                        const next = new Set(prev);
+                                                                                                        next.delete(fieldKey);
+                                                                                                        return next;
+                                                                                                    });
+                                                                                                    setSelectedOptions(prev => ({ ...prev, [fieldKey]: e.target.value }));
+                                                                                                }}
+                                                                                            />
+                                                                                        )}
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    }
+
                                                     // Default: Grid / List (Standard Buttons)
                                                     return (
                                                         <div key={group.id} className="mb-8">
                                                             <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">{group.name}</h3>
 
                                                             {validItems.length > 0 ? (
-                                                                <div className={`grid gap-3 ${group.code === 'lanyard' || displayType === 'list' ? 'grid-cols-1' : 'grid-cols-3'}`}>
+                                                                <div className={`grid gap-3 ${group.code === 'lanyard' || displayType === 'list' || displayType === 'ai_recognition' ? 'grid-cols-1' : 'grid-cols-3'}`}>
                                                                     {validItems.map(item => (
                                                                         <button
                                                                             type="button"

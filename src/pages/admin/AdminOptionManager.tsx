@@ -18,7 +18,8 @@ import {
     Edit2,
     GripVertical,
     Check,
-    Move
+    Move,
+    Loader2
 } from 'lucide-react';
 import {
     DndContext,
@@ -138,6 +139,9 @@ export default function AdminOptionManager() {
 
     // Sub-Attributes Editor State
     const [attributeInput, setAttributeInput] = useState<{ name: string, type: 'select' | 'text' }>({ name: '', type: 'select' });
+    const [isCopying, setIsCopying] = useState<string | null>(null);
+    const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
+    const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
     const [attributeOptionInput, setAttributeOptionInput] = useState<{ attrId: string, name: string, price: number, image?: string } | null>(null);
     const [editingAttributeOption, setEditingAttributeOption] = useState<{ attrId: string, optionId: string, name: string, price: number, image?: string } | null>(null);
 
@@ -375,42 +379,23 @@ export default function AdminOptionManager() {
     };
 
     const handleDuplicateGroup = async (id: string) => {
-        if (!confirm('確定複製此規格大類？')) return;
-
+        setIsCopying(id);
         setLoading(true);
         try {
-            // 1. Try RPC (Backend Logic)
-            const { data, error } = await supabase.rpc('duplicate_option_group', { source_group_id: id });
-
-            if (!error && data) {
-                // RPC Success
-                const newGroup = fromDbGroup(data);
-                // Fetch new items
-                const { data: newItemsData } = await supabase.from('option_items').select('*').eq('parent_id', newGroup.id);
-                const newItems = (newItemsData || []).map(fromDbItem);
-
-                setGroups(prev => [...prev, newGroup]);
-                setItems(prev => [...prev, ...newItems]);
-                alert('複製成功');
-                return;
-            }
-
-            console.warn('RPC duplicate_option_group failed or not found, falling back to client-side logic.', error);
-
-            // 2. Client-side Fallback
+            // Client-side duplication (Primary for now as RPC is unreliable)
             const sourceGroup = groups.find(g => g.id === id);
             if (!sourceGroup) throw new Error('Source group not found');
 
             const newGroupId = `grp_${Date.now()}`;
-            // Ensure deep copy of uiConfig & subAttributes
+            // Deep copy objects
             const newUiConfig = JSON.parse(JSON.stringify(sourceGroup.uiConfig || {}));
             const newSubAttributes = JSON.parse(JSON.stringify(sourceGroup.subAttributes || []));
 
             const newGroup: OptionGroup = {
                 ...sourceGroup,
                 id: newGroupId,
-                code: `${sourceGroup.code}_copy_${Date.now()}`,
-                name: `${sourceGroup.name} (Copy)`,
+                code: `code_${Date.now()}`, // Generate new code
+                name: `${sourceGroup.name} (副本)`,
                 uiConfig: newUiConfig,
                 subAttributes: newSubAttributes
             };
@@ -422,11 +407,11 @@ export default function AdminOptionManager() {
                 parentId: newGroupId
             }));
 
-            // Insert Group
+            // 1. Insert Group
             const { error: gErr } = await supabase.from('option_groups').insert(toDbGroup(newGroup));
             if (gErr) throw gErr;
 
-            // Insert Items
+            // 2. Insert Items
             if (newItems.length > 0) {
                 const { error: iErr } = await supabase.from('option_items').insert(newItems.map(toDbItem));
                 if (iErr) throw iErr;
@@ -434,28 +419,34 @@ export default function AdminOptionManager() {
 
             setGroups(prev => [...prev, newGroup]);
             setItems(prev => [...prev, ...newItems]);
-            alert('複製成功 (Client-side)');
+            alert('複製成功');
 
         } catch (err: any) {
             console.error('Duplication failed:', err);
             alert('複製失敗: ' + (err.message || '未知錯誤'));
         } finally {
+            setIsCopying(null);
             setLoading(false);
         }
     };
 
     const handleDeleteGroup = async (id: string) => {
-        if (confirm('確定刪除此規格大類？底下的子選項也會被隱藏。')) {
+        setDeletingGroupId(id);
+        try {
             const { error } = await supabase.from('option_groups').delete().eq('id', id);
             if (error) {
-                alert('刪除失敗');
+                alert('刪除失敗: ' + error.message);
                 return;
             }
 
             setGroups(prev => prev.filter(g => g.id !== id));
             if (selectedGroupId === id) setSelectedGroupId(null);
-            // Optional: Delete children too (DB Cascade handles it, but update UI)
             setItems(prev => prev.filter(i => i.parentId !== id));
+        } catch (err: any) {
+            console.error('Delete failed:', err);
+            alert('刪除發生錯誤');
+        } finally {
+            setDeletingGroupId(null);
         }
     };
 
@@ -501,13 +492,19 @@ export default function AdminOptionManager() {
     };
 
     const handleDeleteItem = async (id: string) => {
-        if (confirm('確定刪除此選項？')) {
+        setDeletingItemId(id);
+        try {
             const { error } = await supabase.from('option_items').delete().eq('id', id);
             if (error) {
-                alert('刪除失敗');
+                alert('刪除失敗: ' + error.message);
                 return;
             }
             setItems(prev => prev.filter(i => i.id !== id));
+        } catch (err: any) {
+            console.error('Delete item failed:', err);
+            alert('刪除發生錯誤');
+        } finally {
+            setDeletingItemId(null);
         }
     };
 
@@ -783,20 +780,30 @@ export default function AdminOptionManager() {
                                             e.stopPropagation();
                                             handleDuplicateGroup(group.id);
                                         }}
-                                        className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded"
+                                        disabled={isCopying !== null}
+                                        className={`p-1 rounded transition-colors ${isCopying === group.id ? 'bg-green-100 text-green-600' : 'text-gray-400 hover:text-green-600 hover:bg-green-50'}`}
                                         title="複製"
                                     >
-                                        <Copy className="w-4 h-4" />
+                                        {isCopying === group.id ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <Copy className="w-4 h-4" />
+                                        )}
                                     </button>
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             handleDeleteGroup(group.id);
                                         }}
-                                        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                        disabled={deletingGroupId !== null}
+                                        className={`p-1 rounded transition-colors ${deletingGroupId === group.id ? 'bg-red-100 text-red-600' : 'text-gray-400 hover:text-red-600 hover:bg-red-50'}`}
                                         title="刪除"
                                     >
-                                        <Trash2 className="w-4 h-4" />
+                                        {deletingGroupId === group.id ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <Trash2 className="w-4 h-4" />
+                                        )}
                                     </button>
                                 </div>
                             </div>
@@ -860,9 +867,14 @@ export default function AdminOptionManager() {
                                             </button>
                                             <button
                                                 onClick={() => handleDeleteItem(item.id)}
-                                                className="p-1.5 bg-white rounded shadow text-gray-600 hover:text-red-600"
+                                                disabled={deletingItemId !== null}
+                                                className="p-1.5 bg-white rounded shadow text-gray-600 hover:text-red-600 disabled:opacity-50"
                                             >
-                                                <Trash2 className="w-3 h-3" />
+                                                {deletingItemId === item.id ? (
+                                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                                ) : (
+                                                    <Trash2 className="w-3 h-3" />
+                                                )}
                                             </button>
                                         </div>
                                     </div>
@@ -989,6 +1001,7 @@ export default function AdminOptionManager() {
                                         <option value="grid">網格 (適用顏色)</option>
                                         <option value="list">列表 (適用簡單選項)</option>
                                         <option value="checkbox">勾選框 (適用加購/修復)</option>
+                                        <option value="ai_recognition">圖片辨識 (AI 自動填入)</option>
                                     </select>
                                 </div>
                             </div>

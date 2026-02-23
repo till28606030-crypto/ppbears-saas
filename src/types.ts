@@ -22,7 +22,7 @@ export interface SubAttribute {
 
 export interface OptionGroupUIConfig {
     step?: number; // 1, 2, 3...
-    displayType?: 'cards' | 'grid' | 'list' | 'checkbox';
+    displayType?: 'cards' | 'grid' | 'list' | 'checkbox' | 'ai_recognition';
     description?: string;
     descriptionImage?: string; // Legacy (single image)
     descriptionImages?: string[]; // New (multi image)
