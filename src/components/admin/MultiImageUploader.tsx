@@ -8,14 +8,16 @@ interface MultiImageUploaderProps {
     maxFiles?: number;
     maxSizeMB?: number; // Default 5MB
     bucket?: 'assets' | 'models';
+    onMediaLibraryClick?: () => void;
 }
 
-export default function MultiImageUploader({ 
-    images = [], 
-    onChange, 
-    maxFiles = 20, 
+export default function MultiImageUploader({
+    images = [],
+    onChange,
+    maxFiles = 20,
     maxSizeMB = 5,
-    bucket = 'models'
+    bucket = 'models',
+    onMediaLibraryClick
 }: MultiImageUploaderProps) {
     const [isDragging, setIsDragging] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -57,7 +59,7 @@ export default function MultiImageUploader({
     const processFiles = async (files: File[]) => {
         setError(null);
         const validFiles: File[] = [];
-        
+
         // Validate
         for (const file of files) {
             if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
@@ -122,7 +124,7 @@ export default function MultiImageUploader({
         onChange([...images, ...newImages]);
         setUploading(false);
         setProgress(0);
-        
+
         // Reset input
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
@@ -205,9 +207,8 @@ export default function MultiImageUploader({
         <div className="space-y-4">
             {/* Upload Area */}
             <div
-                className={`border-2 border-dashed rounded-xl p-8 transition-all text-center cursor-pointer ${
-                    isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400 bg-gray-50'
-                }`}
+                className={`border-2 border-dashed rounded-xl p-8 transition-all text-center cursor-pointer ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400 bg-gray-50'
+                    }`}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
@@ -221,7 +222,7 @@ export default function MultiImageUploader({
                     className="hidden"
                     onChange={handleFileSelect}
                 />
-                
+
                 <div className="flex flex-col items-center gap-3">
                     <div className="p-3 bg-white rounded-full shadow-sm">
                         <Upload className={`w-6 h-6 ${isDragging ? 'text-blue-500' : 'text-gray-400'}`} />
@@ -230,6 +231,18 @@ export default function MultiImageUploader({
                         <p className="font-bold text-gray-700">點擊或拖放圖片至此</p>
                         <p className="text-xs text-gray-400 mt-1">支援 JPG, PNG, GIF, WebP (單檔 &lt; {maxSizeMB}MB)</p>
                     </div>
+
+                    {onMediaLibraryClick && (
+                        <div onClick={(e) => { e.stopPropagation(); onMediaLibraryClick(); }} className="mt-2">
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors text-sm font-medium shadow-sm"
+                            >
+                                <ImageIcon className="w-4 h-4 text-blue-500" />
+                                從媒體庫選圖
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {uploading && (
@@ -239,7 +252,7 @@ export default function MultiImageUploader({
                             <span className="text-gray-500">{Math.round(progress)}%</span>
                         </div>
                         <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div 
+                            <div
                                 className="h-full bg-blue-500 transition-all duration-300"
                                 style={{ width: `${progress}%` }}
                             />
@@ -259,17 +272,17 @@ export default function MultiImageUploader({
             {images.length > 0 && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                     {images.map((src, idx) => (
-                        <div 
-                            key={idx} 
+                        <div
+                            key={idx}
                             className="group relative aspect-square bg-gray-100 rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-all hover:border-blue-300"
                         >
-                            <img 
-                                src={src} 
-                                alt={`Uploaded ${idx + 1}`} 
+                            <img
+                                src={src}
+                                alt={`Uploaded ${idx + 1}`}
                                 className="w-full h-full object-contain"
                                 loading="lazy"
                             />
-                            
+
                             {/* Overlay */}
                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
                                 <button
@@ -301,7 +314,7 @@ export default function MultiImageUploader({
 
             {/* Lightbox Modal */}
             {lightboxIndex !== null && (
-                <div 
+                <div
                     className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center animate-in fade-in duration-200"
                     onClick={closeLightbox}
                 >
@@ -311,13 +324,13 @@ export default function MultiImageUploader({
                             {lightboxIndex + 1} / {images.length}
                         </span>
                         <div className="flex gap-4">
-                            <button 
+                            <button
                                 onClick={(e) => { e.stopPropagation(); setZoomLevel(prev => prev + 0.5); }}
                                 className="hover:text-gray-300"
                             >
                                 +
                             </button>
-                            <button 
+                            <button
                                 onClick={(e) => { e.stopPropagation(); setZoomLevel(prev => Math.max(0.5, prev - 0.5)); }}
                                 className="hover:text-gray-300"
                             >
@@ -331,16 +344,16 @@ export default function MultiImageUploader({
 
                     {/* Navigation */}
                     {lightboxIndex > 0 && (
-                        <button 
+                        <button
                             className="absolute left-4 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white z-10"
                             onClick={prevImage}
                         >
                             <ChevronLeft className="w-8 h-8" />
                         </button>
                     )}
-                    
+
                     {lightboxIndex < images.length - 1 && (
-                        <button 
+                        <button
                             className="absolute right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white z-10"
                             onClick={nextImage}
                         >
@@ -349,15 +362,15 @@ export default function MultiImageUploader({
                     )}
 
                     {/* Image Container */}
-                    <div 
+                    <div
                         className="w-full h-full flex items-center justify-center overflow-hidden"
                         onWheel={handleWheel}
                     >
-                        <img 
-                            src={images[lightboxIndex]} 
-                            alt="Lightbox" 
+                        <img
+                            src={images[lightboxIndex]}
+                            alt="Lightbox"
                             className="max-w-none transition-transform duration-100 ease-out"
-                            style={{ 
+                            style={{
                                 transform: `scale(${zoomLevel}) translate(${pan.x / zoomLevel}px, ${pan.y / zoomLevel}px)`,
                                 cursor: zoomLevel > 1 ? (isDraggingImage.current ? 'grabbing' : 'grab') : 'default',
                                 maxHeight: '90vh',

@@ -4,6 +4,8 @@ import { X, Check, ChevronRight, ShoppingCart, Info, Loader2, AlertCircle, ZoomI
 import { get } from 'idb-keyval';
 import { loadOptionGroups } from '../services/optionGroups';
 import { supabase } from '../lib/supabase';
+import { recognizeSpecsFromImage, mapRecognizedSpecs } from '../services/aiRecognition';
+import { Sparkles } from 'lucide-react';
 import DOMPurify from 'dompurify';
 
 export interface SubAttributeOption {
@@ -84,6 +86,11 @@ export default function SaveDesignModal({
 
     // Lightbox State
     const [zoomedImage, setZoomedImage] = useState<string | null>(null);
+
+    // AI Recognition State
+    const [isRecognizing, setIsRecognizing] = useState(false);
+    const [matchedFields, setMatchedFields] = useState<Set<string>>(new Set());
+    const aiFileInputRef = React.useRef<HTMLInputElement>(null);
 
     // Data State
     const [groups, setGroups] = useState<OptionGroup[]>([]);
@@ -771,6 +778,45 @@ export default function SaveDesignModal({
         }
     };
 
+    const handleAISpecRecognition = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsRecognizing(true);
+        setInlineError(null);
+
+        try {
+            const recognized = await recognizeSpecsFromImage(file);
+            const updatedOptions = mapRecognizedSpecs(recognized, groups, selectedOptions);
+
+            // Identify which fields were updated
+            const newMatched = new Set<string>();
+            Object.keys(updatedOptions).forEach(key => {
+                if (updatedOptions[key] !== selectedOptions[key]) {
+                    newMatched.add(key);
+                }
+            });
+
+            setSelectedOptions(updatedOptions);
+            setMatchedFields(newMatched);
+
+            // Clear highlight after 5 seconds
+            setTimeout(() => setMatchedFields(new Set()), 5000);
+
+            if (newMatched.size > 0) {
+                alert(`AI 辨識成功！已自動為您填入 ${newMatched.size} 項規格。`);
+            } else {
+                alert('AI 辨識完成，但未發現相符的規格。請手動檢查。');
+            }
+        } catch (err) {
+            console.error('[AI Recognition] Error:', err);
+            setInlineError('AI 辨識失敗，請重試。');
+        } finally {
+            setIsRecognizing(false);
+            if (aiFileInputRef.current) aiFileInputRef.current.value = '';
+        }
+    };
+
     // Reusable Custom Attributes Render (Step 2+)
     const renderCustomAttributes = (group: OptionGroup) => {
         if (!group?.subAttributes?.length) return null;
@@ -879,39 +925,81 @@ export default function SaveDesignModal({
         const groupKey = getGroupKey(group);
         return (
             <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-4">
-                <h4 className="font-bold text-gray-800 flex items-center gap-2">
-                    <Settings className="w-4 h-4" /> 進階選項
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {group.subAttributes.map(attr => (
-                        <div key={attr.id} className="space-y-1">
-                            <label className="text-sm font-bold text-gray-700">{attr.name}</label>
-                            {attr.type === 'select' ? (
-                                <select
-                                    className="w-full p-2 border rounded-lg text-sm bg-white"
-                                    value={selectedOptions[`${groupKey}:${attr.id}`] || ''}
-                                    onChange={(e) =>
-                                        setSelectedOptions(prev => ({ ...prev, [`${groupKey}:${attr.id}`]: e.target.value }))
-                                    }
-                                >
-                                    <option value="">請選擇...</option>
-                                    {attr.options?.map(opt => (
-                                        <option key={opt.id} value={opt.id}>
-                                            {opt.name}{opt.priceModifier > 0 ? ` (+$${opt.priceModifier})` : ''}
-                                        </option>
-                                    ))}
-                                </select>
+                <div className="flex justify-between items-center">
+                    <h4 className="font-bold text-gray-800 flex items-center gap-2">
+                        <Settings className="w-4 h-4" /> 進階選項
+                    </h4>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="file"
+                            accept="image/*"
+                            ref={aiFileInputRef}
+                            className="hidden"
+                            onChange={handleAISpecRecognition}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => aiFileInputRef.current?.click()}
+                            disabled={isRecognizing}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-high to-indigo-600 text-white rounded-lg text-xs font-bold shadow-sm hover:opacity-90 transition-all ${isRecognizing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            title="上傳官網截圖自動辨識規格"
+                        >
+                            {isRecognizing ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             ) : (
-                                <input
-                                    className="w-full p-2 border rounded-lg text-sm bg-white"
-                                    value={selectedOptions[`${groupKey}:${attr.id}`] || ''}
-                                    onChange={(e) =>
-                                        setSelectedOptions(prev => ({ ...prev, [`${groupKey}:${attr.id}`]: e.target.value }))
-                                    }
-                                />
+                                <Sparkles className="w-3.5 h-3.5" />
                             )}
-                        </div>
-                    ))}
+                            {isRecognizing ? '辨識中...' : 'AI 辨識規格'}
+                        </button>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {group.subAttributes.map(attr => {
+                        const fieldKey = `${groupKey}:${attr.id}`;
+                        const isMatched = matchedFields.has(fieldKey);
+                        return (
+                            <div key={attr.id} className="space-y-1">
+                                <label className="text-sm font-bold text-gray-700 flex items-center justify-between">
+                                    {attr.name}
+                                    {isMatched && <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-full animate-pulse">AI 辨識</span>}
+                                </label>
+                                {attr.type === 'select' ? (
+                                    <select
+                                        className={`w-full p-2 border rounded-lg text-sm bg-white transition-all duration-500 ${isMatched ? 'border-purple-500 ring-2 ring-purple-100' : ''}`}
+                                        value={selectedOptions[fieldKey] || ''}
+                                        onChange={(e) => {
+                                            setMatchedFields(prev => {
+                                                const next = new Set(prev);
+                                                next.delete(fieldKey);
+                                                return next;
+                                            });
+                                            setSelectedOptions(prev => ({ ...prev, [fieldKey]: e.target.value }));
+                                        }}
+                                    >
+                                        <option value="">請選擇...</option>
+                                        {attr.options?.map(opt => (
+                                            <option key={opt.id} value={opt.id}>
+                                                {opt.name}{opt.priceModifier > 0 ? ` (+$${opt.priceModifier})` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <input
+                                        className={`w-full p-2 border rounded-lg text-sm bg-white transition-all duration-500 ${isMatched ? 'border-purple-500 ring-2 ring-purple-100' : ''}`}
+                                        value={selectedOptions[fieldKey] || ''}
+                                        onChange={(e) => {
+                                            setMatchedFields(prev => {
+                                                const next = new Set(prev);
+                                                next.delete(fieldKey);
+                                                return next;
+                                            });
+                                            setSelectedOptions(prev => ({ ...prev, [fieldKey]: e.target.value }));
+                                        }}
+                                    />
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         );
@@ -1116,20 +1204,37 @@ export default function SaveDesignModal({
                                                     if (!descriptionImages || descriptionImages.length === 0) return null;
 
                                                     return (
-                                                        <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
-                                                            {descriptionImages.map((img: string, idx: number) => (
-                                                                <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
-                                                                    <img
-                                                                        src={img}
-                                                                        className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
-                                                                        alt={`${group.name} 說明圖片 ${idx + 1}`}
-                                                                    />
-                                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
-                                                                        <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                                                        <>
+                                                            <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                                                                {descriptionImages.map((img: string, idx: number) => (
+                                                                    <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
+                                                                        <img
+                                                                            src={img}
+                                                                            className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
+                                                                            alt={`${group.name} 說明圖片 ${idx + 1}`}
+                                                                        />
+                                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
+                                                                            <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                                                                        </div>
                                                                     </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
+                                                                ))}
+                                                            </div>
+                                                            {ui?.description && (
+                                                                <div
+                                                                    className="mb-6 text-xs text-gray-400 prose prose-xs max-w-none [&>p]:mb-1 [&>a]:text-blue-500 [&>a]:underline"
+                                                                    dangerouslySetInnerHTML={{
+                                                                        __html: DOMPurify.sanitize(
+                                                                            ui.description
+                                                                                .replace(/&amp;/g, '&')
+                                                                                .replace(/&lt;/g, '<')
+                                                                                .replace(/&gt;/g, '>')
+                                                                                .replace(/&quot;/g, '"'),
+                                                                            { ADD_ATTR: ['target', 'style'] }
+                                                                        )
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </>
                                                     );
                                                 })()}
 

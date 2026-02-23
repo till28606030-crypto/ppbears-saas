@@ -19,6 +19,8 @@ export default function AdminLayout() {
     if (path.includes('/admin/categories')) return 'categories';
     if (path.includes('/admin/assets')) return 'assets';
     if (path.includes('/admin/designs')) return 'designs';
+    if (path.includes('/admin/media')) return 'media';
+    if (path.includes('/admin/settings')) return 'settings';
     return 'orders'; // Default or /admin/orders
   };
 
@@ -113,12 +115,31 @@ export default function AdminLayout() {
             <Palette className="w-5 h-5" />
             設計款模板
           </button>
+
           <button
             onClick={() => handleNavigation('/seller/frames')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${activeTab === 'frames' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
           >
             <Shapes className="w-5 h-5" />
             相框設計
+          </button>
+
+          {/* NEW: Media Library */}
+          <button
+            onClick={() => handleNavigation('/admin/media')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${activeTab === 'media' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            <ImageIcon className="w-5 h-5" />
+            媒體庫 (全域儲存空間)
+          </button>
+
+          {/* NEW: System Settings */}
+          <button
+            onClick={() => handleNavigation('/admin/settings')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${activeTab === 'settings' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            <Settings className="w-5 h-5" />
+            系統設定 (空間清理)
           </button>
         </nav>
 

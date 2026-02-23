@@ -49,6 +49,7 @@ import {
 } from '../../types';
 import { normalizeOptionGroup } from '../../utils/normalizeOptionGroup';
 import MultiImageUploader from '../../components/admin/MultiImageUploader';
+import MediaSelectorModal from '../../components/admin/MediaSelectorModal';
 import { supabase } from '../../lib/supabase';
 import { toDbGroup, fromDbGroup, toDbItem, fromDbItem } from '../../utils/dbMappers';
 import ReactQuill from 'react-quill';
@@ -143,6 +144,16 @@ export default function AdminOptionManager() {
     const [isEditingItem, setIsEditingItem] = useState(false);
     const [editingItemData, setEditingItemData] = useState<Partial<OptionItem>>({});
 
+    // Media Modal State
+    const [mediaModalConfig, setMediaModalConfig] = useState<{
+        isOpen: boolean;
+        bucket: 'models' | 'assets' | 'designs';
+        onSelect: (url: string) => void;
+        onSelectMultiple?: (urls: string[]) => void;
+        isMultiple?: boolean;
+        existingUrls?: string[];
+    }>({ isOpen: false, bucket: 'models', onSelect: () => { } });
+
     // Load Data (Sync with Supabase)
     useEffect(() => {
         const load = async () => {
@@ -185,23 +196,6 @@ export default function AdminOptionManager() {
         const file = e.target.files?.[0];
         if (!file) return;
         // ... (existing code)
-    };
-
-
-
-    const handleGroupImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        try {
-            setLoading(true);
-            const publicUrl = await uploadToSupabase(file, 'models');
-            if (publicUrl) {
-                setEditingGroupData(prev => ({ ...prev, thumbnail: publicUrl }));
-            }
-        } finally {
-            setLoading(false);
-        }
     };
 
     // --- Sub-Attributes Handlers ---
@@ -279,6 +273,15 @@ export default function AdminOptionManager() {
         setEditingAttributeOption(null);
     };
 
+    const updateAttributeName = (attrId: string, newName: string) => {
+        setEditingGroupData(prev => ({
+            ...prev,
+            subAttributes: (prev.subAttributes || []).map(a =>
+                a.id === attrId ? { ...a, name: newName } : a
+            )
+        }));
+    };
+
     const handleAttributeOptionDragEnd = (attrId: string, event: DragEndEvent) => {
         const { active, over } = event;
 
@@ -303,6 +306,25 @@ export default function AdminOptionManager() {
     };
 
     const handleSaveGroup = async () => {
+        // If there's an active attribute option being edited, commit it first
+        if (editingAttributeOption) {
+            const { attrId, optionId, name, price, image } = editingAttributeOption;
+            // We manually update the data here to ensure it's included in the save payload
+            const updatedSubAttributes = (editingGroupData.subAttributes || []).map(a => {
+                if (a.id === attrId) {
+                    return {
+                        ...a,
+                        options: (a.options || []).map(o =>
+                            o.id === optionId ? { ...o, name, priceModifier: price, image } : o
+                        )
+                    };
+                }
+                return a;
+            });
+            editingGroupData.subAttributes = updatedSubAttributes;
+            setEditingAttributeOption(null);
+        }
+
         if (!editingGroupData.name) return alert('請輸入名稱');
 
         // Ensure uiConfig.step is set (default to 1)
@@ -524,26 +546,47 @@ export default function AdminOptionManager() {
                     style={style}
                     className="text-xs bg-blue-50 border border-blue-300 px-2 py-1 rounded flex items-center gap-1"
                 >
-                    <label className="cursor-pointer w-5 h-5 flex items-center justify-center border rounded bg-white hover:bg-gray-50 overflow-hidden shrink-0">
+                    <div
+                        onClick={() => {
+                            setMediaModalConfig({
+                                isOpen: true,
+                                bucket: 'models',
+                                isMultiple: false,
+                                onSelect: (url) => {
+                                    if (editingData) {
+                                        onEditingDataChange({ ...editingData, image: url });
+                                    }
+                                    setMediaModalConfig(prev => ({ ...prev, isOpen: false }));
+                                }
+                            });
+                        }}
+                        className="cursor-pointer w-5 h-5 flex items-center justify-center border rounded bg-white hover:bg-gray-50 overflow-hidden shrink-0"
+                        title="點擊選擇圖片"
+                    >
                         {editingData.image ? (
                             <img src={editingData.image} className="w-full h-full object-cover" alt="" />
                         ) : (
                             <ImageIcon className="w-3 h-3 text-gray-400" />
                         )}
-                        <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (!file) return;
-                                const publicUrl = await uploadToSupabase(file, 'models');
-                                if (publicUrl && editingData) {
-                                    onEditingDataChange({ ...editingData, image: publicUrl });
+                    </div>
+                    <button
+                        onClick={() => {
+                            setMediaModalConfig({
+                                isOpen: true,
+                                bucket: 'models',
+                                isMultiple: false,
+                                onSelect: (url) => {
+                                    if (editingData) {
+                                        onEditingDataChange({ ...editingData, image: url });
+                                    }
+                                    setMediaModalConfig(prev => ({ ...prev, isOpen: false }));
                                 }
-                            }}
-                        />
-                    </label>
+                            });
+                        }}
+                        className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded"
+                    >
+                        選圖
+                    </button>
                     <input
                         value={editingData.name}
                         onChange={(e) => onEditingDataChange({ ...editingData, name: e.target.value })}
@@ -890,11 +933,20 @@ export default function AdminOptionManager() {
                                     )}
                                 </div>
                                 <div className="flex-1">
-                                    <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm font-medium">
-                                        <Upload className="w-4 h-4" />
-                                        上傳圖片
-                                        <input type="file" accept="image/*" className="hidden" onChange={handleGroupImageUpload} />
-                                    </label>
+                                    <button
+                                        onClick={() => setMediaModalConfig({
+                                            isOpen: true,
+                                            bucket: 'models',
+                                            onSelect: (url) => {
+                                                setEditingGroupData(prev => ({ ...prev, thumbnail: url }));
+                                                setMediaModalConfig(prev => ({ ...prev, isOpen: false }));
+                                            }
+                                        })}
+                                        className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm font-medium"
+                                    >
+                                        <ImageIcon className="w-4 h-4" />
+                                        從媒體庫選圖
+                                    </button>
                                     <p className="text-xs text-gray-400 mt-2">支援 JPG, PNG, GIF</p>
                                 </div>
                             </div>
@@ -977,6 +1029,33 @@ export default function AdminOptionManager() {
                                         }));
                                     }}
                                     maxFiles={10}
+                                    onMediaLibraryClick={() => {
+                                        const currentImages = editingGroupData.uiConfig?.descriptionImages ||
+                                            (editingGroupData.uiConfig?.descriptionImage ? [editingGroupData.uiConfig.descriptionImage] : []);
+
+                                        setMediaModalConfig({
+                                            isOpen: true,
+                                            bucket: 'models',
+                                            isMultiple: true,
+                                            existingUrls: currentImages,
+                                            onSelect: () => { }, // Single select not used here
+                                            onSelectMultiple: (urls) => {
+                                                // Duplicate prevention: only add URLs that aren't already in descriptionImages
+                                                const uniqueNewUrls = urls.filter(url => !currentImages.includes(url));
+                                                const newImages = [...currentImages, ...uniqueNewUrls];
+
+                                                setEditingGroupData(prev => ({
+                                                    ...prev,
+                                                    uiConfig: {
+                                                        ...prev.uiConfig,
+                                                        descriptionImages: newImages,
+                                                        descriptionImage: newImages[0]
+                                                    }
+                                                }));
+                                                setMediaModalConfig(prev => ({ ...prev, isOpen: false }));
+                                            }
+                                        });
+                                    }}
                                 />
                             </div>
                         </div>
@@ -992,7 +1071,15 @@ export default function AdminOptionManager() {
                                 {(editingGroupData.subAttributes || []).map(attr => (
                                     <div key={attr.id} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
                                         <div className="flex justify-between items-center mb-2">
-                                            <span className="font-bold text-sm text-gray-800">{attr.name} <span className="text-xs text-gray-500 font-normal">({attr.type === 'select' ? '選單' : '文字'})</span></span>
+                                            <div className="flex items-center gap-2 flex-1">
+                                                <input
+                                                    className="font-bold text-sm text-gray-800 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-purple-500 focus:bg-white px-1 py-0.5 outline-none transition-all w-full max-w-[200px]"
+                                                    value={attr.name}
+                                                    onChange={(e) => updateAttributeName(attr.id, e.target.value)}
+                                                    placeholder="屬性名稱"
+                                                />
+                                                <span className="text-xs text-gray-500 font-normal shrink-0">({attr.type === 'select' ? '選單' : '文字'})</span>
+                                            </div>
                                             <button onClick={() => removeAttribute(attr.id)} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 className="w-3 h-3" /></button>
                                         </div>
 
@@ -1037,31 +1124,31 @@ export default function AdminOptionManager() {
 
                                                 {/* Add Option Input */}
                                                 <div className="flex gap-2 items-center">
-                                                    <label className="cursor-pointer w-8 h-8 flex items-center justify-center border rounded bg-white hover:bg-gray-50 overflow-hidden relative shrink-0">
+                                                    <div
+                                                        onClick={() => {
+                                                            setMediaModalConfig({
+                                                                isOpen: true,
+                                                                bucket: 'models',
+                                                                isMultiple: false,
+                                                                onSelect: (url) => {
+                                                                    setAttributeOptionInput(prev =>
+                                                                        prev?.attrId === attr.id
+                                                                            ? { ...prev, image: url }
+                                                                            : { attrId: attr.id, name: '', price: 0, image: url }
+                                                                    );
+                                                                    setMediaModalConfig(prev => ({ ...prev, isOpen: false }));
+                                                                }
+                                                            });
+                                                        }}
+                                                        className="cursor-pointer w-8 h-8 flex items-center justify-center border rounded bg-white hover:bg-gray-50 overflow-hidden shrink-0"
+                                                        title="點擊媒體庫選圖"
+                                                    >
                                                         {attributeOptionInput?.attrId === attr.id && attributeOptionInput.image ? (
                                                             <img src={attributeOptionInput.image} className="w-full h-full object-cover" />
                                                         ) : (
                                                             <ImageIcon className="w-4 h-4 text-gray-400" />
                                                         )}
-                                                        <input
-                                                            type="file"
-                                                            accept="image/*"
-                                                            className="hidden"
-                                                            onChange={async (e) => {
-                                                                const file = e.target.files?.[0];
-                                                                if (!file) return;
-
-                                                                const publicUrl = await uploadToSupabase(file, 'models');
-                                                                if (publicUrl) {
-                                                                    setAttributeOptionInput(prev =>
-                                                                        prev?.attrId === attr.id
-                                                                            ? { ...prev, image: publicUrl }
-                                                                            : { attrId: attr.id, name: '', price: 0, image: publicUrl }
-                                                                    );
-                                                                }
-                                                            }}
-                                                        />
-                                                    </label>
+                                                    </div>
                                                     <input
                                                         placeholder="選項名稱"
                                                         className="border rounded px-2 py-1 text-xs w-24"
@@ -1205,27 +1292,21 @@ export default function AdminOptionManager() {
                                             <ImageIcon className="w-8 h-8 text-gray-300" />
                                         )}
                                     </div>
-                                    <div className="flex-1">
-                                        <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm font-medium">
-                                            <Upload className="w-4 h-4" />
-                                            上傳圖片
-                                            <input
-                                                type="file"
-                                                accept="image/*"
-                                                className="hidden"
-                                                onChange={async (e) => {
-                                                    const file = e.target.files?.[0];
-                                                    if (!file) return;
-
-                                                    const publicUrl = await uploadToSupabase(file, 'models');
-                                                    if (publicUrl) {
-                                                        setEditingItemData(prev => ({ ...prev, imageUrl: publicUrl }));
-                                                    }
-                                                }}
-                                            />
-                                        </label>
-                                        <p className="text-xs text-gray-400 mt-2">支援 JPG, PNG, GIF</p>
-                                    </div>
+                                    <button
+                                        onClick={() => setMediaModalConfig({
+                                            isOpen: true,
+                                            bucket: 'models',
+                                            onSelect: (url) => {
+                                                setEditingItemData(prev => ({ ...prev, imageUrl: url }));
+                                                setMediaModalConfig(prev => ({ ...prev, isOpen: false }));
+                                            }
+                                        })}
+                                        className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm font-medium"
+                                    >
+                                        <ImageIcon className="w-4 h-4" />
+                                        從媒體庫選圖
+                                    </button>
+                                    <p className="text-xs text-gray-400 mt-2">支援 JPG, PNG, GIF</p>
                                 </div>
                             </div>
                         </div>
@@ -1238,6 +1319,16 @@ export default function AdminOptionManager() {
                 </div>
             )}
 
+            {/* Media Selector Modal */}
+            <MediaSelectorModal
+                isOpen={mediaModalConfig.isOpen}
+                onClose={() => setMediaModalConfig(prev => ({ ...prev, isOpen: false }))}
+                onSelect={mediaModalConfig.onSelect}
+                onSelectMultiple={mediaModalConfig.onSelectMultiple}
+                isMultiple={mediaModalConfig.isMultiple}
+                existingUrls={mediaModalConfig.existingUrls}
+                defaultBucket={mediaModalConfig.bucket}
+            />
         </div>
     );
 }

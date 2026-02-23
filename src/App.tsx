@@ -11,6 +11,8 @@ import AdminDesigns from "@/pages/admin/Designs";
 import AdminOptionManager from "@/pages/admin/AdminOptionManager";
 import ModelDetail from "@/pages/admin/ModelDetail";
 import AdminCategories from "@/pages/admin/Categories";
+import MediaLibrary from "@/pages/admin/MediaLibrary";
+import SystemSettings from "@/pages/admin/SystemSettings";
 import ProductListV2 from "@/pages/seller/products-v2/ProductList";
 import ProductEditorV2 from "@/pages/seller/products-v2/ProductEditor";
 import FrameList from "@/pages/seller/FrameList";
@@ -57,6 +59,8 @@ export default function App() {
               <Route path="/admin/designs" element={<AdminDesigns />} />
               <Route path="/admin/options" element={<AdminOptionManager />} />
               <Route path="/admin/categories" element={<AdminCategories />} />
+              <Route path="/admin/media" element={<MediaLibrary />} />
+              <Route path="/admin/settings" element={<SystemSettings />} />
 
               {/* Model Detail Route (Requested Feature) */}
               <Route path="/admin/models/:id" element={<ModelDetail />} />
