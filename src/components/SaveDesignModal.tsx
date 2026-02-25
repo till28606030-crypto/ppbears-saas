@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, ChevronRight, ShoppingCart, Info, Loader2, AlertCircle, ZoomIn, Settings, ImageIcon } from 'lucide-react';
+import { X, Check, ChevronLeft, ChevronRight, ChevronDown, ShoppingCart, Info, Loader2, AlertCircle, ZoomIn, Settings, ImageIcon } from 'lucide-react';
 import { get } from 'idb-keyval';
 import { loadOptionGroups } from '../services/optionGroups';
 import { supabase } from '../lib/supabase';
@@ -28,6 +28,7 @@ export interface OptionGroupUIConfig {
     displayType?: 'cards' | 'grid' | 'list' | 'checkbox' | 'ai_recognition';
     description?: string;
     descriptionImage?: string;
+    category?: string; // 分類標籤，同 Step 內相同分類的商品會被折疊收合
 }
 
 export interface OptionGroup {
@@ -85,7 +86,28 @@ export default function SaveDesignModal({
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Lightbox State
-    const [zoomedImage, setZoomedImage] = useState<string | null>(null);
+    const [zoomedImageList, setZoomedImageList] = useState<string[]>([]);
+    const [zoomedImageIndex, setZoomedImageIndex] = useState<number>(0);
+
+    const openLightbox = (images: string[], index: number) => {
+        setZoomedImageList(images);
+        setZoomedImageIndex(index);
+    };
+
+    const closeLightbox = () => {
+        setZoomedImageList([]);
+        setZoomedImageIndex(0);
+    };
+
+    const handleNextImage = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setZoomedImageIndex((prev) => (prev + 1) % zoomedImageList.length);
+    };
+
+    const handlePrevImage = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setZoomedImageIndex((prev) => (prev - 1 + zoomedImageList.length) % zoomedImageList.length);
+    };
 
     // AI Recognition State
     const [isRecognizing, setIsRecognizing] = useState(false);
@@ -166,6 +188,8 @@ export default function SaveDesignModal({
     const [activeCaseGroupId, setActiveCaseGroupId] = useState<string | null>(null);
     // NEW: Persistent selection for advanced options across steps
     const [selectedCaseGroupId, setSelectedCaseGroupId] = useState<string | null>(null);
+    // NEW: Category accordion expanded state (category name => bool)
+    const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
     // Reset activeCaseGroupId when leaving Step 1 to prevent drill-down state persistence
     useEffect(() => {
@@ -233,6 +257,22 @@ export default function SaveDesignModal({
             }
         }
     }, [availableSteps, currentStep]);
+
+    // Auto-expand categories that contain a selected item
+    useEffect(() => {
+        const newExpanded: Record<string, boolean> = {};
+        const step1Groups = stepGroups.get(1) || [];
+        step1Groups.forEach(group => {
+            const ui = getUI(group);
+            const cat = ui?.category || ui?.uiConfig?.category || '';
+            if (!cat) return;
+            const groupKey = getGroupKey(group);
+            if (selectedOptions[groupKey]) {
+                newExpanded[cat] = true;
+            }
+        });
+        setExpandedCategories(prev => ({ ...prev, ...newExpanded }));
+    }, [selectedOptions, stepGroups]);
 
     // Debugging
     useEffect(() => {
@@ -1208,7 +1248,7 @@ export default function SaveDesignModal({
                                                         <>
                                                             <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
                                                                 {descriptionImages.map((img: string, idx: number) => (
-                                                                    <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
+                                                                    <div key={idx} className="relative group cursor-pointer" onClick={() => openLightbox(descriptionImages, idx)}>
                                                                         <img
                                                                             src={img}
                                                                             className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
@@ -1262,7 +1302,7 @@ export default function SaveDesignModal({
                                                                             <h3 className="font-bold text-gray-900">{item.name}</h3>
                                                                             {selectedOptions[groupKey] === item.id && <div className="bg-black text-white rounded-full p-1"><Check className="w-3 h-3" /></div>}
                                                                         </div>
-                                                                        <div className="mt-3 font-medium text-blue-600">{item.priceModifier > 0 ? `NT$ ${item.priceModifier}` : '標準方案'}</div>
+                                                                        <div className="mt-3 font-medium text-blue-600">{item.priceModifier > 0 ? `NT$ ${item.priceModifier}` : ''}</div>
                                                                     </div>
                                                                 </div>
                                                             </button>
@@ -1284,14 +1324,172 @@ export default function SaveDesignModal({
                                                 </h2>
 
                                                 {/* Dynamic Groups Rendering */}
-                                                {currentStepGroups.map(group => {
+                                                {(() => {
+                                                    // Step 1: Categorize groups for accordion rendering
+                                                    if (currentStep === 1) {
+                                                        // Separate groups into categorized and uncategorized
+                                                        const cardGroups = currentStepGroups.filter(group => {
+                                                            if (group.code === 'embossing' && !showEmbossing) return false;
+                                                            const ui = getUI(group);
+                                                            const dt = normalizeDisplayType(ui.displayType || (ui as any).display_type) || 'cards';
+                                                            return dt === 'cards';
+                                                        });
+
+                                                        const otherGroups = currentStepGroups.filter(group => {
+                                                            if (group.code === 'embossing' && !showEmbossing) return false;
+                                                            const ui = getUI(group);
+                                                            const dt = normalizeDisplayType(ui.displayType || (ui as any).display_type) || 'cards';
+                                                            return dt !== 'cards';
+                                                        });
+
+                                                        const hasAnyCategory = cardGroups.some(g => {
+                                                            const ui = getUI(g);
+                                                            return !!(ui?.category);
+                                                        });
+
+                                                        // Group card groups by category
+                                                        const categoryMap = new Map<string, OptionGroup[]>();
+                                                        const uncategorized: OptionGroup[] = [];
+
+                                                        cardGroups.forEach(group => {
+                                                            const ui = getUI(group);
+                                                            const cat = ui?.category?.trim() || '';
+                                                            if (cat) {
+                                                                if (!categoryMap.has(cat)) categoryMap.set(cat, []);
+                                                                categoryMap.get(cat)!.push(group);
+                                                            } else {
+                                                                uncategorized.push(group);
+                                                            }
+                                                        });
+
+                                                        const renderCardGroup = (group: OptionGroup) => {
+                                                            const ui = getUI(group);
+                                                            const groupKey = getGroupKey(group);
+                                                            const validItems = getFilteredItems(group.id);
+                                                            const isSelected = !!selectedOptions[groupKey];
+
+                                                            return (
+                                                                <div key={group.id} className="mb-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setActiveCaseGroupId(group.id);
+                                                                            setSelectedCaseGroupId(group.id);
+                                                                            if (!selectedOptions[groupKey] && validItems.length > 0) {
+                                                                                handleSelectOption(groupKey, validItems[0].id);
+                                                                            }
+                                                                        }}
+                                                                        className={`w-full p-4 rounded-xl border-2 transition-all text-left group flex items-center justify-between ${isSelected ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-black hover:bg-gray-50'}`}
+                                                                    >
+                                                                        <div className="flex items-center gap-4">
+                                                                            {group.thumbnail && (
+                                                                                <div className="w-14 h-14 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
+                                                                                    <img src={group.thumbnail} alt={group.name} className="w-full h-full object-cover" />
+                                                                                </div>
+                                                                            )}
+                                                                            <div>
+                                                                                <h3 className="font-bold text-gray-900 text-base">{group.name}</h3>
+                                                                                <p className="text-sm text-gray-500">{group.priceModifier > 0 ? `NT$ ${group.priceModifier}` : ''}</p>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2 shrink-0">
+                                                                            {isSelected && <Check className="w-4 h-4 text-black" />}
+                                                                            <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-black transition-colors" />
+                                                                        </div>
+                                                                    </button>
+                                                                </div>
+                                                            );
+                                                        };
+
+                                                        return (
+                                                            <>
+                                                                {/* Categorized groups with accordion */}
+                                                                {Array.from(categoryMap.entries()).map(([cat, groups]) => {
+                                                                    const isExpanded = !!expandedCategories[cat];
+                                                                    // Check if any group in this category has a selection
+                                                                    const selectedInCat = groups.find(g => !!selectedOptions[getGroupKey(g)]);
+                                                                    const selectedGroup = selectedInCat ? selectedInCat : null;
+
+                                                                    return (
+                                                                        <div key={cat} className="mb-3">
+                                                                            {/* Accordion Header */}
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }))}
+                                                                                className="w-full flex items-center justify-between px-4 py-3 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors group"
+                                                                            >
+                                                                                <div className="flex items-center gap-3 min-w-0">
+                                                                                    <span className="text-base font-bold text-gray-800 truncate">{cat}</span>
+                                                                                    <span className="text-xs text-gray-500 shrink-0">{groups.length} 款</span>
+                                                                                    {selectedGroup && (
+                                                                                        <span className="text-xs bg-black text-white px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1">
+                                                                                            <Check className="w-3 h-3" />
+                                                                                            已選
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div className="flex items-center gap-2 shrink-0 ml-2">
+                                                                                    {selectedGroup?.thumbnail && !isExpanded && (
+                                                                                        <div className="w-8 h-8 rounded-lg overflow-hidden border border-gray-300">
+                                                                                            <img src={selectedGroup.thumbnail} alt={selectedGroup.name} className="w-full h-full object-cover" />
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {isExpanded
+                                                                                        ? <ChevronDown className="w-5 h-5 text-gray-500" />
+                                                                                        : <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-gray-600" />
+                                                                                    }
+                                                                                </div>
+                                                                            </button>
+                                                                            {/* Accordion Body */}
+                                                                            {isExpanded && (
+                                                                                <div className="mt-2 pl-2 border-l-2 border-gray-200 space-y-1 animate-in slide-in-from-top-2 duration-200">
+                                                                                    {groups.map(g => renderCardGroup(g))}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })}
+
+                                                                {/* Uncategorized groups (direct display) */}
+                                                                {uncategorized.map(group => renderCardGroup(group))}
+
+                                                                {/* Other display types (grid, list, checkbox for step 1 if any) */}
+                                                                {otherGroups.map(group => {
+                                                                    const ui = getUI(group);
+                                                                    const groupKey = getGroupKey(group);
+                                                                    const validItems = getFilteredItems(group.id);
+                                                                    const displayType = normalizeDisplayType(ui.displayType || (ui as any).display_type) || 'grid';
+                                                                    // Render grid/list/etc for step 1 non-cards groups
+                                                                    return <div key={group.id}>{/* handled below in the general rendering */}</div>;
+                                                                })}
+                                                            </>
+                                                        );
+                                                    }
+
+                                                    // Step 2+: Normal rendering
+                                                    return currentStepGroups.map(group => {
+                                                        if (group.code === 'embossing' && !showEmbossing) return null;
+                                                        const ui = getUI(group);
+                                                        const groupKey = getGroupKey(group);
+                                                        let displayType = normalizeDisplayType(ui.displayType || (ui as any).display_type) || 'grid';
+
+                                                        // Render Card (Step 1 Style) - won't reach here since step 1 handled above
+                                                        if (currentStep === 1 && displayType === 'cards') {
+                                                            return null; // handled above
+                                                        }
+
+                                                        return null; // placeholder - actual non-step1 logic continues below
+                                                    });
+                                                })()}
+                                                {/* Step 2+ Groups (non-cards): handled by continuation rendering */}
+                                                {currentStep !== 1 && currentStepGroups.map(group => {
                                                     // Embossing Logic check
                                                     if (group.code === 'embossing' && !showEmbossing) return null;
 
                                                     const ui = getUI(group);
                                                     const groupKey = getGroupKey(group);
 
-                                                    let displayType = normalizeDisplayType(ui.displayType || ui.display_type) || (currentStep === 1 ? 'cards' : 'grid');
+                                                    let displayType = normalizeDisplayType(ui.displayType || (ui as any).display_type) || (currentStep === 1 ? 'cards' : 'grid');
                                                     if (currentStep !== 1 && (displayType === ('cards' as any) || displayType === ('grid' as any))) {
                                                         // Ensure displayType is correctly typed for subsequent checks
                                                     }
@@ -1300,40 +1498,9 @@ export default function SaveDesignModal({
                                                     const rawGroupItems = items.filter(i => i.parentId === group.id);
                                                     const validItems = getFilteredItems(group.id);
 
-                                                    // Render Card (Step 1 Style)
+                                                    // Step 1 cards are handled above
                                                     if (currentStep === 1 && displayType === 'cards') {
-                                                        return (
-                                                            <div key={group.id} className="mb-4">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        // 1. Set Active Group for Drill Down
-                                                                        setActiveCaseGroupId(group.id);
-                                                                        setSelectedCaseGroupId(group.id); // ✅ Persist selection for Step 2+ Advanced Options
-
-                                                                        // 2. Auto-Preselect First Valid Item (if not already selected)
-                                                                        // This ensures the drill-down view is not empty/unselected by default
-                                                                        if (!selectedOptions[groupKey] && validItems.length > 0) {
-                                                                            handleSelectOption(groupKey, validItems[0].id);
-                                                                        }
-                                                                    }}
-                                                                    className="w-full p-4 rounded-xl border-2 border-gray-100 hover:border-black hover:bg-gray-50 transition-all text-left group flex items-center justify-between"
-                                                                >
-                                                                    <div className="flex items-center gap-4">
-                                                                        {group.thumbnail && (
-                                                                            <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
-                                                                                <img src={group.thumbnail} alt={group.name} className="w-full h-full object-cover" />
-                                                                            </div>
-                                                                        )}
-                                                                        <div>
-                                                                            <h3 className="font-bold text-gray-900 text-lg">{group.name}</h3>
-                                                                            <p className="text-sm text-gray-500">{group.priceModifier > 0 ? `方案價格 NT$ ${group.priceModifier}` : '標準方案'}</p>
-                                                                        </div>
-                                                                    </div>
-                                                                    <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-black" />
-                                                                </button>
-                                                            </div>
-                                                        );
+                                                        return null;
                                                     }
 
                                                     // Render Description Images (Step 2+)
@@ -1398,7 +1565,7 @@ export default function SaveDesignModal({
                                                                 {descriptionImages.length > 0 && (
                                                                     <div className={`mt-4 mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
                                                                         {descriptionImages.map((img: string, idx: number) => (
-                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
+                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => openLightbox(descriptionImages, idx)}>
                                                                                 <img
                                                                                     src={img}
                                                                                     className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
@@ -1481,7 +1648,7 @@ export default function SaveDesignModal({
                                                                 {descriptionImages.length > 0 && (
                                                                     <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
                                                                         {descriptionImages.map((img: string, idx: number) => (
-                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
+                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => openLightbox(descriptionImages, idx)}>
                                                                                 <img
                                                                                     src={img}
                                                                                     className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
@@ -1556,7 +1723,7 @@ export default function SaveDesignModal({
                                                                 {descriptionImages.length > 0 && (
                                                                     <div className={`mb-6 grid gap-3 max-w-lg mx-auto ${descriptionImages.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
                                                                         {descriptionImages.map((img: string, idx: number) => (
-                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
+                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => openLightbox(descriptionImages, idx)}>
                                                                                 <img
                                                                                     src={img}
                                                                                     className="w-full aspect-[4/3] object-cover rounded-xl border border-gray-100 shadow-sm transition-transform group-hover:scale-[1.02]"
@@ -1693,7 +1860,7 @@ export default function SaveDesignModal({
                                                             {descriptionImages.length > 0 && (
                                                                 <div className={`mt-4 mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
                                                                     {descriptionImages.map((img: string, idx: number) => (
-                                                                        <div key={idx} className="relative group cursor-pointer" onClick={() => setZoomedImage(img)}>
+                                                                        <div key={idx} className="relative group cursor-pointer" onClick={() => openLightbox(descriptionImages, idx)}>
                                                                             <img
                                                                                 src={img}
                                                                                 className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
@@ -1987,12 +2154,45 @@ export default function SaveDesignModal({
                 )}
             </div>
 
-            {zoomedImage && (
-                <div className="fixed inset-0 z-[100002] bg-black/90 flex items-center justify-center p-4 cursor-zoom-out animate-in fade-in duration-200" onClick={() => setZoomedImage(null)}>
-                    <div className="relative max-w-4xl max-h-[90vh]">
-                        <button onClick={() => setZoomedImage(null)} className="absolute -top-12 right-0 text-white hover:text-gray-300 p-2"><X className="w-8 h-8" /></button>
-                        <img src={zoomedImage} alt="Zoomed" className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" onClick={(e) => e.stopPropagation()} />
+            {zoomedImageList.length > 0 && (
+                <div className="fixed inset-0 z-[100002] bg-black/95 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={closeLightbox}>
+                    <div className="relative w-full max-w-5xl h-full max-h-[90vh] flex items-center justify-center">
+                        <button onClick={closeLightbox} className="absolute -top-10 md:top-0 right-0 md:-right-12 text-white/50 hover:text-white p-2 z-20 transition-colors"><X className="w-8 h-8 drop-shadow-md" /></button>
+
+                        {zoomedImageList.length > 1 && (
+                            <button onClick={handlePrevImage} className="absolute left-2 md:-left-12 text-white/50 hover:text-white p-2 z-20 transition-colors hidden md:block">
+                                <ChevronLeft className="w-12 h-12 drop-shadow-lg" />
+                            </button>
+                        )}
+
+                        <img
+                            src={zoomedImageList[zoomedImageIndex]}
+                            alt={`Zoomed ${zoomedImageIndex + 1}`}
+                            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl relative z-10"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ maxHeight: '90vh' }}
+                        />
+
+                        {zoomedImageList.length > 1 && (
+                            <button onClick={handleNextImage} className="absolute right-2 md:-right-12 text-white/50 hover:text-white p-2 z-20 transition-colors hidden md:block">
+                                <ChevronRight className="w-12 h-12 drop-shadow-lg" />
+                            </button>
+                        )}
+
+                        {/* Mobile Navigation zones */}
+                        {zoomedImageList.length > 1 && (
+                            <div className="absolute inset-0 z-20 flex md:hidden" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex-1" onClick={handlePrevImage} />
+                                <div className="flex-1" onClick={handleNextImage} />
+                            </div>
+                        )}
                     </div>
+
+                    {zoomedImageList.length > 1 && (
+                        <div className="absolute bottom-6 left-0 right-0 text-center text-white/60 text-sm font-bold tracking-[0.2em] drop-shadow-sm z-20 select-none">
+                            {zoomedImageIndex + 1} / {zoomedImageList.length}
+                        </div>
+                    )}
                 </div>
             )}
         </div>,

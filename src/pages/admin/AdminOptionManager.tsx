@@ -754,13 +754,20 @@ export default function AdminOptionManager() {
                                     )}
                                     <div>
                                         <h3 className="font-bold text-gray-900">{group.name}</h3>
-                                        {group.uiConfig?.displayType && (
-                                            <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100">
-                                                {group.uiConfig.displayType === 'cards' ? '大卡片' :
-                                                    group.uiConfig.displayType === 'grid' ? '網格' :
-                                                        group.uiConfig.displayType === 'list' ? '列表' : '勾選框'}
-                                            </span>
-                                        )}
+                                        <div className="flex flex-wrap gap-1 mt-0.5">
+                                            {group.uiConfig?.displayType && (
+                                                <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100">
+                                                    {group.uiConfig.displayType === 'cards' ? '大卡片' :
+                                                        group.uiConfig.displayType === 'grid' ? '網格' :
+                                                            group.uiConfig.displayType === 'list' ? '列表' : '勾選框'}
+                                                </span>
+                                            )}
+                                            {group.uiConfig?.category && (
+                                                <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200">
+                                                    📁 {group.uiConfig.category}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="flex gap-1">
@@ -1004,6 +1011,21 @@ export default function AdminOptionManager() {
                                         <option value="ai_recognition">圖片辨識 (AI 自動填入)</option>
                                     </select>
                                 </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold mb-1 text-gray-600">分類標籤 (Category)</label>
+                                <input
+                                    type="text"
+                                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                                    value={editingGroupData.uiConfig?.category || ''}
+                                    onChange={e => setEditingGroupData(prev => ({
+                                        ...prev,
+                                        uiConfig: { ...prev.uiConfig, category: e.target.value }
+                                    }))}
+                                    placeholder="例如: 防摔殼系列、透明殼…（空白=不分類）"
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1">同 Step 內相同分類的商品，在前台購物車會被收合在同一個折疊群組中。</p>
                             </div>
 
                             <div>

@@ -26,6 +26,7 @@ export interface OptionGroupUIConfig {
     description?: string;
     descriptionImage?: string; // Legacy (single image)
     descriptionImages?: string[]; // New (multi image)
+    category?: string; // 分類標籤，同 Step 內相同分類的商品會被折疊收合
 }
 
 export interface OptionGroup {
