@@ -27,6 +27,8 @@ export interface OptionGroupUIConfig {
     descriptionImage?: string; // Legacy (single image)
     descriptionImages?: string[]; // New (multi image)
     category?: string; // 分類標籤，同 Step 內相同分類的商品會被折疊收合
+    sortOrder?: number; // 個別大類在同一 category 或整體列表中的排序順序
+    categorySortOrder?: number; // 分類標籤本身的排序順序
 }
 
 export interface OptionGroup {

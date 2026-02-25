@@ -29,6 +29,8 @@ export interface OptionGroupUIConfig {
     description?: string;
     descriptionImage?: string;
     category?: string; // 分類標籤，同 Step 內相同分類的商品會被折疊收合
+    sortOrder?: number;
+    categorySortOrder?: number;
 }
 
 export interface OptionGroup {
@@ -239,6 +241,11 @@ export default function SaveDesignModal({
 
         // Ensure steps are sorted
         steps.sort((a, b) => a - b);
+
+        // Sort groups inside each step by sortOrder
+        map.forEach((groupsInStep) => {
+            groupsInStep.sort((a, b) => (a.uiConfig?.sortOrder || 0) - (b.uiConfig?.sortOrder || 0));
+        });
 
         return { stepGroups: map, maxStep: max, availableSteps: steps };
     }, [validGroups]);
@@ -1401,10 +1408,19 @@ export default function SaveDesignModal({
                                                             );
                                                         };
 
+                                                        const sortedCategoriesEntries = Array.from(categoryMap.entries()).sort((a, b) => {
+                                                            const orderA = a[1][0]?.uiConfig?.categorySortOrder ?? 999;
+                                                            const orderB = b[1][0]?.uiConfig?.categorySortOrder ?? 999;
+                                                            if (orderA !== orderB) return orderA - orderB;
+                                                            if (a[0] === '未分類') return 1;
+                                                            if (b[0] === '未分類') return -1;
+                                                            return a[0].localeCompare(b[0]);
+                                                        });
+
                                                         return (
                                                             <>
                                                                 {/* Categorized groups with accordion */}
-                                                                {Array.from(categoryMap.entries()).map(([cat, groups]) => {
+                                                                {sortedCategoriesEntries.map(([cat, groups]) => {
                                                                     const isExpanded = !!expandedCategories[cat];
                                                                     // Check if any group in this category has a selection
                                                                     const selectedInCat = groups.find(g => !!selectedOptions[getGroupKey(g)]);

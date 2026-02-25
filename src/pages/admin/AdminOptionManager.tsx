@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import {
     Plus,
     Trash2,
     Save,
     ChevronRight,
+    ChevronDown,
     Tag,
     Palette,
     Image as ImageIcon,
@@ -144,7 +145,13 @@ export default function AdminOptionManager() {
     const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
     const [attributeOptionInput, setAttributeOptionInput] = useState<{ attrId: string, name: string, price: number, image?: string } | null>(null);
     const [editingAttributeOption, setEditingAttributeOption] = useState<{ attrId: string, optionId: string, name: string, price: number, image?: string } | null>(null);
-
+    const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+    // Right panel tab state (items | suboptions)
+    const [rightPanelTab, setRightPanelTab] = useState<'items' | 'suboptions'>('items');
+    // State for inline suboptions editing in right panel
+    const [panelAttrInput, setPanelAttrInput] = useState<{ name: string; type: 'select' | 'text' }>({ name: '', type: 'select' });
+    const [panelAttrOptionInput, setPanelAttrOptionInput] = useState<{ attrId: string; name: string; price: number; image?: string } | null>(null);
+    const [panelEditingAttrOption, setPanelEditingAttrOption] = useState<{ attrId: string; optionId: string; name: string; price: number; image?: string } | null>(null);
     const [isEditingItem, setIsEditingItem] = useState(false);
     const [editingItemData, setEditingItemData] = useState<Partial<OptionItem>>({});
 
@@ -307,6 +314,215 @@ export default function AdminOptionManager() {
                 return a;
             })
         }));
+    };
+
+    // --- Panel SubAttributes Handlers (direct save to Supabase) ---
+    const getPanelGroup = () => groups.find(g => g.id === selectedGroupId) || null;
+
+    const panelAddAttribute = async () => {
+        if (!panelAttrInput.name.trim() || !selectedGroupId) return;
+        const group = getPanelGroup();
+        if (!group) return;
+        const newAttr: SubAttribute = {
+            id: `attr_${Date.now()}`,
+            name: panelAttrInput.name,
+            type: panelAttrInput.type,
+            options: []
+        };
+        const updated = { ...group, subAttributes: [...(group.subAttributes || []), newAttr] };
+        const { error } = await supabase.from('option_groups').update(toDbGroup(updated)).eq('id', group.id);
+        if (error) { alert('儲存失敗: ' + error.message); return; }
+        setGroups(prev => prev.map(g => g.id === group.id ? updated : g));
+        setPanelAttrInput({ name: '', type: 'select' });
+    };
+
+    const panelRemoveAttribute = async (attrId: string) => {
+        const group = getPanelGroup();
+        if (!group) return;
+        const updated = { ...group, subAttributes: (group.subAttributes || []).filter(a => a.id !== attrId) };
+        const { error } = await supabase.from('option_groups').update(toDbGroup(updated)).eq('id', group.id);
+        if (error) { alert('儲存失敗: ' + error.message); return; }
+        setGroups(prev => prev.map(g => g.id === group.id ? updated : g));
+    };
+
+    const panelUpdateAttrName = async (attrId: string, newName: string) => {
+        const group = getPanelGroup();
+        if (!group) return;
+        const updated = {
+            ...group,
+            subAttributes: (group.subAttributes || []).map(a => a.id === attrId ? { ...a, name: newName } : a)
+        };
+        setGroups(prev => prev.map(g => g.id === group.id ? updated : g)); // Optimistic update
+        // Save debounced? For simplicity, save immediately:
+        await supabase.from('option_groups').update(toDbGroup(updated)).eq('id', group.id);
+    };
+
+    const panelAddAttrOption = async (attrId: string) => {
+        if (!panelAttrOptionInput || !panelAttrOptionInput.name.trim()) return;
+        const group = getPanelGroup();
+        if (!group) return;
+        const newOption: SubAttributeOption = {
+            id: `opt_${Date.now()}`,
+            name: panelAttrOptionInput.name,
+            priceModifier: panelAttrOptionInput.price,
+            image: panelAttrOptionInput.image
+        };
+        const updated = {
+            ...group,
+            subAttributes: (group.subAttributes || []).map(a =>
+                a.id === attrId ? { ...a, options: [...(a.options || []), newOption] } : a
+            )
+        };
+        const { error } = await supabase.from('option_groups').update(toDbGroup(updated)).eq('id', group.id);
+        if (error) { alert('儲存失敗: ' + error.message); return; }
+        setGroups(prev => prev.map(g => g.id === group.id ? updated : g));
+        setPanelAttrOptionInput(null);
+    };
+
+    const panelRemoveAttrOption = async (attrId: string, optionId: string) => {
+        const group = getPanelGroup();
+        if (!group) return;
+        const updated = {
+            ...group,
+            subAttributes: (group.subAttributes || []).map(a =>
+                a.id === attrId ? { ...a, options: (a.options || []).filter(o => o.id !== optionId) } : a
+            )
+        };
+        const { error } = await supabase.from('option_groups').update(toDbGroup(updated)).eq('id', group.id);
+        if (error) { alert('儲存失敗: ' + error.message); return; }
+        setGroups(prev => prev.map(g => g.id === group.id ? updated : g));
+    };
+
+    const panelSaveAttrOption = async (attrId: string, optionId: string, updates: Partial<SubAttributeOption>) => {
+        const group = getPanelGroup();
+        if (!group) return;
+        const updated = {
+            ...group,
+            subAttributes: (group.subAttributes || []).map(a =>
+                a.id === attrId
+                    ? { ...a, options: (a.options || []).map(o => o.id === optionId ? { ...o, ...updates } : o) }
+                    : a
+            )
+        };
+        const { error } = await supabase.from('option_groups').update(toDbGroup(updated)).eq('id', group.id);
+        if (error) { alert('儲存失敗: ' + error.message); return; }
+        setGroups(prev => prev.map(g => g.id === group.id ? updated : g));
+        setPanelEditingAttrOption(null);
+    };
+
+    const panelAttrOptionDragEnd = async (attrId: string, event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+        const group = getPanelGroup();
+        if (!group) return;
+        const updated = {
+            ...group,
+            subAttributes: (group.subAttributes || []).map(a => {
+                if (a.id === attrId) {
+                    const opts = a.options || [];
+                    const oldIdx = opts.findIndex(o => o.id === active.id);
+                    const newIdx = opts.findIndex(o => o.id === over.id);
+                    return { ...a, options: arrayMove(opts, oldIdx, newIdx) };
+                }
+                return a;
+            })
+        };
+        setGroups(prev => prev.map(g => g.id === group.id ? updated : g));
+        await supabase.from('option_groups').update(toDbGroup(updated)).eq('id', group.id);
+    };
+
+    const handleGroupDragEnd = async (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+
+        const activeGroup = groups.find(g => g.id === active.id);
+        const overGroup = groups.find(g => g.id === over.id);
+        if (!activeGroup || !overGroup) return;
+
+        const activeCat = activeGroup.uiConfig?.category || '未分類';
+        const overCat = overGroup.uiConfig?.category || '未分類';
+
+        if (activeCat !== overCat) {
+            alert('目前僅支援在同一個分類標籤內進行排序');
+            return;
+        }
+
+        let categoryGroups = groups.filter(g => (g.uiConfig?.category || '未分類') === activeCat)
+            .sort((a, b) => {
+                if (a.uiConfig?.step !== b.uiConfig?.step) return (a.uiConfig?.step || 1) - (b.uiConfig?.step || 1);
+                return (a.uiConfig?.sortOrder || 0) - (b.uiConfig?.sortOrder || 0);
+            });
+
+        const oldIndex = categoryGroups.findIndex(g => g.id === active.id);
+        const newIndex = categoryGroups.findIndex(g => g.id === over.id);
+
+        categoryGroups = arrayMove(categoryGroups, oldIndex, newIndex);
+
+        const updates = categoryGroups.map((g, index) => ({
+            ...g,
+            uiConfig: { ...g.uiConfig, sortOrder: index }
+        }));
+
+        setGroups(prev => prev.map(g => {
+            const updated = updates.find(u => u.id === g.id);
+            return updated ? updated : g;
+        }));
+
+        for (const finalG of updates) {
+            await supabase.from('option_groups').update(toDbGroup(finalG)).eq('id', finalG.id);
+        }
+    };
+
+    const handleCategoryDragEnd = async (event: DragEndEvent) => {
+        const { active, over } = event;
+        // Require it to be a category drag
+        if (!over || active.id === over.id || !String(active.id).startsWith('cat-') || !String(over.id).startsWith('cat-')) return;
+
+        const activeCatName = String(active.id).replace('cat-', '');
+        const overCatName = String(over.id).replace('cat-', '');
+
+        // Recalculate sortedCategories (Current state)
+        const currentGroupedOptions = groups.reduce((acc, current) => {
+            const cat = current.uiConfig?.category || '未分類';
+            if (!acc[cat]) acc[cat] = [];
+            acc[cat].push(current);
+            return acc;
+        }, {} as Record<string, OptionGroup[]>);
+
+        let currentSortedCats = Object.keys(currentGroupedOptions).sort((a, b) => {
+            const orderA = currentGroupedOptions[a][0]?.uiConfig?.categorySortOrder ?? 999;
+            const orderB = currentGroupedOptions[b][0]?.uiConfig?.categorySortOrder ?? 999;
+            if (orderA !== orderB) return orderA - orderB;
+            if (a === '未分類') return 1;
+            if (b === '未分類') return -1;
+            return a.localeCompare(b);
+        });
+
+        const oldIndex = currentSortedCats.indexOf(activeCatName);
+        const newIndex = currentSortedCats.indexOf(overCatName);
+
+        if (oldIndex !== -1 && newIndex !== -1) {
+            const newCategoriesOrder = arrayMove(currentSortedCats, oldIndex, newIndex);
+
+            const updates: OptionGroup[] = [];
+
+            const newGroups = groups.map(g => {
+                const cat = g.uiConfig?.category || '未分類';
+                const catIndex = newCategoriesOrder.indexOf(cat);
+                if (catIndex !== -1 && g.uiConfig?.categorySortOrder !== catIndex) {
+                    const updated = { ...g, uiConfig: { ...g.uiConfig, categorySortOrder: catIndex } };
+                    updates.push(updated);
+                    return updated;
+                }
+                return g;
+            });
+
+            setGroups(newGroups);
+
+            for (const u of updates) {
+                await supabase.from('option_groups').update(toDbGroup(u)).eq('id', u.id);
+            }
+        }
     };
 
     const handleSaveGroup = async () => {
@@ -644,6 +860,118 @@ export default function AdminOptionManager() {
         );
     };
 
+    const getStepColorClass = (step: number) => {
+        switch (step) {
+            case 1: return 'bg-blue-100 text-blue-800 border-blue-200';
+            case 2: return 'bg-green-100 text-green-800 border-green-200';
+            case 3: return 'bg-purple-100 text-purple-800 border-purple-200';
+            case 4: return 'bg-amber-100 text-amber-800 border-amber-200';
+            case 5: return 'bg-pink-100 text-pink-800 border-pink-200';
+            default: return 'bg-gray-100 text-gray-800 border-gray-200';
+        }
+    };
+
+    const SortableCategoryItem = ({ cat, catGroups, isExpanded, onToggle, children }: any) => {
+        const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: `cat-${cat}` });
+        const style = {
+            transform: CSS.Transform.toString(transform),
+            transition,
+            zIndex: transform ? 999 : 1,
+            position: 'relative' as any,
+        };
+
+        return (
+            <div ref={setNodeRef} style={style} className="border border-gray-200 rounded-xl bg-white shadow-sm overflow-visible">
+                <div className="bg-gray-50 flex items-center justify-between p-3 rounded-t-xl group/cat">
+                    <div className="flex items-center gap-2">
+                        <div {...attributes} {...listeners} className="cursor-move text-gray-300 hover:text-gray-500 mr-1 p-1 -ml-2" title="拖曳排序分類">
+                            <GripVertical className="w-4 h-4" />
+                        </div>
+                        <button type="button" onClick={onToggle} className="flex items-center gap-2 hover:bg-gray-200/50 p-1 rounded transition-colors">
+                            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
+                            <h3 className="font-bold text-gray-800">{cat}</h3>
+                        </button>
+                        <span className="text-xs text-gray-400 bg-white px-2 py-0.5 rounded-full border border-gray-200">
+                            {catGroups.length}
+                        </span>
+                    </div>
+                </div>
+                {isExpanded && (
+                    <div className="p-2 space-y-2 bg-gray-50/30">
+                        {children}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const SortableGroupItem = ({ group, isSelected, onClick, onEdit, onDuplicate, onDelete, isCopying, isDeleting, childrenCount }: any) => {
+        const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: group.id });
+        const style = {
+            transform: CSS.Transform.toString(transform),
+            transition,
+            zIndex: transform ? 999 : 1,
+            position: 'relative' as any,
+        };
+
+        return (
+            <div
+                ref={setNodeRef}
+                style={style}
+                onClick={onClick}
+                className={`p-3 rounded-xl cursor-pointer border transition-all flex items-start gap-2 bg-white ${isSelected ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200 hover:border-gray-300'}`}
+            >
+                <div {...attributes} {...listeners} className="cursor-move text-gray-400 hover:text-gray-600 self-center p-1 -ml-1">
+                    <GripVertical className="w-5 h-5" />
+                </div>
+                <div className="flex-1 w-full min-w-0">
+                    <div className="flex justify-between items-start mb-2 gap-2">
+                        <div className="flex items-start gap-2 min-w-0">
+                            <div className={`flex flex-col items-center justify-center rounded px-2 py-1 min-w-[2.5rem] shrink-0 border ${getStepColorClass(group.uiConfig?.step || 1)}`}>
+                                <span className="text-[10px] font-bold uppercase opacity-70">Step</span>
+                                <span className="text-lg font-bold leading-none">{group.uiConfig?.step || 1}</span>
+                            </div>
+                            {group.thumbnail && (
+                                <div className="w-10 h-10 rounded shrink-0 border border-gray-200 overflow-hidden bg-white flex items-center justify-center">
+                                    <img src={group.thumbnail} alt={group.name} className="w-full h-full object-cover" />
+                                </div>
+                            )}
+                            <div className="min-w-0">
+                                <h3 className="font-bold text-gray-900 leading-tight truncate">{group.name}</h3>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                    {group.uiConfig?.displayType && (
+                                        <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100 shrink-0">
+                                            {group.uiConfig.displayType === 'cards' ? '大卡片' :
+                                                group.uiConfig.displayType === 'grid' ? '網格' :
+                                                    group.uiConfig.displayType === 'list' ? '列表' : '勾選框'}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex gap-1 shrink-0">
+                            <button onClick={onEdit} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="編輯">
+                                <Settings className="w-4 h-4" />
+                            </button>
+                            <button onClick={onDuplicate} disabled={isCopying} className={`p-1 rounded transition-colors ${isCopying ? 'bg-green-100 text-green-600' : 'text-gray-400 hover:text-green-600 hover:bg-green-50'}`} title="複製">
+                                {isCopying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
+                            </button>
+                            <button onClick={onDelete} disabled={isDeleting} className={`p-1 rounded transition-colors ${isDeleting ? 'bg-red-100 text-red-600' : 'text-gray-400 hover:text-red-600 hover:bg-red-50'}`} title="刪除">
+                                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            </button>
+                        </div>
+                    </div>
+                    <div className="text-xs text-gray-500 flex justify-between ml-[2.5rem]">
+                        <span>加價: +${group.priceModifier}</span>
+                        <span className="flex items-center gap-1">
+                            {childrenCount} 個子項 <ChevronRight className="w-3 h-3" />
+                        </span>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     const TagInput = ({ tags, onChange }: { tags: string[], onChange: (tags: string[]) => void }) => {
         const [input, setInput] = useState('');
 
@@ -682,6 +1010,23 @@ export default function AdminOptionManager() {
     };
 
     // --- Render ---
+    const uniqueCategories = Array.from(new Set(groups.map(g => g.uiConfig?.category).filter(Boolean))) as string[];
+
+    const groupedOptions = groups.reduce((acc, current) => {
+        const cat = current.uiConfig?.category || '未分類';
+        if (!acc[cat]) acc[cat] = [];
+        acc[cat].push(current);
+        return acc;
+    }, {} as Record<string, OptionGroup[]>);
+
+    const sortedCategories = Object.keys(groupedOptions).sort((a, b) => {
+        const orderA = groupedOptions[a][0]?.uiConfig?.categorySortOrder ?? 999;
+        const orderB = groupedOptions[b][0]?.uiConfig?.categorySortOrder ?? 999;
+        if (orderA !== orderB) return orderA - orderB;
+        if (a === '未分類') return 1;
+        if (b === '未分類') return -1;
+        return a.localeCompare(b);
+    });
 
     return (
         <div className="flex h-full bg-gray-50">
@@ -733,95 +1078,66 @@ export default function AdminOptionManager() {
                         </div>
                     )}
 
-                    {/* Sort groups by step order */}
-                    {[...groups].sort((a, b) => (a.uiConfig?.step || 1) - (b.uiConfig?.step || 1)).map(group => (
-                        <div
-                            key={group.id}
-                            onClick={() => setSelectedGroupId(group.id)}
-                            className={`p-3 rounded-xl cursor-pointer border transition-all ${selectedGroupId === group.id ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'bg-white border-gray-200 hover:border-gray-300'}`}
-                        >
-                            <div className="flex justify-between items-start mb-2">
-                                <div className="flex items-center gap-2">
-                                    {/* Step Indicator Badge */}
-                                    <div className="flex flex-col items-center justify-center bg-gray-100 rounded px-2 py-1 min-w-[2.5rem]">
-                                        <span className="text-[10px] text-gray-500 font-bold uppercase">Step</span>
-                                        <span className="text-lg font-bold leading-none text-gray-800">{group.uiConfig?.step || 1}</span>
-                                    </div>
-                                    {group.thumbnail && (
-                                        <div className="w-10 h-10 rounded shrink-0 border border-gray-200 overflow-hidden bg-white flex items-center justify-center">
-                                            <img src={group.thumbnail} alt={group.name} className="w-full h-full object-cover" />
-                                        </div>
-                                    )}
-                                    <div>
-                                        <h3 className="font-bold text-gray-900">{group.name}</h3>
-                                        <div className="flex flex-wrap gap-1 mt-0.5">
-                                            {group.uiConfig?.displayType && (
-                                                <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100">
-                                                    {group.uiConfig.displayType === 'cards' ? '大卡片' :
-                                                        group.uiConfig.displayType === 'grid' ? '網格' :
-                                                            group.uiConfig.displayType === 'list' ? '列表' : '勾選框'}
-                                                </span>
-                                            )}
-                                            {group.uiConfig?.category && (
-                                                <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200">
-                                                    📁 {group.uiConfig.category}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex gap-1">
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setEditingGroupData(group);
-                                            setIsEditingGroup(true);
-                                        }}
-                                        className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
-                                        title="編輯"
+                    {/* Sort groups by step order & category */}
+                    <DndContext
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleCategoryDragEnd}
+                    >
+                        <SortableContext items={sortedCategories.map(cat => `cat-${cat}`)} strategy={verticalListSortingStrategy}>
+                            {sortedCategories.map(cat => {
+                                const isExpanded = expandedCategories[cat] !== false; // Default to true
+                                const catGroups = groupedOptions[cat].sort((a, b) => {
+                                    if (a.uiConfig?.step !== b.uiConfig?.step) return (a.uiConfig?.step || 1) - (b.uiConfig?.step || 1);
+                                    return (a.uiConfig?.sortOrder || 0) - (b.uiConfig?.sortOrder || 0);
+                                });
+
+                                return (
+                                    <SortableCategoryItem
+                                        key={cat}
+                                        cat={cat}
+                                        catGroups={catGroups}
+                                        isExpanded={isExpanded}
+                                        onToggle={() => setExpandedCategories(prev => ({ ...prev, [cat]: !isExpanded }))}
                                     >
-                                        <Settings className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDuplicateGroup(group.id);
-                                        }}
-                                        disabled={isCopying !== null}
-                                        className={`p-1 rounded transition-colors ${isCopying === group.id ? 'bg-green-100 text-green-600' : 'text-gray-400 hover:text-green-600 hover:bg-green-50'}`}
-                                        title="複製"
-                                    >
-                                        {isCopying === group.id ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <Copy className="w-4 h-4" />
-                                        )}
-                                    </button>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeleteGroup(group.id);
-                                        }}
-                                        disabled={deletingGroupId !== null}
-                                        className={`p-1 rounded transition-colors ${deletingGroupId === group.id ? 'bg-red-100 text-red-600' : 'text-gray-400 hover:text-red-600 hover:bg-red-50'}`}
-                                        title="刪除"
-                                    >
-                                        {deletingGroupId === group.id ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <Trash2 className="w-4 h-4" />
-                                        )}
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="text-xs text-gray-500 flex justify-between ml-[3.25rem]">
-                                <span>加價: +${group.priceModifier}</span>
-                                <span className="flex items-center gap-1">
-                                    {items.filter(i => i.parentId === group.id).length} 個子項 <ChevronRight className="w-3 h-3" />
-                                </span>
-                            </div>
-                        </div>
-                    ))}
+                                        <DndContext
+                                            collisionDetection={closestCenter}
+                                            onDragEnd={handleGroupDragEnd}
+                                        >
+                                            <SortableContext
+                                                items={catGroups.map(g => g.id)}
+                                                strategy={verticalListSortingStrategy}
+                                            >
+                                                {catGroups.map(group => (
+                                                    <SortableGroupItem
+                                                        key={group.id}
+                                                        group={group}
+                                                        isSelected={selectedGroupId === group.id}
+                                                        onClick={() => setSelectedGroupId(group.id)}
+                                                        onEdit={(e: React.MouseEvent) => {
+                                                            e.stopPropagation();
+                                                            setEditingGroupData(group);
+                                                            setIsEditingGroup(true);
+                                                        }}
+                                                        onDuplicate={(e: React.MouseEvent) => {
+                                                            e.stopPropagation();
+                                                            handleDuplicateGroup(group.id);
+                                                        }}
+                                                        onDelete={(e: React.MouseEvent) => {
+                                                            e.stopPropagation();
+                                                            handleDeleteGroup(group.id);
+                                                        }}
+                                                        isCopying={isCopying === group.id}
+                                                        isDeleting={deletingGroupId === group.id}
+                                                        childrenCount={items.filter(i => i.parentId === group.id).length}
+                                                    />
+                                                ))}
+                                            </SortableContext>
+                                        </DndContext>
+                                    </SortableCategoryItem>
+                                );
+                            })}
+                        </SortableContext>
+                    </DndContext>
                 </div>
             </div>
 
@@ -829,6 +1145,7 @@ export default function AdminOptionManager() {
             <div className="w-2/3 flex flex-col bg-gray-50/50">
                 {selectedGroupId ? (
                     <>
+                        {/* Header */}
                         <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-white">
                             <div>
                                 <h2 className="font-bold text-gray-800 flex items-center gap-2">
@@ -839,65 +1156,232 @@ export default function AdminOptionManager() {
                                     所屬大類: <span className="font-bold">{groups.find(g => g.id === selectedGroupId)?.name}</span>
                                 </p>
                             </div>
+                            {rightPanelTab === 'items' && (
+                                <button
+                                    onClick={() => {
+                                        setEditingItemData({ parentId: selectedGroupId, colorHex: '#000000' });
+                                        setIsEditingItem(true);
+                                    }}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 font-medium"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                    新增子項
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Tab Switcher */}
+                        <div className="flex border-b border-gray-200 bg-white">
                             <button
-                                onClick={() => {
-                                    setEditingItemData({ parentId: selectedGroupId, colorHex: '#000000' });
-                                    setIsEditingItem(true);
-                                }}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 font-medium"
+                                className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${rightPanelTab === 'items' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
+                                onClick={() => setRightPanelTab('items')}
                             >
-                                <Plus className="w-4 h-4" />
-                                新增選項
+                                顏色/子項
+                                <span className="ml-1.5 text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">{items.filter(i => i.parentId === selectedGroupId).length}</span>
+                            </button>
+                            <button
+                                className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${rightPanelTab === 'suboptions' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
+                                onClick={() => setRightPanelTab('suboptions')}
+                            >
+                                附加選項
+                                <span className="ml-1.5 text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">{groups.find(g => g.id === selectedGroupId)?.subAttributes?.length || 0}</span>
                             </button>
                         </div>
 
-                        <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto">
-                            {items.filter(i => i.parentId === selectedGroupId).map(item => (
-                                <div key={item.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden group hover:shadow-md transition-shadow">
-                                    <div className="aspect-square bg-gray-100 relative">
-                                        {item.imageUrl ? (
-                                            <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: item.colorHex || '#eee' }}>
-                                                {!item.colorHex && <ImageIcon className="w-8 h-8 text-gray-400" />}
+                        {/* Tab Content: Items */}
+                        {rightPanelTab === 'items' && (
+                            <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto">
+                                {items.filter(i => i.parentId === selectedGroupId).map(item => (
+                                    <div key={item.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden group hover:shadow-md transition-shadow">
+                                        <div className="aspect-square bg-gray-100 relative">
+                                            {item.imageUrl ? (
+                                                <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: item.colorHex || '#eee' }}>
+                                                    {!item.colorHex && <ImageIcon className="w-8 h-8 text-gray-400" />}
+                                                </div>
+                                            )}
+                                            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingItemData(item);
+                                                        setIsEditingItem(true);
+                                                    }}
+                                                    className="p-1.5 bg-white rounded shadow text-gray-600 hover:text-blue-600"
+                                                >
+                                                    <Settings className="w-3 h-3" />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteItem(item.id)}
+                                                    disabled={deletingItemId !== null}
+                                                    className="p-1.5 bg-white rounded shadow text-gray-600 hover:text-red-600 disabled:opacity-50"
+                                                >
+                                                    {deletingItemId === item.id ? (
+                                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                                    ) : (
+                                                        <Trash2 className="w-3 h-3" />
+                                                    )}
+                                                </button>
                                             </div>
-                                        )}
-                                        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                onClick={() => {
-                                                    setEditingItemData(item);
-                                                    setIsEditingItem(true);
-                                                }}
-                                                className="p-1.5 bg-white rounded shadow text-gray-600 hover:text-blue-600"
-                                            >
-                                                <Settings className="w-3 h-3" />
-                                            </button>
-                                            <button
-                                                onClick={() => handleDeleteItem(item.id)}
-                                                disabled={deletingItemId !== null}
-                                                className="p-1.5 bg-white rounded shadow text-gray-600 hover:text-red-600 disabled:opacity-50"
-                                            >
-                                                {deletingItemId === item.id ? (
-                                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                                ) : (
-                                                    <Trash2 className="w-3 h-3" />
-                                                )}
-                                            </button>
+                                        </div>
+                                        <div className="p-3">
+                                            <div className="font-bold text-gray-900 truncate">{item.name}</div>
+                                            <div className="text-sm text-gray-500">+${item.priceModifier}</div>
                                         </div>
                                     </div>
-                                    <div className="p-3">
-                                        <div className="font-bold text-gray-900 truncate">{item.name}</div>
-                                        <div className="text-sm text-gray-500">+${item.priceModifier}</div>
+                                ))}
+                                {items.filter(i => i.parentId === selectedGroupId).length === 0 && (
+                                    <div className="col-span-full py-10 text-center text-gray-400 flex flex-col items-center">
+                                        <Search className="w-8 h-8 mb-2 opacity-50" />
+                                        <p>此類別尚無子項</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Tab Content: SubOptions */}
+                        {rightPanelTab === 'suboptions' && (() => {
+                            const group = groups.find(g => g.id === selectedGroupId);
+                            const subAttrs = group?.subAttributes || [];
+                            return (
+                                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                    {subAttrs.length === 0 && (
+                                        <div className="py-10 text-center text-gray-400 flex flex-col items-center">
+                                            <ListPlus className="w-10 h-10 mb-2 opacity-30" />
+                                            <p>尚無附加選項</p>
+                                            <p className="text-xs mt-1">例如: 磁吸功能、鏡頭框顏色、按鍵顏色</p>
+                                        </div>
+                                    )}
+
+                                    {subAttrs.map(attr => (
+                                        <div key={attr.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                                            {/* Attribute Header */}
+                                            <div className="bg-gray-50 px-4 py-3 flex items-center justify-between border-b border-gray-100">
+                                                <input
+                                                    className="font-bold text-gray-800 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white px-1 py-0.5 outline-none transition-all text-sm flex-1 max-w-[200px]"
+                                                    value={attr.name}
+                                                    onChange={e => panelUpdateAttrName(attr.id, e.target.value)}
+                                                    placeholder="屬性名稱"
+                                                />
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded-full">{attr.type === 'select' ? '選單' : '文字'}</span>
+                                                    <button onClick={() => panelRemoveAttribute(attr.id)} className="text-gray-400 hover:text-red-500 p-1 rounded hover:bg-red-50">
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Options Grid (same card style as items) */}
+                                            {attr.type === 'select' && (
+                                                <div className="p-3">
+                                                    <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 mb-3">
+                                                        <DndContext
+                                                            collisionDetection={closestCenter}
+                                                            onDragEnd={e => panelAttrOptionDragEnd(attr.id, e)}
+                                                        >
+                                                            <SortableContext
+                                                                items={(attr.options || []).map(o => o.id)}
+                                                                strategy={verticalListSortingStrategy}
+                                                            >
+                                                                {(attr.options || []).map(opt => {
+                                                                    const isEditing = panelEditingAttrOption?.attrId === attr.id && panelEditingAttrOption?.optionId === opt.id;
+                                                                    return (
+                                                                        <SortableOptionTag
+                                                                            key={opt.id}
+                                                                            option={opt}
+                                                                            attrId={attr.id}
+                                                                            isEditing={isEditing}
+                                                                            onEdit={() => setPanelEditingAttrOption({ attrId: attr.id, optionId: opt.id, name: opt.name, price: opt.priceModifier, image: opt.image })}
+                                                                            onSave={(updates: any) => panelSaveAttrOption(attr.id, opt.id, updates)}
+                                                                            onCancel={() => setPanelEditingAttrOption(null)}
+                                                                            onDelete={() => panelRemoveAttrOption(attr.id, opt.id)}
+                                                                            editingData={isEditing ? panelEditingAttrOption : null}
+                                                                            onEditingDataChange={setPanelEditingAttrOption}
+                                                                        />
+                                                                    );
+                                                                })}
+                                                            </SortableContext>
+                                                        </DndContext>
+                                                    </div>
+
+                                                    {/* Add option row */}
+                                                    <div className="flex gap-2 items-center bg-gray-50 p-2 rounded-lg">
+                                                        <div
+                                                            onClick={() => setMediaModalConfig({
+                                                                isOpen: true, bucket: 'models', isMultiple: false,
+                                                                onSelect: (url) => {
+                                                                    setPanelAttrOptionInput(prev =>
+                                                                        prev?.attrId === attr.id ? { ...prev, image: url } : { attrId: attr.id, name: '', price: 0, image: url }
+                                                                    );
+                                                                    setMediaModalConfig(prev => ({ ...prev, isOpen: false }));
+                                                                }
+                                                            })}
+                                                            className="cursor-pointer w-8 h-8 flex items-center justify-center border rounded bg-white hover:bg-gray-50 overflow-hidden shrink-0"
+                                                            title="點擊媒體庫選圖"
+                                                        >
+                                                            {panelAttrOptionInput?.attrId === attr.id && panelAttrOptionInput.image ? (
+                                                                <img src={panelAttrOptionInput.image} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <ImageIcon className="w-4 h-4 text-gray-400" />
+                                                            )}
+                                                        </div>
+                                                        <input
+                                                            placeholder="選項名稱"
+                                                            className="border rounded px-2 py-1 text-xs flex-1"
+                                                            value={panelAttrOptionInput?.attrId === attr.id ? panelAttrOptionInput.name : ''}
+                                                            onChange={e => setPanelAttrOptionInput(prev =>
+                                                                prev?.attrId === attr.id ? { ...prev, name: e.target.value } : { attrId: attr.id, name: e.target.value, price: 0 }
+                                                            )}
+                                                        />
+                                                        <input
+                                                            type="number"
+                                                            placeholder="加價"
+                                                            className="border rounded px-2 py-1 text-xs w-16"
+                                                            value={panelAttrOptionInput?.attrId === attr.id ? panelAttrOptionInput.price : 0}
+                                                            onChange={e => setPanelAttrOptionInput(prev =>
+                                                                prev?.attrId === attr.id ? { ...prev, price: Number(e.target.value) } : { attrId: attr.id, name: '', price: Number(e.target.value) }
+                                                            )}
+                                                        />
+                                                        <button
+                                                            onClick={() => panelAddAttrOption(attr.id)}
+                                                            className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 shrink-0"
+                                                        >
+                                                            新增
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+
+                                    {/* Add Attribute Footer */}
+                                    <div className="flex gap-2 items-center bg-white p-3 rounded-xl border border-gray-200 border-dashed">
+                                        <ListPlus className="w-4 h-4 text-gray-400 shrink-0" />
+                                        <input
+                                            placeholder="屬性名稱 (如: 磁吸)"
+                                            className="border rounded px-2 py-1 text-sm flex-1"
+                                            value={panelAttrInput.name}
+                                            onChange={e => setPanelAttrInput(prev => ({ ...prev, name: e.target.value }))}
+                                            onKeyDown={e => e.key === 'Enter' && panelAddAttribute()}
+                                        />
+                                        <select
+                                            className="border rounded px-2 py-1 text-sm"
+                                            value={panelAttrInput.type}
+                                            onChange={e => setPanelAttrInput(prev => ({ ...prev, type: e.target.value as any }))}
+                                        >
+                                            <option value="select">選單 (Select)</option>
+                                            <option value="text">文字 (Text)</option>
+                                        </select>
+                                        <button
+                                            onClick={panelAddAttribute}
+                                            className="text-sm bg-gray-800 text-white px-3 py-1 rounded hover:bg-black shrink-0"
+                                        >
+                                            + 新增屬性
+                                        </button>
                                     </div>
                                 </div>
-                            ))}
-                            {items.filter(i => i.parentId === selectedGroupId).length === 0 && (
-                                <div className="col-span-full py-10 text-center text-gray-400 flex flex-col items-center">
-                                    <Search className="w-8 h-8 mb-2 opacity-50" />
-                                    <p>此類別尚無選項</p>
-                                </div>
-                            )}
-                        </div>
+                            );
+                        })()}
                     </>
                 ) : (
                     <div className="flex-1 flex items-center justify-center text-gray-400 flex-col gap-2">
@@ -1017,6 +1501,7 @@ export default function AdminOptionManager() {
                                 <label className="block text-xs font-bold mb-1 text-gray-600">分類標籤 (Category)</label>
                                 <input
                                     type="text"
+                                    list="category-options"
                                     className="w-full border rounded-lg px-3 py-2 text-sm"
                                     value={editingGroupData.uiConfig?.category || ''}
                                     onChange={e => setEditingGroupData(prev => ({
@@ -1025,6 +1510,11 @@ export default function AdminOptionManager() {
                                     }))}
                                     placeholder="例如: 防摔殼系列、透明殼…（空白=不分類）"
                                 />
+                                <datalist id="category-options">
+                                    {uniqueCategories.map(cat => (
+                                        <option key={cat} value={cat} />
+                                    ))}
+                                </datalist>
                                 <p className="text-[10px] text-gray-400 mt-1">同 Step 內相同分類的商品，在前台購物車會被收合在同一個折疊群組中。</p>
                             </div>
 
@@ -1092,153 +1582,6 @@ export default function AdminOptionManager() {
                                         });
                                     }}
                                 />
-                            </div>
-                        </div>
-
-                        <div className="border-t border-gray-100 pt-4">
-                            <label className="block text-sm font-bold mb-2 flex items-center gap-2">
-                                <ListPlus className="w-4 h-4" />
-                                選項 (Options)
-                            </label>
-                            <p className="text-xs text-gray-500 mb-3">例如: 磁吸功能、鏡頭框顏色、按鍵顏色等。</p>
-
-                            <div className="space-y-3 mb-3">
-                                {(editingGroupData.subAttributes || []).map(attr => (
-                                    <div key={attr.id} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <div className="flex items-center gap-2 flex-1">
-                                                <input
-                                                    className="font-bold text-sm text-gray-800 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-purple-500 focus:bg-white px-1 py-0.5 outline-none transition-all w-full max-w-[200px]"
-                                                    value={attr.name}
-                                                    onChange={(e) => updateAttributeName(attr.id, e.target.value)}
-                                                    placeholder="屬性名稱"
-                                                />
-                                                <span className="text-xs text-gray-500 font-normal shrink-0">({attr.type === 'select' ? '選單' : '文字'})</span>
-                                            </div>
-                                            <button onClick={() => removeAttribute(attr.id)} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 className="w-3 h-3" /></button>
-                                        </div>
-
-                                        {attr.type === 'select' && (
-                                            <div className="pl-2 border-l-2 border-gray-200 space-y-2">
-                                                <DndContext
-                                                    collisionDetection={closestCenter}
-                                                    onDragEnd={(event) => handleAttributeOptionDragEnd(attr.id, event)}
-                                                >
-                                                    <SortableContext
-                                                        items={(attr.options || []).map(o => o.id)}
-                                                        strategy={verticalListSortingStrategy}
-                                                    >
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {(attr.options || []).map(opt => {
-                                                                const isEditing = editingAttributeOption?.attrId === attr.id && editingAttributeOption?.optionId === opt.id;
-
-                                                                return (
-                                                                    <SortableOptionTag
-                                                                        key={opt.id}
-                                                                        option={opt}
-                                                                        attrId={attr.id}
-                                                                        isEditing={isEditing}
-                                                                        onEdit={() => setEditingAttributeOption({
-                                                                            attrId: attr.id,
-                                                                            optionId: opt.id,
-                                                                            name: opt.name,
-                                                                            price: opt.priceModifier,
-                                                                            image: opt.image
-                                                                        })}
-                                                                        onSave={(updates) => updateAttributeOption(attr.id, opt.id, updates)}
-                                                                        onCancel={() => setEditingAttributeOption(null)}
-                                                                        onDelete={() => removeAttributeOption(attr.id, opt.id)}
-                                                                        editingData={isEditing ? editingAttributeOption : null}
-                                                                        onEditingDataChange={setEditingAttributeOption}
-                                                                    />
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </SortableContext>
-                                                </DndContext>
-
-                                                {/* Add Option Input */}
-                                                <div className="flex gap-2 items-center">
-                                                    <div
-                                                        onClick={() => {
-                                                            setMediaModalConfig({
-                                                                isOpen: true,
-                                                                bucket: 'models',
-                                                                isMultiple: false,
-                                                                onSelect: (url) => {
-                                                                    setAttributeOptionInput(prev =>
-                                                                        prev?.attrId === attr.id
-                                                                            ? { ...prev, image: url }
-                                                                            : { attrId: attr.id, name: '', price: 0, image: url }
-                                                                    );
-                                                                    setMediaModalConfig(prev => ({ ...prev, isOpen: false }));
-                                                                }
-                                                            });
-                                                        }}
-                                                        className="cursor-pointer w-8 h-8 flex items-center justify-center border rounded bg-white hover:bg-gray-50 overflow-hidden shrink-0"
-                                                        title="點擊媒體庫選圖"
-                                                    >
-                                                        {attributeOptionInput?.attrId === attr.id && attributeOptionInput.image ? (
-                                                            <img src={attributeOptionInput.image} className="w-full h-full object-cover" />
-                                                        ) : (
-                                                            <ImageIcon className="w-4 h-4 text-gray-400" />
-                                                        )}
-                                                    </div>
-                                                    <input
-                                                        placeholder="選項名稱"
-                                                        className="border rounded px-2 py-1 text-xs w-24"
-                                                        value={attributeOptionInput?.attrId === attr.id ? attributeOptionInput.name : ''}
-                                                        onChange={e => setAttributeOptionInput(prev =>
-                                                            prev?.attrId === attr.id
-                                                                ? { ...prev, name: e.target.value }
-                                                                : { attrId: attr.id, name: e.target.value, price: 0 }
-                                                        )}
-                                                    />
-                                                    <input
-                                                        type="number"
-                                                        placeholder="加價"
-                                                        className="border rounded px-2 py-1 text-xs w-16"
-                                                        value={attributeOptionInput?.attrId === attr.id ? attributeOptionInput.price : 0}
-                                                        onChange={e => setAttributeOptionInput(prev =>
-                                                            prev?.attrId === attr.id
-                                                                ? { ...prev, price: Number(e.target.value) }
-                                                                : { attrId: attr.id, name: '', price: Number(e.target.value) }
-                                                        )}
-                                                    />
-                                                    <button
-                                                        onClick={() => addAttributeOption(attr.id)}
-                                                        className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 shrink-0"
-                                                    >
-                                                        新增
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-
-                            <div className="flex gap-2 items-center bg-gray-50 p-2 rounded-lg">
-                                <input
-                                    placeholder="屬性名稱 (如: 磁吸)"
-                                    className="border rounded px-2 py-1 text-sm flex-1"
-                                    value={attributeInput.name}
-                                    onChange={e => setAttributeInput(prev => ({ ...prev, name: e.target.value }))}
-                                />
-                                <select
-                                    className="border rounded px-2 py-1 text-sm"
-                                    value={attributeInput.type}
-                                    onChange={e => setAttributeInput(prev => ({ ...prev, type: e.target.value as any }))}
-                                >
-                                    <option value="select">選單 (Select)</option>
-                                    <option value="text">文字 (Text)</option>
-                                </select>
-                                <button
-                                    onClick={addAttribute}
-                                    className="text-sm bg-gray-800 text-white px-3 py-1 rounded hover:bg-black"
-                                >
-                                    新增屬性
-                                </button>
                             </div>
                         </div>
 
