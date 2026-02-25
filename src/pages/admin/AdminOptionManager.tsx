@@ -943,7 +943,9 @@ export default function AdminOptionManager() {
                                         <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100 shrink-0">
                                             {group.uiConfig.displayType === 'cards' ? '大卡片' :
                                                 group.uiConfig.displayType === 'grid' ? '網格' :
-                                                    group.uiConfig.displayType === 'list' ? '列表' : '勾選框'}
+                                                    group.uiConfig.displayType === 'list' ? '列表' :
+                                                        group.uiConfig.displayType === 'ai_recognition' ? 'AI 辨識' :
+                                                            group.uiConfig.displayType === 'checkbox' ? '勾選框' : group.uiConfig.displayType}
                                         </span>
                                     )}
                                 </div>
@@ -1492,7 +1494,7 @@ export default function AdminOptionManager() {
                                         <option value="grid">網格 (適用顏色)</option>
                                         <option value="list">列表 (適用簡單選項)</option>
                                         <option value="checkbox">勾選框 (適用加購/修復)</option>
-                                        <option value="ai_recognition">圖片辨識 (AI 自動填入)</option>
+                                        <option value="ai_recognition">AI 圖片辨識 (自動填入)</option>
                                     </select>
                                 </div>
                             </div>

@@ -1291,6 +1291,76 @@ export default function SaveDesignModal({
                                                     {(() => {
                                                         const group = currentStepGroups.find(g => g.id === activeCaseGroupId);
                                                         if (!group) return null;
+                                                        const ui = getUI(group);
+                                                        const displayType = normalizeDisplayType(ui.displayType || (ui as any).display_type);
+
+                                                        if (displayType === 'ai_recognition') {
+                                                            const descriptionImages = ui?.descriptionImages || (ui?.descriptionImage ? [ui.descriptionImage] : []);
+                                                            return (
+                                                                <div className="col-span-2 bg-white border-2 border-dashed border-purple-200 rounded-2xl p-6 text-center animate-in fade-in zoom-in duration-300">
+                                                                    <div className="max-w-md mx-auto">
+                                                                        {ui?.description && (
+                                                                            <div
+                                                                                className="mb-6 text-sm text-gray-500 prose prose-sm max-w-none [&>p]:mb-1"
+                                                                                dangerouslySetInnerHTML={{
+                                                                                    __html: DOMPurify.sanitize(
+                                                                                        ui.description
+                                                                                            .replace(/&amp;/g, '&')
+                                                                                            .replace(/&lt;/g, '<')
+                                                                                            .replace(/&gt;/g, '>')
+                                                                                            .replace(/&quot;/g, '"'),
+                                                                                        { ADD_ATTR: ['target', 'style'] }
+                                                                                    )
+                                                                                }}
+                                                                            />
+                                                                        )}
+
+                                                                        {descriptionImages.length > 0 && (
+                                                                            <div className={`mb-6 grid gap-3 ${descriptionImages.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                                                                                {descriptionImages.map((img: string, idx: number) => (
+                                                                                    <div key={idx} className="relative group cursor-pointer" onClick={() => openLightbox(descriptionImages, idx)}>
+                                                                                        <img
+                                                                                            src={img}
+                                                                                            className="w-full aspect-[4/3] object-cover rounded-xl border border-gray-100 shadow-sm transition-transform group-hover:scale-[1.02]"
+                                                                                            alt={`${group.name} 範例圖片 ${idx + 1}`}
+                                                                                        />
+                                                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
+                                                                                            <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+
+                                                                        <input
+                                                                            type="file"
+                                                                            accept="image/*"
+                                                                            ref={aiFileInputRef}
+                                                                            className="hidden"
+                                                                            onChange={handleAISpecRecognition}
+                                                                        />
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => aiFileInputRef.current?.click()}
+                                                                            disabled={isRecognizing}
+                                                                            className={`w-full py-4 px-6 bg-gradient-to-r from-purple-high to-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-purple-100 hover:shadow-purple-200 transition-all flex items-center justify-center gap-3 ${isRecognizing ? 'opacity-70 cursor-not-allowed' : 'hover:-translate-y-1'}`}
+                                                                        >
+                                                                            {isRecognizing ? (
+                                                                                <Loader2 className="w-6 h-6 animate-spin" />
+                                                                            ) : (
+                                                                                <Sparkles className="w-6 h-6" />
+                                                                            )}
+                                                                            <span className="text-lg">{isRecognizing ? '正在辨識規格...' : '上傳截圖辨識規格'}</span>
+                                                                        </button>
+                                                                        <p className="mt-4 text-xs text-gray-400">
+                                                                            請上傳包含產品完整規格的官網截圖<br />
+                                                                            AI 將自動為您填入所有選項
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        }
+
                                                         const groupKey = getGroupKey(group);
                                                         const validItems = getFilteredItems(group.id);
                                                         return validItems.map(item => (
@@ -1339,14 +1409,14 @@ export default function SaveDesignModal({
                                                             if (group.code === 'embossing' && !showEmbossing) return false;
                                                             const ui = getUI(group);
                                                             const dt = normalizeDisplayType(ui.displayType || (ui as any).display_type) || 'cards';
-                                                            return dt === 'cards';
+                                                            return dt === 'cards' || dt === 'ai_recognition';
                                                         });
 
                                                         const otherGroups = currentStepGroups.filter(group => {
                                                             if (group.code === 'embossing' && !showEmbossing) return false;
                                                             const ui = getUI(group);
                                                             const dt = normalizeDisplayType(ui.displayType || (ui as any).display_type) || 'cards';
-                                                            return dt !== 'cards';
+                                                            return dt !== 'cards' && dt !== 'ai_recognition';
                                                         });
 
                                                         const hasAnyCategory = cardGroups.some(g => {
@@ -1382,7 +1452,9 @@ export default function SaveDesignModal({
                                                                         onClick={() => {
                                                                             setActiveCaseGroupId(group.id);
                                                                             setSelectedCaseGroupId(group.id);
-                                                                            if (!selectedOptions[groupKey] && validItems.length > 0) {
+                                                                            const ui = getUI(group);
+                                                                            const dt = normalizeDisplayType(ui.displayType || (ui as any).display_type);
+                                                                            if (!selectedOptions[groupKey] && validItems.length > 0 && dt !== 'ai_recognition') {
                                                                                 handleSelectOption(groupKey, validItems[0].id);
                                                                             }
                                                                         }}
@@ -1469,36 +1541,16 @@ export default function SaveDesignModal({
                                                                 {/* Uncategorized groups (direct display) */}
                                                                 {uncategorized.map(group => renderCardGroup(group))}
 
-                                                                {/* Other display types (grid, list, checkbox for step 1 if any) */}
-                                                                {otherGroups.map(group => {
-                                                                    const ui = getUI(group);
-                                                                    const groupKey = getGroupKey(group);
-                                                                    const validItems = getFilteredItems(group.id);
-                                                                    const displayType = normalizeDisplayType(ui.displayType || (ui as any).display_type) || 'grid';
-                                                                    // Render grid/list/etc for step 1 non-cards groups
-                                                                    return <div key={group.id}>{/* handled below in the general rendering */}</div>;
-                                                                })}
+                                                                {/* Step 1 non-card groups are handled below in the general rendering */}
                                                             </>
                                                         );
                                                     }
 
-                                                    // Step 2+: Normal rendering
-                                                    return currentStepGroups.map(group => {
-                                                        if (group.code === 'embossing' && !showEmbossing) return null;
-                                                        const ui = getUI(group);
-                                                        const groupKey = getGroupKey(group);
-                                                        let displayType = normalizeDisplayType(ui.displayType || (ui as any).display_type) || 'grid';
-
-                                                        // Render Card (Step 1 Style) - won't reach here since step 1 handled above
-                                                        if (currentStep === 1 && displayType === 'cards') {
-                                                            return null; // handled above
-                                                        }
-
-                                                        return null; // placeholder - actual non-step1 logic continues below
-                                                    });
+                                                    return null;
                                                 })()}
-                                                {/* Step 2+ Groups (non-cards): handled by continuation rendering */}
-                                                {currentStep !== 1 && currentStepGroups.map(group => {
+
+                                                {/* General Groups rendering (Step 1 non-cards & Step 2+) */}
+                                                {currentStepGroups.map(group => {
                                                     // Embossing Logic check
                                                     if (group.code === 'embossing' && !showEmbossing) return null;
 
@@ -1514,8 +1566,8 @@ export default function SaveDesignModal({
                                                     const rawGroupItems = items.filter(i => i.parentId === group.id);
                                                     const validItems = getFilteredItems(group.id);
 
-                                                    // Step 1 cards are handled above
-                                                    if (currentStep === 1 && displayType === 'cards') {
+                                                    // Step 1 cards and ai_recognition are handled above in the categorize logic
+                                                    if (currentStep === 1 && (displayType === 'cards' || displayType === 'ai_recognition')) {
                                                         return null;
                                                     }
 
@@ -1706,133 +1758,6 @@ export default function SaveDesignModal({
                                                                     <div className="mt-4 rounded-xl border border-gray-200 bg-white overflow-hidden">
                                                                         <div className="p-4">
                                                                             {renderCustomAttributes(group)}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        );
-                                                    }
-
-                                                    // Render AI Recognition (New Feature)
-                                                    if (displayType === 'ai_recognition') {
-                                                        return (
-                                                            <div key={group.id} className="mb-6 bg-white border-2 border-dashed border-purple-200 rounded-2xl p-6 text-center">
-                                                                <h3 className="text-lg font-bold text-gray-900 mb-2">{group.name}</h3>
-
-                                                                {ui?.description && (
-                                                                    <div
-                                                                        className="mb-6 text-sm text-gray-500 prose prose-sm max-w-none [&>p]:mb-1"
-                                                                        dangerouslySetInnerHTML={{
-                                                                            __html: DOMPurify.sanitize(
-                                                                                ui.description
-                                                                                    .replace(/&amp;/g, '&')
-                                                                                    .replace(/&lt;/g, '<')
-                                                                                    .replace(/&gt;/g, '>')
-                                                                                    .replace(/&quot;/g, '"'),
-                                                                                { ADD_ATTR: ['target', 'style'] }
-                                                                            )
-                                                                        }}
-                                                                    />
-                                                                )}
-
-                                                                {/* Description Images (Instructional Screenshots) */}
-                                                                {descriptionImages.length > 0 && (
-                                                                    <div className={`mb-6 grid gap-3 max-w-lg mx-auto ${descriptionImages.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                                                                        {descriptionImages.map((img: string, idx: number) => (
-                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => openLightbox(descriptionImages, idx)}>
-                                                                                <img
-                                                                                    src={img}
-                                                                                    className="w-full aspect-[4/3] object-cover rounded-xl border border-gray-100 shadow-sm transition-transform group-hover:scale-[1.02]"
-                                                                                    alt={`${group.name} 範例圖片 ${idx + 1}`}
-                                                                                />
-                                                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
-                                                                                    <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
-                                                                                </div>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                )}
-
-                                                                <div className="max-w-md mx-auto">
-                                                                    <input
-                                                                        type="file"
-                                                                        accept="image/*"
-                                                                        ref={aiFileInputRef}
-                                                                        className="hidden"
-                                                                        onChange={handleAISpecRecognition}
-                                                                    />
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => aiFileInputRef.current?.click()}
-                                                                        disabled={isRecognizing}
-                                                                        className={`w-full py-4 px-6 bg-gradient-to-r from-purple-high to-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-purple-100 hover:shadow-purple-200 transition-all flex items-center justify-center gap-3 ${isRecognizing ? 'opacity-70 cursor-not-allowed' : 'hover:-translate-y-1'}`}
-                                                                    >
-                                                                        {isRecognizing ? (
-                                                                            <Loader2 className="w-6 h-6 animate-spin" />
-                                                                        ) : (
-                                                                            <Sparkles className="w-6 h-6" />
-                                                                        )}
-                                                                        <span className="text-lg">{isRecognizing ? '正在辨識規格...' : '上傳截圖辨識規格'}</span>
-                                                                    </button>
-                                                                    <p className="mt-4 text-xs text-gray-400">
-                                                                        請上傳包含產品完整規格的官網截圖<br />
-                                                                        AI 將自動為您填入所有選項
-                                                                    </p>
-                                                                </div>
-
-                                                                {/* Custom Attributes rendered below if group is "active" or needed */}
-                                                                {group.subAttributes && group.subAttributes.length > 0 && (
-                                                                    <div className="mt-8 text-left border-t border-gray-100 pt-6">
-                                                                        <h4 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
-                                                                            <Settings className="w-4 h-4" /> 您也可以手動調整：
-                                                                        </h4>
-                                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                                            {group.subAttributes.map(attr => {
-                                                                                const fieldKey = `${groupKey}:${attr.id}`;
-                                                                                const isMatched = matchedFields.has(fieldKey);
-                                                                                return (
-                                                                                    <div key={attr.id} className="space-y-1">
-                                                                                        <label className="text-xs font-bold text-gray-500 flex items-center justify-between">
-                                                                                            {attr.name}
-                                                                                            {isMatched && <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-full animate-pulse">AI 辨識</span>}
-                                                                                        </label>
-                                                                                        {attr.type === 'select' ? (
-                                                                                            <select
-                                                                                                className={`w-full p-2 border rounded-lg text-sm bg-white transition-all duration-500 ${isMatched ? 'border-purple-500 ring-1 ring-purple-100' : 'border-gray-200'}`}
-                                                                                                value={selectedOptions[fieldKey] || ''}
-                                                                                                onChange={(e) => {
-                                                                                                    setMatchedFields(prev => {
-                                                                                                        const next = new Set(prev);
-                                                                                                        next.delete(fieldKey);
-                                                                                                        return next;
-                                                                                                    });
-                                                                                                    setSelectedOptions(prev => ({ ...prev, [fieldKey]: e.target.value }));
-                                                                                                }}
-                                                                                            >
-                                                                                                <option value="">請選擇...</option>
-                                                                                                {attr.options?.map(opt => (
-                                                                                                    <option key={opt.id} value={opt.id}>
-                                                                                                        {opt.name}{opt.priceModifier > 0 ? ` (+$${opt.priceModifier})` : ''}
-                                                                                                    </option>
-                                                                                                ))}
-                                                                                            </select>
-                                                                                        ) : (
-                                                                                            <input
-                                                                                                className={`w-full p-2 border rounded-lg text-sm bg-white transition-all duration-500 ${isMatched ? 'border-purple-500 ring-1 ring-purple-100' : 'border-gray-200'}`}
-                                                                                                value={selectedOptions[fieldKey] || ''}
-                                                                                                onChange={(e) => {
-                                                                                                    setMatchedFields(prev => {
-                                                                                                        const next = new Set(prev);
-                                                                                                        next.delete(fieldKey);
-                                                                                                        return next;
-                                                                                                    });
-                                                                                                    setSelectedOptions(prev => ({ ...prev, [fieldKey]: e.target.value }));
-                                                                                                }}
-                                                                                            />
-                                                                                        )}
-                                                                                    </div>
-                                                                                );
-                                                                            })}
                                                                         </div>
                                                                     </div>
                                                                 )}
