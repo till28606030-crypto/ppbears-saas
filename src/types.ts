@@ -29,6 +29,8 @@ export interface OptionGroupUIConfig {
     category?: string; // 分類標籤，同 Step 內相同分類的商品會被折疊收合
     sortOrder?: number; // 個別大類在同一 category 或整體列表中的排序順序
     categorySortOrder?: number; // 分類標籤本身的排序順序
+    dependsOnGroupId?: string; // 顯示條件：必須先選擇的前置規格大類 ID
+    dependsOnOptionId?: string; // 顯示條件：必須先選擇的前置子選項 ID (可選)
 }
 
 export interface OptionGroup {

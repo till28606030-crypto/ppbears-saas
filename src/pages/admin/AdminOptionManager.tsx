@@ -1520,6 +1520,55 @@ export default function AdminOptionManager() {
                                 <p className="text-[10px] text-gray-400 mt-1">同 Step 內相同分類的商品，在前台購物車會被收合在同一個折疊群組中。</p>
                             </div>
 
+                            <div className="bg-white p-3 rounded-lg border border-purple-100 shadow-sm">
+                                <label className="block text-xs font-bold mb-2 text-purple-700 flex items-center gap-1">
+                                    顯示條件 (相依選項)
+                                </label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <select
+                                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-gray-50 focus:ring-1 focus:ring-purple-500 outline-none"
+                                            value={editingGroupData.uiConfig?.dependsOnGroupId || ''}
+                                            onChange={e => {
+                                                const val = e.target.value;
+                                                setEditingGroupData(prev => ({
+                                                    ...prev,
+                                                    uiConfig: {
+                                                        ...prev.uiConfig,
+                                                        dependsOnGroupId: val ? val : undefined,
+                                                        dependsOnOptionId: undefined // Reset option when group changes
+                                                    }
+                                                }));
+                                            }}
+                                        >
+                                            <option value="">無條件 (預設顯示)</option>
+                                            {groups.filter(g => g.id !== editingGroupData.id).map(g => (
+                                                <option key={g.id} value={g.id}>需要先選擇：{g.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <select
+                                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-gray-50 focus:ring-1 focus:ring-purple-500 outline-none"
+                                            value={editingGroupData.uiConfig?.dependsOnOptionId || ''}
+                                            onChange={e => setEditingGroupData(prev => ({
+                                                ...prev,
+                                                uiConfig: { ...prev.uiConfig, dependsOnOptionId: e.target.value ? e.target.value : undefined }
+                                            }))}
+                                            disabled={!editingGroupData.uiConfig?.dependsOnGroupId}
+                                        >
+                                            <option value="">不限子選項 (有選大類即可)</option>
+                                            {editingGroupData.uiConfig?.dependsOnGroupId &&
+                                                items.filter(i => i.parentId === editingGroupData.uiConfig?.dependsOnGroupId).map(i => (
+                                                    <option key={i.id} value={i.id}>指定選項：{i.name}</option>
+                                                ))
+                                            }
+                                        </select>
+                                    </div>
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-1.5">設定此大類必須在選擇了特定商品後才會在購物車出現。</p>
+                            </div>
+
                             <div>
                                 <label className="block text-xs font-bold mb-1 text-gray-600">功能說明文字 (Description)</label>
                                 <div className="bg-white">

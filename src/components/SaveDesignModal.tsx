@@ -207,10 +207,31 @@ export default function SaveDesignModal({
         [groups, selectedCaseGroupId]
     );
 
-    // 2. All groups are valid (filtering now handled by linked_option_groups)
+    // 2. All groups are valid conditionally based on dependencies
     const validGroups = React.useMemo(() => {
-        return groups || [];
-    }, [groups]);
+        if (!groups) return [];
+        return groups.filter(group => {
+            const ui = getUI(group);
+            const depsGroup = ui?.dependsOnGroupId;
+            const depsOption = ui?.dependsOnOptionId;
+
+            if (depsGroup) {
+                // Find the parent group to look up its key
+                const parentGroup = groups.find(g => g.id === depsGroup);
+                if (!parentGroup) return false; // Hide if parent doesn't exist
+
+                const parentGroupKey = getGroupKey(parentGroup);
+                const selectedParentOption = selectedOptions[parentGroupKey];
+
+                if (!selectedParentOption) return false; // Parent not selected
+
+                if (depsOption && selectedParentOption !== depsOption) {
+                    return false; // Parent selected, but not the specific option
+                }
+            }
+            return true;
+        });
+    }, [groups, selectedOptions]);
 
     // Grouping by Step
     const { stepGroups, maxStep, availableSteps } = React.useMemo(() => {
