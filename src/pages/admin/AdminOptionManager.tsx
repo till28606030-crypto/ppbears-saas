@@ -137,6 +137,7 @@ export default function AdminOptionManager() {
     // Form States
     const [isEditingGroup, setIsEditingGroup] = useState(false);
     const [editingGroupData, setEditingGroupData] = useState<Partial<OptionGroup>>({});
+    const [descriptionMode, setDescriptionMode] = useState<'visual' | 'code'>('visual');
 
     // Sub-Attributes Editor State
     const [attributeInput, setAttributeInput] = useState<{ name: string, type: 'select' | 'text' }>({ name: '', type: 'select' });
@@ -1623,19 +1624,49 @@ export default function AdminOptionManager() {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold mb-1 text-gray-600">功能說明文字 (Description)</label>
+                                <div className="flex justify-between items-end mb-1">
+                                    <label className="block text-xs font-bold text-gray-600">功能說明文字 (Description)</label>
+                                    <div className="flex bg-gray-100 p-0.5 rounded border border-gray-200">
+                                        <button
+                                            type="button"
+                                            onClick={() => setDescriptionMode('visual')}
+                                            className={`px-2 py-1 text-[10px] sm:text-xs rounded font-medium transition-colors ${descriptionMode === 'visual' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            視覺化編輯器
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setDescriptionMode('code')}
+                                            className={`px-2 py-1 text-[10px] sm:text-xs rounded font-medium transition-colors ${descriptionMode === 'code' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            程式碼編輯器 (HTML)
+                                        </button>
+                                    </div>
+                                </div>
                                 <div className="bg-white">
-                                    <ReactQuill
-                                        theme="snow"
-                                        value={editingGroupData.uiConfig?.description || ''}
-                                        onChange={(value) => setEditingGroupData(prev => ({
-                                            ...prev,
-                                            uiConfig: { ...prev.uiConfig, description: value }
-                                        }))}
-                                        modules={QUILL_MODULES}
-                                        placeholder="例如: 透過 AI 技術提升照片解析度... (支援 HTML 與連結)"
-                                        className="h-40 mb-12" // Add margin bottom for toolbar/content space
-                                    />
+                                    {descriptionMode === 'visual' ? (
+                                        <ReactQuill
+                                            theme="snow"
+                                            value={editingGroupData.uiConfig?.description || ''}
+                                            onChange={(value) => setEditingGroupData(prev => ({
+                                                ...prev,
+                                                uiConfig: { ...prev.uiConfig, description: value }
+                                            }))}
+                                            modules={QUILL_MODULES}
+                                            placeholder="例如: 透過 AI 技術提升照片解析度... (支援 HTML 與連結)"
+                                            className="h-40 mb-12" // Add margin bottom for toolbar/content space
+                                        />
+                                    ) : (
+                                        <textarea
+                                            className="w-full h-[208px] border border-gray-300 rounded-lg p-3 text-sm font-mono bg-gray-50 text-gray-800 leading-relaxed focus:bg-white focus:ring-2 focus:ring-purple-500 outline-none"
+                                            value={editingGroupData.uiConfig?.description || ''}
+                                            onChange={(e) => setEditingGroupData(prev => ({
+                                                ...prev,
+                                                uiConfig: { ...prev.uiConfig, description: e.target.value }
+                                            }))}
+                                            placeholder="在此輸入或貼上 HTML 原始碼 (例如：<p style='color:red;'>文字</p>)..."
+                                        />
+                                    )}
                                 </div>
                                 <p className="text-[10px] text-gray-400 mt-1">支援 HTML 格式。可插入連結以導向詳細說明頁面。</p>
                             </div>
