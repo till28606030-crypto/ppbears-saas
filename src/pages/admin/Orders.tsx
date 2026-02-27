@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { ShoppingBag, Download, Clock, Search, Trash2, ExternalLink, RefreshCw, CheckSquare, Square } from 'lucide-react';
+import { ShoppingBag, Download, Clock, Search, Trash2, ExternalLink, RefreshCw, CheckSquare, Square, Copy, Image as ImageIcon } from 'lucide-react';
 
 interface Design {
     id: string;
@@ -12,6 +12,7 @@ interface Design {
     options: Record<string, any>;
     canvas_json: object | null;
     preview_image: string | null;
+    spec_image_url: string | null; // 客戶上傳的 AI 辨識截圖
     created_at: string;
 }
 
@@ -31,7 +32,7 @@ export default function AdminOrders() {
         try {
             const { data, error: supabaseError } = await supabase
                 .from('custom_designs')
-                .select('id, design_id, product_id, product_name, phone_model, price, options, canvas_json, preview_image, created_at')
+                .select('id, design_id, product_id, product_name, phone_model, price, options, canvas_json, preview_image, spec_image_url, created_at')
                 .order('created_at', { ascending: false });
 
             if (supabaseError) throw supabaseError;
@@ -251,28 +252,68 @@ export default function AdminOrders() {
                         </div>
                     ) : error ? (
                         <div className="p-12 text-center">
-                            <p className="text-red-500 mb-4">{error}</p>
+                            <p className="text-red-500 font-bold mb-2">{error}</p>
                             <p className="text-sm text-gray-500 mb-4">
-                                如果看到 RLS 權限錯誤，請在 Supabase SQL Editor 執行以下指令：
+                                如果看到 RLS 或欄位不存在錯誤，請在 Supabase SQL Editor 執行以下指令：
                             </p>
-                            <pre className="text-xs bg-gray-900 text-green-400 p-4 rounded-lg text-left inline-block max-w-xl">
-                                {`ALTER TABLE custom_designs
+                            <pre className="text-xs bg-gray-900 text-green-400 p-4 rounded-lg text-left inline-block max-w-xl whitespace-pre-wrap">
+                                {`-- 補充缺少的欄位（如已存在會略過）
+ALTER TABLE custom_designs
   ADD COLUMN IF NOT EXISTS canvas_json jsonb,
   ADD COLUMN IF NOT EXISTS preview_image text,
+  ADD COLUMN IF NOT EXISTS spec_image_url text,
   ADD COLUMN IF NOT EXISTS product_id text,
   ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
 
--- Allow admin to read all rows
-CREATE POLICY IF NOT EXISTS "admin read all custom_designs"
-  ON custom_designs FOR SELECT USING (true);`}
+-- 開啟 RLS
+ALTER TABLE custom_designs ENABLE ROW LEVEL SECURITY;
+
+-- 允許 admin 讀取所有資料列
+DROP POLICY IF EXISTS "admin read all custom_designs" ON custom_designs;
+CREATE POLICY "admin read all custom_designs"
+  ON custom_designs FOR SELECT USING (true);
+
+-- 允許任何人新增（客戶加入購物車時寫入）
+DROP POLICY IF EXISTS "public insert custom_designs" ON custom_designs;
+CREATE POLICY "public insert custom_designs"
+  ON custom_designs FOR INSERT WITH CHECK (true);`}
                             </pre>
-                            <br />
-                            <button
-                                onClick={fetchDesigns}
-                                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                            >
-                                重試
-                            </button>
+                            <div className="mt-3 flex items-center justify-center gap-3">
+                                <button
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(`-- 補充缺少的欄位（如已存在會略過）
+ALTER TABLE custom_designs
+  ADD COLUMN IF NOT EXISTS canvas_json jsonb,
+  ADD COLUMN IF NOT EXISTS preview_image text,
+  ADD COLUMN IF NOT EXISTS spec_image_url text,
+  ADD COLUMN IF NOT EXISTS product_id text,
+  ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+
+-- 開啟 RLS
+ALTER TABLE custom_designs ENABLE ROW LEVEL SECURITY;
+
+-- 允許 admin 讀取所有資料列
+DROP POLICY IF EXISTS "admin read all custom_designs" ON custom_designs;
+CREATE POLICY "admin read all custom_designs"
+  ON custom_designs FOR SELECT USING (true);
+
+-- 允許任何人新增（客戶加入購物車時寫入）
+DROP POLICY IF EXISTS "public insert custom_designs" ON custom_designs;
+CREATE POLICY "public insert custom_designs"
+  ON custom_designs FOR INSERT WITH CHECK (true);`);
+                                        alert('SQL 已複製！請至 Supabase SQL Editor 執行。');
+                                    }}
+                                    className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 text-sm"
+                                >
+                                    <Copy className="w-4 h-4" /> 複製 SQL
+                                </button>
+                                <button
+                                    onClick={fetchDesigns}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                                >
+                                    重試
+                                </button>
+                            </div>
                         </div>
                     ) : filteredDesigns.length === 0 ? (
                         <div className="p-12 text-center text-gray-500">
@@ -322,7 +363,7 @@ CREATE POLICY IF NOT EXISTS "admin read all custom_designs"
                                                 )}
                                             </button>
 
-                                            {/* Thumbnail */}
+                                            {/* 設計縮圖 */}
                                             <div className="w-20 h-28 bg-gray-100 rounded-lg overflow-hidden border border-gray-200 flex-shrink-0 flex items-center justify-center">
                                                 {design.preview_image ? (
                                                     <img src={design.preview_image} alt="Preview" className="w-full h-full object-contain" />
@@ -331,10 +372,28 @@ CREATE POLICY IF NOT EXISTS "admin read all custom_designs"
                                                 )}
                                             </div>
 
+                                            {/* 客戶規格截圖（AI辨識上傳）*/}
+                                            {design.spec_image_url && (
+                                                <a
+                                                    href={design.spec_image_url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    title="查看客戶上傳的規格截圖"
+                                                    className="w-16 h-20 bg-purple-50 rounded-lg overflow-hidden border-2 border-purple-200 flex-shrink-0 flex items-center justify-center group hover:border-purple-400 transition-colors"
+                                                >
+                                                    <img src={design.spec_image_url} alt="規格截圖" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                                                </a>
+                                            )}
+
                                             {/* Info */}
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-3 mb-1 flex-wrap">
                                                     <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium">已付款</span>
+                                                    {design.spec_image_url && (
+                                                        <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full font-medium flex items-center gap-1">
+                                                            <ImageIcon className="w-3 h-3" /> 含規格截圖
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <p className="font-semibold text-gray-800 truncate">{design.product_name || design.phone_model}</p>
                                                 <p className="text-xs text-gray-500 font-mono mt-1 bg-gray-100 inline-block px-2 py-1 rounded select-all">

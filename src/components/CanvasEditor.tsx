@@ -3050,7 +3050,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 format: 'jpeg',
                 quality: 0.6,
                 multiplier: multiplier * 0.5,
-                enableRetinaScaling: true
+                enableRetinaScaling: false // Prevent huge output on mobile retina displays
             });
         },
         generatePrintFile: () => {
@@ -3076,7 +3076,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 format: 'png',
                 quality: 1,
                 multiplier: multiplier,
-                enableRetinaScaling: true
+                enableRetinaScaling: false // Prevent huge output on mobile retina displays causing memory crash
             });
 
             canvas.backgroundColor = originalBg;

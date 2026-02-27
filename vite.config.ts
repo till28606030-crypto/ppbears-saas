@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
   return {
     base: env.VITE_BASE_PATH || '/',
     build: {
-      sourcemap: 'hidden',
+      sourcemap: false, // 關閉 sourcemap 以節省空間且減少上傳負擔
     },
     resolve: {
       dedupe: [

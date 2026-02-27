@@ -242,6 +242,14 @@ export default function AdminOptionManager() {
             image: attributeOptionInput.image
         };
 
+        // 檢查重複名稱
+        const currentAttr = (editingGroupData.subAttributes || []).find(a => a.id === attrId);
+        const newNameClean = newOption.name.trim().toLowerCase();
+        if (currentAttr?.options?.some(o => o.name.trim().toLowerCase() === newNameClean)) {
+            window.alert(`新增失敗：此屬性下已存在名為「${newOption.name.trim()}」的選項。`);
+            return;
+        }
+
         setEditingGroupData(prev => ({
             ...prev,
             subAttributes: (prev.subAttributes || []).map(a => {
@@ -267,6 +275,15 @@ export default function AdminOptionManager() {
     };
 
     const updateAttributeOption = (attrId: string, optionId: string, updates: Partial<SubAttributeOption>) => {
+        if (updates.name) {
+            const currentAttr = (editingGroupData.subAttributes || []).find(a => a.id === attrId);
+            const newNameClean = updates.name.trim().toLowerCase();
+            if (currentAttr?.options?.some(o => o.id !== optionId && o.name.trim().toLowerCase() === newNameClean)) {
+                window.alert(`儲存失敗：此屬性下已存在名為「${updates.name.trim()}」的選項。`);
+                return;
+            }
+        }
+
         setEditingGroupData(prev => ({
             ...prev,
             subAttributes: (prev.subAttributes || []).map(a => {
@@ -367,6 +384,14 @@ export default function AdminOptionManager() {
             priceModifier: panelAttrOptionInput.price,
             image: panelAttrOptionInput.image
         };
+
+        // 檢查重複名稱
+        const currentAttr = group.subAttributes?.find(a => a.id === attrId);
+        const newNameClean = newOption.name.trim().toLowerCase();
+        if (currentAttr?.options?.some(o => o.name.trim().toLowerCase() === newNameClean)) {
+            window.alert(`新增失敗：此屬性下已存在名為「${newOption.name.trim()}」的選項。`);
+            return;
+        }
         const updated = {
             ...group,
             subAttributes: (group.subAttributes || []).map(a =>
@@ -396,6 +421,18 @@ export default function AdminOptionManager() {
     const panelSaveAttrOption = async (attrId: string, optionId: string, updates: Partial<SubAttributeOption>) => {
         const group = getPanelGroup();
         if (!group) return;
+        const currentAttr = group.subAttributes?.find(a => a.id === attrId);
+        if (updates.name) {
+            const newNameClean = updates.name.trim().toLowerCase();
+            const isDuplicate = currentAttr?.options?.some(o =>
+                o.id !== optionId && o.name.trim().toLowerCase() === newNameClean
+            );
+            if (isDuplicate) {
+                window.alert(`儲存失敗：此屬性下已存在名為「${updates.name.trim()}」的選項。`);
+                return;
+            }
+        }
+
         const updated = {
             ...group,
             subAttributes: (group.subAttributes || []).map(a =>
@@ -680,6 +717,22 @@ export default function AdminOptionManager() {
             colorHex: editingItemData.colorHex,
             imageUrl: editingItemData.imageUrl
         };
+
+        // 檢查重複名稱 (強化版：去空格、不分大小寫)
+        const newNameClean = (itemToSave.name || '').trim().toLowerCase();
+        const isDuplicate = items.some(i => {
+            const matchParent = i.parentId === selectedGroupId;
+            const matchName = i.name.trim().toLowerCase() === newNameClean;
+            const notSelf = i.id !== itemToSave.id;
+            return matchParent && matchName && notSelf;
+        });
+
+        console.log('[Duplicate Check] Item:', itemToSave.name, 'isDuplicate:', isDuplicate);
+
+        if (isDuplicate) {
+            window.alert(`儲存失敗：此大類下已存在名為「${itemToSave.name.trim()}」的子項，請使用不同的名稱。`);
+            return;
+        }
 
         // Save to Supabase
         let error;

@@ -950,6 +950,11 @@ export default function Home() {
                 finalOptions.template_slug = templateSlug;
             }
 
+            // 提取私有欄位（_ 開頭）：這些欄位不傳給 WooCommerce
+            const specImageUrl: string | null = finalOptions['_spec_image_url'] || null;
+            // 刪除私有欄位，避免出現在購物車規格裡
+            delete finalOptions['_spec_image_url'];
+
             console.log('[Cart] Starting checkout process...');
             console.log('[Cart] Price:', finalPrice);
             console.log('[Cart] Options:', finalOptions);
@@ -957,37 +962,27 @@ export default function Home() {
             // 1. Convert Base64 to Blobs and Upload to Supabase Storage
             console.log('[Cart] Uploading images to Supabase Storage...');
 
-            const base64ToBlob = (base64: string, mime: string) => {
-                const parts = base64.split(',');
-                const byteString = atob(parts[1]);
-                const ab = new ArrayBuffer(byteString.length);
-                const ia = new Uint8Array(ab);
-                for (let i = 0; i < byteString.length; i++) {
-                    ia[i] = byteString.charCodeAt(i);
-                }
-                return new Blob([ab], { type: mime });
-            };
-
             let previewUrl = previewImage;
             let printUrl = printImage;
 
             try {
-                const previewBlob = base64ToBlob(previewImage, 'image/jpeg');
-                const printBlob = base64ToBlob(printImage, 'image/png');
+                // Optimize base64 to Blob conversion natively (massive speedup on mobile)
+                const previewBlob = await (await fetch(previewImage)).blob();
+                const printBlob = await (await fetch(printImage)).blob();
 
                 const [previewUpload, printUpload] = await Promise.all([
-                    supabase.storage.from('designs').upload(`${designId}/preview.jpg`, previewBlob, { upsert: true, contentType: 'image/jpeg' }),
-                    supabase.storage.from('designs').upload(`${designId}/print.png`, printBlob, { upsert: true, contentType: 'image/png' })
+                    supabase.storage.from('design-previews').upload(`${designId}/preview.jpg`, previewBlob, { upsert: true, contentType: 'image/jpeg' }),
+                    supabase.storage.from('design-previews').upload(`${designId}/print.png`, printBlob, { upsert: true, contentType: 'image/png' })
                 ]);
 
                 if (previewUpload.error) console.error('[Cart] Preview upload failed:', previewUpload.error);
                 if (printUpload.error) console.error('[Cart] Print upload failed:', printUpload.error);
 
                 if (!previewUpload.error) {
-                    previewUrl = supabase.storage.from('designs').getPublicUrl(`${designId}/preview.jpg`).data.publicUrl;
+                    previewUrl = supabase.storage.from('design-previews').getPublicUrl(`${designId}/preview.jpg`).data.publicUrl;
                 }
                 if (!printUpload.error) {
-                    printUrl = supabase.storage.from('designs').getPublicUrl(`${designId}/print.png`).data.publicUrl;
+                    printUrl = supabase.storage.from('design-previews').getPublicUrl(`${designId}/print.png`).data.publicUrl;
                 }
             } catch (uploadErr) {
                 console.warn('[Cart] Image upload to storage failed, falling back to base64 for database:', uploadErr);
@@ -1015,6 +1010,7 @@ export default function Home() {
                     canvas_json: canvasJson,
                     preview_image: previewUrl,
                     print_image: printUrl,
+                    spec_image_url: specImageUrl,  // 客戶上傳的 AI 辨識規格截圖
                 }, { onConflict: 'design_id' })
                 .select()
                 .single();
@@ -1041,7 +1037,7 @@ export default function Home() {
             // Try new WP REST API first (each option stored as separate order meta line)
             console.log('[Cart] Calling WP add-to-cart API...');
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
+            const timeoutId = setTimeout(() => controller.abort(), 30000);
 
             try {
                 const response = await fetch(`${WOOCOMMERCE_URL}/wp-json/ppbears/v1/add-to-cart`, {
@@ -1092,7 +1088,7 @@ export default function Home() {
                 throw new Error(`伺服器錯誤 (${response.status}): ${errText}`);
             } catch (apiErr: any) {
                 if (apiErr.name === 'AbortError') {
-                    throw new Error('加入購物車超時 (15秒)，請重新嘗試。');
+                    throw new Error('加入購物車超時 (30秒)，請重新嘗試。');
                 } else {
                     throw apiErr;
                 }

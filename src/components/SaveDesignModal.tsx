@@ -4,9 +4,36 @@ import { X, Check, ChevronLeft, ChevronRight, ChevronDown, ShoppingCart, Info, L
 import { get } from 'idb-keyval';
 import { loadOptionGroups } from '../services/optionGroups';
 import { supabase } from '../lib/supabase';
-import { recognizeSpecsFromImage, mapRecognizedSpecs } from '../services/aiRecognition';
+import { recognizeProductFromImage, mapRecognizedSpecs, RecognizedProductInfo } from '../services/aiRecognition';
 import { Sparkles } from 'lucide-react';
 import DOMPurify from 'dompurify';
+
+// Helper to safely parse and decode HTML from ReactQuill
+const cleanHtmlContent = (htmlStr: string | undefined): string => {
+    if (!htmlStr) return '';
+
+    // 1. 精確優化：僅移除「夾在轉義代碼標籤內」的真實 HTML 標籤
+    // 這裡尋找 &lt; 到 &gt; 之間的區塊，或從 &lt; 開始直到結尾的區塊
+    // 並將該區塊內的 <br>, <p> 等移除，避免屬性被切斷
+    let healed = htmlStr.replace(/(&lt;[\s\S]*?&gt;|&lt;[\s\S]*$)/g, (match) => {
+        return match.replace(/<[^>]+>/g, ' ');
+    });
+
+    // 2. 將編碼解碼回來
+    let result = healed
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, ' ');
+
+    // 3. 通過 DOMPurify 進行安全過濾，放行更多佈局標籤與屬性
+    return DOMPurify.sanitize(result, {
+        ADD_TAGS: ['section', 'article', 'nav', 'header', 'footer'],
+        ADD_ATTR: ['target', 'style', 'rel', 'class', 'href', 'id', 'align']
+    });
+};
 
 export interface SubAttributeOption {
     id: string;
@@ -115,6 +142,18 @@ export default function SaveDesignModal({
     const [isRecognizing, setIsRecognizing] = useState(false);
     const [matchedFields, setMatchedFields] = useState<Set<string>>(new Set());
     const aiFileInputRef = React.useRef<HTMLInputElement>(null);
+    // 上傳縮圖預覽（本地 object URL）
+    const [uploadedSpecImage, setUploadedSpecImage] = useState<string | null>(null);
+    // Supabase 上的圖片 URL（供訂單管理查看）
+    const [uploadedSpecImageUrl, setUploadedSpecImageUrl] = useState<string | null>(null);
+    // 辨識完成後是否顯示進階選項
+    const [showAdvancedAfterUpload, setShowAdvancedAfterUpload] = useState(false);
+    // 辨識到的型號和殼種資訊
+    const [recognizedProductInfo, setRecognizedProductInfo] = useState<RecognizedProductInfo | null>(null);
+    // 文字 fallback 欄位（選單中找不到對應選項時）
+    const [textFallbackFields, setTextFallbackFields] = useState<Record<string, string>>({});
+    // 殼種不符合警告
+    const [caseNameMismatch, setCaseNameMismatch] = useState<string | null>(null);
 
     // Data State
     const [groups, setGroups] = useState<OptionGroup[]>([]);
@@ -192,6 +231,8 @@ export default function SaveDesignModal({
     const [selectedCaseGroupId, setSelectedCaseGroupId] = useState<string | null>(null);
     // NEW: Category accordion expanded state (category name => bool)
     const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+    // Ref for the scrollable right content area
+    const rightScrollRef = React.useRef<HTMLDivElement>(null);
 
     // Reset activeCaseGroupId when leaving Step 1 to prevent drill-down state persistence
     useEffect(() => {
@@ -344,38 +385,18 @@ export default function SaveDesignModal({
             setLoading(true);
             setError(null);
 
-            // Restore State from LocalStorage
-            const storageKey = `ppbears_checkout_progress_${productId || 'default'}`;
-            const savedData = localStorage.getItem(storageKey);
-            let restored = false;
-
-            if (savedData) {
-                try {
-                    const parsed = JSON.parse(savedData);
-                    if (parsed && typeof parsed === 'object') {
-                        console.log('Restoring progress:', parsed);
-                        setSelectedOptions(parsed.selectedOptions || {});
-                        setCurrentStep(parsed.currentStep || 1);
-                        // Optional: Restore drill-down state if saved? 
-                        // For now, let's reset drill-down to let user re-orient unless we store it.
-                        // But if they were in Step 1 drill-down, they might want to be back there.
-                        // Let's keep it simple: Reset drill-down view to main list for Step 1.
-                        setActiveCaseGroupId(null);
-                        setSelectedCaseGroupId(null);
-                        restored = true;
-                    }
-                } catch (e) {
-                    console.error('Failed to parse saved progress', e);
-                }
-            }
-
-            if (!restored) {
-                // Default Reset
-                setSelectedOptions({});
-                setCurrentStep(1);
-                setActiveCaseGroupId(null);
-                setSelectedCaseGroupId(null);
-            }
+            // Default Reset: Always start fresh
+            setSelectedOptions({});
+            setCurrentStep(1);
+            setActiveCaseGroupId(null);
+            setSelectedCaseGroupId(null);
+            setUploadedSpecImage(null);
+            setUploadedSpecImageUrl(null);
+            setShowAdvancedAfterUpload(false);
+            setMatchedFields(new Set());
+            setRecognizedProductInfo(null);
+            setTextFallbackFields({});
+            setCaseNameMismatch(null);
 
             // Timeout wrapper for IndexedDB operations
             const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
@@ -523,19 +544,6 @@ export default function SaveDesignModal({
         console.log("[SaveDesignModal] Loading State Changed:", loading);
     }, [loading]);
 
-    // Persist State to LocalStorage
-    useEffect(() => {
-        if (isOpen) {
-            const storageKey = `ppbears_checkout_progress_${productId || 'default'}`;
-            const data = {
-                selectedOptions,
-                currentStep,
-                timestamp: Date.now()
-            };
-            localStorage.setItem(storageKey, JSON.stringify(data));
-        }
-    }, [selectedOptions, currentStep, isOpen, productId]);
-
     // Core Logic: Filter Items
     const getFilteredItems = (groupId: string) => {
         // 1. Get items for this group
@@ -604,6 +612,23 @@ export default function SaveDesignModal({
 
         let specBase = 0;   // Step1 main price
         let addons = 0;     // Step2/3 add-ons
+        let hasChosenSpec = false;
+
+        // --- 修正: 加入 AI_recognition 的 basePrice 判斷 ---
+        // AI 模式選殼時，由於沒有寫入 selectedOptions[groupKey]，會漏算群組基礎價格
+        // 使用 selectedCaseGroupId（永久保留）優先，activeCaseGroupId 僅在 step 1 有效
+        const effectiveCaseGroupId = selectedCaseGroupId || activeCaseGroupId;
+        if (effectiveCaseGroupId) {
+            const activeGroup = validGroups.find(g => g.id === effectiveCaseGroupId);
+            if (activeGroup && getStep(activeGroup) === 1) {
+                const ui = getUI(activeGroup);
+                const dt = normalizeDisplayType(ui.displayType || (ui as any).display_type);
+                if (dt === 'ai_recognition') {
+                    hasChosenSpec = true;
+                    specBase += Number(activeGroup.priceModifier) || 0;
+                }
+            }
+        }
 
         Object.entries(selectedOptions).forEach(([key, val]) => {
             // subAttributes: `${groupKey}:${attrId}` (Step 1) OR `${groupKey}:ca:${attrId}` (Step 2+)
@@ -624,8 +649,10 @@ export default function SaveDesignModal({
                 const step = getStep(group);
                 const delta = Number(opt.priceModifier) || 0;
 
-                if (step === 1) specBase += delta;
-                else addons += delta;
+                if (step === 1) {
+                    hasChosenSpec = true;
+                    specBase += delta;
+                } else addons += delta;
                 return;
             }
 
@@ -639,6 +666,7 @@ export default function SaveDesignModal({
             const isSelf = String(val).includes('__self');
 
             if (step === 1) {
+                hasChosenSpec = true;
                 // Step1: main price comes from selected item if it has price, 
                 // otherwise fallback to group.priceModifier (for color items = 0 but group has price)
                 specBase += isSelf ? itemPrice : (itemPrice > 0 ? itemPrice : groupPrice);
@@ -651,9 +679,6 @@ export default function SaveDesignModal({
         });
 
         // ✅ No spec chosen => do not show price 
-        const step1KeySet = new Set((stepGroups.get(1) || []).map(g => getGroupKey(g)));
-        const hasChosenSpec = Object.keys(selectedOptions).some(k => step1KeySet.has(k));
-
         if (!hasChosenSpec) return 0;
 
         // Debug Price Breakdown
@@ -682,7 +707,14 @@ export default function SaveDesignModal({
     const step1KeySet = new Set((stepGroups.get(1) || []).map(g => getGroupKey(g)));
 
     // Check if any Step 1 spec is selected
-    const hasChosenSpec = (stepGroups.get(1) || []).some(g => selectedOptions[getGroupKey(g)]);
+    // 對於 ai_recognition 類型的選項組，辨識完成（showAdvancedAfterUpload）即視為已選規格
+    const hasAiRecognitionGroup = (stepGroups.get(1) || []).some(g => {
+        const ui = getUI(g);
+        const dt = normalizeDisplayType(ui.displayType || (ui as any).display_type);
+        return dt === 'ai_recognition';
+    });
+    const hasChosenSpec = (stepGroups.get(1) || []).some(g => selectedOptions[getGroupKey(g)])
+        || (hasAiRecognitionGroup && showAdvancedAfterUpload);
 
     // 已選規格（Step1 + 其 subAttributes）
     const specLines: { label: string; delta: number }[] = [];
@@ -853,33 +885,102 @@ export default function SaveDesignModal({
 
         setIsRecognizing(true);
         setInlineError(null);
+        setShowAdvancedAfterUpload(false);
+        setRecognizedProductInfo(null);
+        setCaseNameMismatch(null);
+        setTextFallbackFields({});
+
+        // 立即顯示本地縮圖預覽
+        const localUrl = URL.createObjectURL(file);
+        setUploadedSpecImage(localUrl);
 
         try {
-            const recognized = await recognizeSpecsFromImage(file);
-            const updatedOptions = mapRecognizedSpecs(recognized, groups, selectedOptions);
+            // 同步上傳圖片到 Supabase Storage（非阻塞，失敗不影響辨識）
+            try {
+                const fileExt = file.name.split('.').pop() || 'jpg';
+                const fileName = `spec-${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+                const { data: uploadData, error: uploadError } = await supabase.storage
+                    .from('design-previews')
+                    .upload(`spec-uploads/${fileName}`, file, { cacheControl: '3600', upsert: false });
+                if (!uploadError && uploadData) {
+                    const { data: pubData } = supabase.storage
+                        .from('design-previews')
+                        .getPublicUrl(`spec-uploads/${fileName}`);
+                    setUploadedSpecImageUrl(pubData?.publicUrl || null);
+                }
+            } catch (storageErr) {
+                console.warn('[AI Recognition] Storage upload failed (non-critical):', storageErr);
+            }
 
-            // Identify which fields were updated
+            // 呼叫新版 AI 辨識（同時取得型號、殼種、規格）
+            const productInfo = await recognizeProductFromImage(file);
+            setRecognizedProductInfo(productInfo);
+
+            // 殼種不符合警告：比對辨識結果和目前商品名稱與正在選的分類
+            if (productInfo.caseName) {
+                const norm = (s: string) => s.toLowerCase().replace(/\s+/g, '').replace(/[-_]/g, '');
+                const recognizedCase = norm(productInfo.caseName);
+                const currentName = norm(productName || '');
+                const currentGroupName = norm(currentStepGroups.find(g => g.id === activeCaseGroupId)?.name || '');
+
+                // 只要這三個名稱之間，有直接文字包含關係，就算吻合（例如："惡魔防摔殼pro3磁吸版" 包含在 "惡魔防摔殼pro3磁吸版" 裡面）
+                const isDirectMatch =
+                    (recognizedCase.includes(currentName) && currentName.length > 0) ||
+                    (currentName.includes(recognizedCase) && recognizedCase.length > 0) ||
+                    (recognizedCase.includes(currentGroupName) && currentGroupName.length > 0) ||
+                    (currentGroupName.includes(recognizedCase) && recognizedCase.length > 0);
+
+                // 如果沒有直接包含關係，才去比對關鍵字是否衝突
+                let isMismatch = false;
+                if (!isDirectMatch) {
+                    const keywords = ['pro3', 'pro2', '標準版', '磁吸版', '標準磁吸版', 'ultra'];
+                    for (const kw of keywords) {
+                        const kwNorm = norm(kw);
+                        const hasInRecognized = recognizedCase.includes(kwNorm);
+                        // 如果在商品名或當前選擇的殼種分類名中有這個關鍵字，就代表「目前選的情境有這個特徵」
+                        const hasInCurrent = currentName.includes(kwNorm) || currentGroupName.includes(kwNorm);
+
+                        // 當兩邊特徵不一致時（一邊有一邊沒有），我們才標記為衝突
+                        if (hasInRecognized !== hasInCurrent) {
+                            isMismatch = true;
+                            // 只要找到一個衝突特徵，就足以判定不符
+                            break;
+                        }
+                    }
+                }
+
+                if (isMismatch) {
+                    setCaseNameMismatch(productInfo.caseName);
+                }
+            }
+
+            // 對應規格到選單選項（有文字 fallback 機制）
+            // 修正錯誤：只將辨識結果對應到目前正在設定的殼款（activeGroup），避免其他殼種也被重複填寫導致左側顯示多筆
+            const activeGroup = groups.find(g => g.id === activeCaseGroupId);
+            const targetGroups = activeGroup ? [activeGroup] : groups;
+            const { nextOptions, textFallback } = mapRecognizedSpecs(productInfo.specs, targetGroups, selectedOptions);
+
+            // 找出新填入的欄位（用於高亮顯示）
             const newMatched = new Set<string>();
-            Object.keys(updatedOptions).forEach(key => {
-                if (updatedOptions[key] !== selectedOptions[key]) {
+            Object.keys(nextOptions).forEach(key => {
+                if (!key.endsWith('_text_fallback') && nextOptions[key] !== selectedOptions[key]) {
                     newMatched.add(key);
                 }
             });
 
-            setSelectedOptions(updatedOptions);
+            setSelectedOptions(nextOptions);
             setMatchedFields(newMatched);
+            setTextFallbackFields(textFallback);
+            setShowAdvancedAfterUpload(true);
 
-            // Clear highlight after 5 seconds
-            setTimeout(() => setMatchedFields(new Set()), 5000);
+            // 8 秒後清除高亮
+            setTimeout(() => setMatchedFields(new Set()), 8000);
 
-            if (newMatched.size > 0) {
-                alert(`AI 辨識成功！已自動為您填入 ${newMatched.size} 項規格。`);
-            } else {
-                alert('AI 辨識完成，但未發現相符的規格。請手動檢查。');
-            }
         } catch (err) {
             console.error('[AI Recognition] Error:', err);
             setInlineError('AI 辨識失敗，請重試。');
+            setUploadedSpecImage(null);
+            setShowAdvancedAfterUpload(false);
         } finally {
             setIsRecognizing(false);
             if (aiFileInputRef.current) aiFileInputRef.current.value = '';
@@ -999,62 +1100,80 @@ export default function SaveDesignModal({
                         <Settings className="w-4 h-4" /> 進階選項
                     </h4>
                     <div className="flex items-center gap-2">
-                        <input
-                            type="file"
-                            accept="image/*"
-                            ref={aiFileInputRef}
-                            className="hidden"
-                            onChange={handleAISpecRecognition}
-                        />
-                        <button
-                            type="button"
-                            onClick={() => aiFileInputRef.current?.click()}
-                            disabled={isRecognizing}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-high to-indigo-600 text-white rounded-lg text-xs font-bold shadow-sm hover:opacity-90 transition-all ${isRecognizing ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            title="上傳官網截圖自動辨識規格"
-                        >
-                            {isRecognizing ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                                <Sparkles className="w-3.5 h-3.5" />
-                            )}
-                            {isRecognizing ? '辨識中...' : 'AI 辨識規格'}
-                        </button>
+                        {/* AI 辨識功能已移除 */}
                     </div>
+                </div>
+
+                {/* 醒目的提醒文字 */}
+                <div className="bg-red-50 border border-red-100 rounded-lg p-3 flex items-start gap-3 shadow-sm">
+                    <div className="bg-red-100 p-1 rounded-full shrink-0">
+                        <AlertCircle className="w-4 h-4 text-red-600" />
+                    </div>
+                    <p className="text-red-700 text-sm font-bold leading-relaxed">
+                        請再次詳細核對規格，出貨將以這選項為準
+                    </p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {group.subAttributes.map(attr => {
                         const fieldKey = `${groupKey}:${attr.id}`;
                         const isMatched = matchedFields.has(fieldKey);
+                        const fallbackText = textFallbackFields[fieldKey]; // AI 辨識到但選單沒有的值
                         return (
                             <div key={attr.id} className="space-y-1">
                                 <label className="text-sm font-bold text-gray-700 flex items-center justify-between">
                                     {attr.name}
                                     {isMatched && <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded-full animate-pulse">AI 辨識</span>}
+                                    {fallbackText && !isMatched && <span className="text-[10px] text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-full">AI 填入</span>}
                                 </label>
                                 {attr.type === 'select' ? (
-                                    <select
-                                        className={`w-full p-2 border rounded-lg text-sm bg-white transition-all duration-500 ${isMatched ? 'border-purple-500 ring-2 ring-purple-100' : ''}`}
-                                        value={selectedOptions[fieldKey] || ''}
-                                        onChange={(e) => {
-                                            setMatchedFields(prev => {
-                                                const next = new Set(prev);
-                                                next.delete(fieldKey);
-                                                return next;
-                                            });
-                                            setSelectedOptions(prev => ({ ...prev, [fieldKey]: e.target.value }));
-                                        }}
-                                    >
-                                        <option value="">請選擇...</option>
-                                        {attr.options?.map(opt => (
-                                            <option key={opt.id} value={opt.id}>
-                                                {opt.name}{opt.priceModifier > 0 ? ` (+$${opt.priceModifier})` : ''}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    fallbackText ? (
+                                        // 選單中找不到對應選項：顯示文字 + 讓用戶手動選
+                                        <div className="space-y-1.5">
+                                            <div className="w-full p-2 border border-orange-300 bg-orange-50 rounded-lg text-sm text-orange-800 font-medium flex items-center gap-2">
+                                                <span className="text-orange-400">📝</span>
+                                                <span>{fallbackText}</span>
+                                                <span className="text-xs text-orange-400 ml-auto">(選單無此項)</span>
+                                            </div>
+                                            <select
+                                                className="w-full p-2 border rounded-lg text-xs bg-white text-gray-500"
+                                                value={selectedOptions[fieldKey] || ''}
+                                                onChange={(e) => {
+                                                    setTextFallbackFields(prev => { const n = { ...prev }; delete n[fieldKey]; return n; });
+                                                    setSelectedOptions(prev => ({ ...prev, [fieldKey]: e.target.value, [`${fieldKey}_text_fallback`]: '' }));
+                                                }}
+                                            >
+                                                <option value="">— 或從選單選擇 —</option>
+                                                {attr.options?.map(opt => (
+                                                    <option key={opt.id} value={opt.id}>
+                                                        {opt.name}{opt.priceModifier > 0 ? ` (+$${opt.priceModifier})` : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    ) : (
+                                        <select
+                                            className={`w-full p-2 border rounded-lg text-sm bg-white transition-all duration-500 ${isMatched ? 'border-purple-500 ring-2 ring-purple-100' : 'border-gray-200'}`}
+                                            value={selectedOptions[fieldKey] || ''}
+                                            onChange={(e) => {
+                                                setMatchedFields(prev => {
+                                                    const next = new Set(prev);
+                                                    next.delete(fieldKey);
+                                                    return next;
+                                                });
+                                                setSelectedOptions(prev => ({ ...prev, [fieldKey]: e.target.value }));
+                                            }}
+                                        >
+                                            <option value="">請選擇...</option>
+                                            {attr.options?.map(opt => (
+                                                <option key={opt.id} value={opt.id}>
+                                                    {opt.name}{opt.priceModifier > 0 ? ` (+$${opt.priceModifier})` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    )
                                 ) : (
                                     <input
-                                        className={`w-full p-2 border rounded-lg text-sm bg-white transition-all duration-500 ${isMatched ? 'border-purple-500 ring-2 ring-purple-100' : ''}`}
+                                        className={`w-full p-2 border rounded-lg text-sm bg-white transition-all duration-500 ${isMatched ? 'border-purple-500 ring-2 ring-purple-100' : 'border-gray-200'}`}
                                         value={selectedOptions[fieldKey] || ''}
                                         onChange={(e) => {
                                             setMatchedFields(prev => {
@@ -1113,6 +1232,65 @@ export default function SaveDesignModal({
                     <X className="w-5 h-5 text-gray-600" />
                 </button>
 
+                {/* ===== 殼種不符合警告對話框 ===== */}
+                {caseNameMismatch && (
+                    <div className="absolute inset-0 z-[100002] flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-none md:rounded-2xl animate-in fade-in duration-200">
+                        <div className="bg-white rounded-2xl shadow-2xl p-6 mx-4 max-w-sm w-full animate-in zoom-in-95 duration-200">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center shrink-0">
+                                    <AlertCircle className="w-6 h-6 text-orange-500" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-gray-900 text-base">截圖殼種不符</h3>
+                                    <p className="text-xs text-gray-500 mt-0.5">請確認您上傳的截圖是否正確</p>
+                                </div>
+                            </div>
+                            <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4 space-y-2 text-sm">
+                                <div>
+                                    <span className="text-xs text-gray-500">您選擇的商品：</span>
+                                    <div className="font-bold text-gray-900">{productName}</div>
+                                </div>
+                                <div>
+                                    <span className="text-xs text-gray-500">截圖辨識到的殼種：</span>
+                                    <div className="font-bold text-orange-700">{caseNameMismatch}</div>
+                                </div>
+                            </div>
+                            <p className="text-sm text-gray-600 mb-5">
+                                截圖中的殼種與您選擇的商品不一致，請確認截圖是否正確，或重新選擇殼種。
+                            </p>
+                            <div className="flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCaseNameMismatch(null);
+                                        // 清除辨識結果，讓客戶重新上傳
+                                        setUploadedSpecImage(null);
+                                        setShowAdvancedAfterUpload(false);
+                                        setRecognizedProductInfo(null);
+                                        setTextFallbackFields({});
+                                    }}
+                                    className="flex-1 px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-sm transition-colors"
+                                >
+                                    重新上傳截圖
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCaseNameMismatch(null);
+                                        setUploadedSpecImage(null);
+                                        setShowAdvancedAfterUpload(false);
+                                        setRecognizedProductInfo(null);
+                                        setTextFallbackFields({});
+                                        setActiveCaseGroupId(null);
+                                    }}
+                                    className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-sm transition-colors"
+                                >
+                                    重選殼種
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 {loading ? (
                     <div className="w-full h-full flex items-center justify-center flex-col gap-4">
                         <Loader2 className="w-10 h-10 animate-spin text-blue-600" />
@@ -1137,8 +1315,32 @@ export default function SaveDesignModal({
                                 <h3 className="font-bold text-gray-900 text-lg mb-1 shrink-0">{productName}</h3>
 
                                 {!hasChosenSpec ? (
-                                    <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
-                                        請先選擇產品規格
+                                    <div className="flex-1 flex flex-col items-center justify-center text-gray-400 text-sm gap-3">
+                                        {recognizedProductInfo ? (
+                                            // 已辨識但還未選殼種，顯示辨識結果摘要
+                                            <div className="w-full space-y-2">
+                                                {recognizedProductInfo.phoneName && (
+                                                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-2.5">
+                                                        <div className="text-xs text-blue-500 font-semibold mb-0.5">📱 辨識到的手機型號</div>
+                                                        <div className="text-sm font-bold text-blue-800">{recognizedProductInfo.phoneName}</div>
+                                                    </div>
+                                                )}
+                                                {recognizedProductInfo.caseName && (
+                                                    <div className={`border rounded-lg p-2.5 ${caseNameMismatch ? 'bg-orange-50 border-orange-300' : 'bg-green-50 border-green-100'}`}>
+                                                        <div className={`text-xs font-semibold mb-0.5 ${caseNameMismatch ? 'text-orange-500' : 'text-green-600'}`}>
+                                                            {caseNameMismatch ? '⚠️ 殼種不符，請確認！' : '✓ 辨識到的殼種'}
+                                                        </div>
+                                                        <div className={`text-sm font-bold ${caseNameMismatch ? 'text-orange-800' : 'text-green-800'}`}>{recognizedProductInfo.caseName}</div>
+                                                        {caseNameMismatch && (
+                                                            <div className="text-xs text-orange-600 mt-1">您選擇的商品為「{productName}」，請確認截圖是否正確</div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                <div className="text-center text-xs text-gray-400 pt-1">⬆ 請在右側選擇對應殼種</div>
+                                            </div>
+                                        ) : (
+                                            <span>請先選擇產品規格</span>
+                                        )}
                                     </div>
                                 ) : (
                                     <>
@@ -1226,7 +1428,7 @@ export default function SaveDesignModal({
                                 </div>
                             </div>
 
-                            <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-8">
+                            <div ref={rightScrollRef} className="flex-1 min-h-0 overflow-y-auto p-4 md:p-8">
                                 {/* Step 3: Product Specs Accordion - REMOVED (Redundant) */}
 
 
@@ -1290,16 +1492,9 @@ export default function SaveDesignModal({
                                                             </div>
                                                             {ui?.description && (
                                                                 <div
-                                                                    className="mb-6 text-xs text-gray-400 prose prose-xs max-w-none [&>p]:mb-1 [&>a]:text-blue-500 [&>a]:underline"
+                                                                    className="mb-6 text-xs text-gray-500 prose prose-xs max-w-none w-full text-left overflow-x-auto [&>p]:mb-1 [&>a]:text-blue-500 [&>a]:underline [&_a]:no-underline"
                                                                     dangerouslySetInnerHTML={{
-                                                                        __html: DOMPurify.sanitize(
-                                                                            ui.description
-                                                                                .replace(/&amp;/g, '&')
-                                                                                .replace(/&lt;/g, '<')
-                                                                                .replace(/&gt;/g, '>')
-                                                                                .replace(/&quot;/g, '"'),
-                                                                            { ADD_ATTR: ['target', 'style'] }
-                                                                        )
+                                                                        __html: cleanHtmlContent(ui.description)
                                                                     }}
                                                                 />
                                                             )}
@@ -1317,67 +1512,111 @@ export default function SaveDesignModal({
 
                                                         if (displayType === 'ai_recognition') {
                                                             const descriptionImages = ui?.descriptionImages || (ui?.descriptionImage ? [ui.descriptionImage] : []);
+                                                            const groupKey2 = getGroupKey(group);
                                                             return (
-                                                                <div className="col-span-2 bg-white border-2 border-dashed border-purple-200 rounded-2xl p-6 text-center animate-in fade-in zoom-in duration-300">
-                                                                    <div className="max-w-md mx-auto">
-                                                                        {ui?.description && (
-                                                                            <div
-                                                                                className="mb-6 text-sm text-gray-500 prose prose-sm max-w-none [&>p]:mb-1"
-                                                                                dangerouslySetInnerHTML={{
-                                                                                    __html: DOMPurify.sanitize(
-                                                                                        ui.description
-                                                                                            .replace(/&amp;/g, '&')
-                                                                                            .replace(/&lt;/g, '<')
-                                                                                            .replace(/&gt;/g, '>')
-                                                                                            .replace(/&quot;/g, '"'),
-                                                                                        { ADD_ATTR: ['target', 'style'] }
-                                                                                    )
-                                                                                }}
-                                                                            />
-                                                                        )}
-
-                                                                        {descriptionImages.length > 0 && (
-                                                                            <div className={`mb-6 grid gap-3 ${descriptionImages.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                                                                                {descriptionImages.map((img: string, idx: number) => (
-                                                                                    <div key={idx} className="relative group cursor-pointer" onClick={() => openLightbox(descriptionImages, idx)}>
-                                                                                        <img
-                                                                                            src={img}
-                                                                                            className="w-full aspect-[4/3] object-cover rounded-xl border border-gray-100 shadow-sm transition-transform group-hover:scale-[1.02]"
-                                                                                            alt={`${group.name} 範例圖片 ${idx + 1}`}
-                                                                                        />
-                                                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
-                                                                                            <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
-                                                                                        </div>
-                                                                                    </div>
-                                                                                ))}
-                                                                            </div>
-                                                                        )}
-
-                                                                        <input
-                                                                            type="file"
-                                                                            accept="image/*"
-                                                                            ref={aiFileInputRef}
-                                                                            className="hidden"
-                                                                            onChange={handleAISpecRecognition}
+                                                                <div className="col-span-2 space-y-4 animate-in fade-in zoom-in duration-300">
+                                                                    {/* ===== 功能說明區 (獨立拉出以支援 HTML 版面展開) ===== */}
+                                                                    {ui?.description && (
+                                                                        <div
+                                                                            className="mb-6 text-sm text-gray-700 prose prose-sm max-w-none w-full text-left overflow-x-auto [&>p]:mb-1 [&_a]:no-underline"
+                                                                            dangerouslySetInnerHTML={{
+                                                                                __html: cleanHtmlContent(ui.description)
+                                                                            }}
                                                                         />
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => aiFileInputRef.current?.click()}
-                                                                            disabled={isRecognizing}
-                                                                            className={`w-full py-4 px-6 bg-gradient-to-r from-purple-high to-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-purple-100 hover:shadow-purple-200 transition-all flex items-center justify-center gap-3 ${isRecognizing ? 'opacity-70 cursor-not-allowed' : 'hover:-translate-y-1'}`}
-                                                                        >
-                                                                            {isRecognizing ? (
-                                                                                <Loader2 className="w-6 h-6 animate-spin" />
+                                                                    )}
+
+                                                                    {/* ===== 上傳區 ===== */}
+                                                                    <div className="bg-white border-2 border-dashed border-purple-200 rounded-2xl p-5 text-center">
+                                                                        <div className="max-w-md mx-auto">
+                                                                            {/* 縮圖預覽（上傳後顯示）*/}
+                                                                            {uploadedSpecImage ? (
+                                                                                <div className="mb-4">
+                                                                                    {isRecognizing ? (
+                                                                                        /* 辨識中：縮圖 + 動畫遮罩 */
+                                                                                        <div className="relative w-full max-w-xs mx-auto rounded-xl overflow-hidden border-2 border-purple-300 shadow-lg">
+                                                                                            <img src={uploadedSpecImage} alt="上傳截圖" className="w-full object-contain opacity-60" style={{ maxHeight: '200px' }} />
+                                                                                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/70 backdrop-blur-sm gap-3">
+                                                                                                <div className="relative">
+                                                                                                    <div className="w-14 h-14 border-4 border-purple-200 rounded-full" />
+                                                                                                    <div className="w-14 h-14 border-4 border-purple-600 border-t-transparent rounded-full animate-spin absolute inset-0" />
+                                                                                                    <Sparkles className="w-5 h-5 text-purple-600 absolute inset-0 m-auto" />
+                                                                                                </div>
+                                                                                                <p className="text-sm font-bold text-purple-700">AI 辨識中...</p>
+                                                                                                <p className="text-xs text-purple-500">請稍候，正在分析您的截圖</p>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        /* 辨識完成：縮圖 + 成功標示 */
+                                                                                        <div className="relative w-full max-w-xs mx-auto rounded-xl overflow-hidden border-2 border-green-300 shadow-lg animate-in zoom-in-95 duration-300">
+                                                                                            <img src={uploadedSpecImage} alt="上傳截圖" className="w-full object-contain cursor-pointer" style={{ maxHeight: '200px' }} onClick={() => openLightbox([uploadedSpecImage!], 0)} />
+                                                                                            <div className="absolute top-2 right-2 bg-green-500 text-white rounded-full px-2 py-1 text-xs font-bold flex items-center gap-1 shadow">
+                                                                                                <Check className="w-3 h-3" /> 辨識完成
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
                                                                             ) : (
-                                                                                <Sparkles className="w-6 h-6" />
+                                                                                /* 尚未上傳 */
+                                                                                <div className="mb-4">
+                                                                                    {descriptionImages.length > 0 && (
+                                                                                        <div className={`mb-4 grid gap-3 ${descriptionImages.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                                                                                            {descriptionImages.map((img: string, idx: number) => (
+                                                                                                <div key={idx} className="relative group cursor-pointer" onClick={() => openLightbox(descriptionImages, idx)}>
+                                                                                                    <img src={img} className="w-full aspect-[4/3] object-cover rounded-xl border border-gray-100 shadow-sm transition-transform group-hover:scale-[1.02]" alt={`範例 ${idx + 1}`} />
+                                                                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
+                                                                                                        <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
                                                                             )}
-                                                                            <span className="text-lg">{isRecognizing ? '正在辨識規格...' : '上傳截圖辨識規格'}</span>
-                                                                        </button>
-                                                                        <p className="mt-4 text-xs text-gray-400">
-                                                                            請上傳包含產品完整規格的官網截圖<br />
-                                                                            AI 將自動為您填入所有選項
-                                                                        </p>
+
+                                                                            <input
+                                                                                type="file"
+                                                                                accept="image/*"
+                                                                                ref={aiFileInputRef}
+                                                                                className="hidden"
+                                                                                onChange={handleAISpecRecognition}
+                                                                            />
+
+                                                                            {/* 上傳按鈕：辨識前後皆可重新上傳 */}
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => aiFileInputRef.current?.click()}
+                                                                                disabled={isRecognizing}
+                                                                                className={`w-full py-3 px-6 rounded-2xl font-bold transition-all flex items-center justify-center gap-3 ${isRecognizing
+                                                                                    ? 'bg-purple-200 text-purple-400 cursor-not-allowed'
+                                                                                    : uploadedSpecImage
+                                                                                        ? 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
+                                                                                        : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-100 hover:shadow-purple-200 hover:-translate-y-0.5'
+                                                                                    }`}
+                                                                            >
+                                                                                {isRecognizing ? (
+                                                                                    <><Loader2 className="w-5 h-5 animate-spin" /><span>辨識中...</span></>
+                                                                                ) : uploadedSpecImage ? (
+                                                                                    <><Sparkles className="w-5 h-5" /><span>重新上傳截圖</span></>
+                                                                                ) : (
+                                                                                    <><Sparkles className="w-5 h-5" /><span className="text-base">上傳 Devilcase 截圖辨識規格</span></>
+                                                                                )}
+                                                                            </button>
+
+                                                                            {!uploadedSpecImage && (
+                                                                                <p className="mt-3 text-xs text-gray-400">
+                                                                                    請上傳包含產品完整規格的官網截圖<br />
+                                                                                    AI 將自動為您填入所有選項
+                                                                                </p>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
+
+                                                                    {/* ===== 進階選項：僅在辨識完成後顯示 ===== */}
+                                                                    {showAdvancedAfterUpload && !isRecognizing && group.subAttributes && group.subAttributes.length > 0 && (
+                                                                        <div className="animate-in slide-in-from-top-4 fade-in duration-300">
+                                                                            {renderAdvancedOptions(group)}
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             );
                                                         }
@@ -1412,6 +1651,13 @@ export default function SaveDesignModal({
                                                 {(() => {
                                                     const group = currentStepGroups.find(g => g.id === activeCaseGroupId);
                                                     if (!group?.subAttributes?.length) return null;
+
+                                                    const ui = getUI(group);
+                                                    const displayType = normalizeDisplayType(ui.displayType || (ui as any).display_type);
+
+                                                    // 對於 AI 辨識，進階選項已經在上方上傳區塊的內部渲染過了，避免重複顯示
+                                                    if (displayType === 'ai_recognition') return null;
+
                                                     return renderAdvancedOptions(group);
                                                 })()}
                                             </div>
@@ -1704,23 +1950,57 @@ export default function SaveDesignModal({
                                                             <div key={group.id} className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
                                                                 {/* Removed redundant group.name heading for checkbox type */}
 
-                                                                {validItems.length > 0 ? (
-                                                                    <div className="space-y-3 mb-6">
-                                                                        {validItems.map(item => (
-                                                                            <label key={item.id} className="flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all hover:bg-gray-50 hover:border-gray-300 active:bg-gray-100">
-                                                                                <input
-                                                                                    type="checkbox"
-                                                                                    name={groupKey}
-                                                                                    checked={selectedOptions[groupKey] === item.id}
-                                                                                    onChange={() => handleSelectOption(groupKey, item.id)}
-                                                                                    className="w-5 h-5 text-black border-gray-300 focus:ring-black rounded"
-                                                                                />
-                                                                                <span className="ml-3 font-bold text-gray-800 text-base">{item.name}</span>
-                                                                                {item.priceModifier > 0 && <span className="ml-auto text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">+${item.priceModifier}</span>}
-                                                                            </label>
-                                                                        ))}
-                                                                    </div>
-                                                                ) : (
+                                                                {validItems.length > 0 ? (() => {
+                                                                    const hasImages = validItems.some(i => i.imageUrl);
+                                                                    return hasImages ? (
+                                                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                                                                            {validItems.map(item => (
+                                                                                <label key={item.id} className={`relative flex flex-col p-3 border-2 rounded-xl cursor-pointer transition-all hover:bg-gray-50 active:bg-gray-100 ${selectedOptions[groupKey] === item.id ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                                                                                    <div className="absolute top-4 left-4 z-10 bg-white/80 rounded flex items-center justify-center p-0.5 shadow-sm">
+                                                                                        <input
+                                                                                            type="checkbox"
+                                                                                            name={groupKey}
+                                                                                            checked={selectedOptions[groupKey] === item.id}
+                                                                                            onChange={() => handleSelectOption(groupKey, item.id)}
+                                                                                            className="w-5 h-5 text-black border-gray-300 focus:ring-black rounded shrink-0 cursor-pointer"
+                                                                                        />
+                                                                                    </div>
+                                                                                    {item.imageUrl ? (
+                                                                                        <div className="w-full aspect-square rounded-xl overflow-hidden border border-gray-200 bg-white mb-3">
+                                                                                            <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <div className="w-full aspect-square rounded-xl border border-gray-200 bg-gray-50 mb-3 flex items-center justify-center">
+                                                                                            <span className="text-gray-300 text-xs">無圖片</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    <div className="flex-1 flex flex-col justify-end text-center">
+                                                                                        <span className="font-bold text-gray-800 text-sm block">{item.name}</span>
+                                                                                        {item.priceModifier > 0 && <span className="text-xs font-semibold text-blue-600 mt-1">+${item.priceModifier}</span>}
+                                                                                    </div>
+                                                                                </label>
+                                                                            ))}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="space-y-3 mb-6">
+                                                                            {validItems.map(item => (
+                                                                                <label key={item.id} className={`flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all active:bg-gray-100 ${selectedOptions[groupKey] === item.id ? 'border-black bg-gray-50/50' : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'}`}>
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        name={groupKey}
+                                                                                        checked={selectedOptions[groupKey] === item.id}
+                                                                                        onChange={() => handleSelectOption(groupKey, item.id)}
+                                                                                        className="w-5 h-5 text-black border-gray-300 focus:ring-black rounded shrink-0 cursor-pointer"
+                                                                                    />
+                                                                                    <div className="ml-4 flex-1">
+                                                                                        <span className="font-bold text-gray-800 text-base block">{item.name}</span>
+                                                                                    </div>
+                                                                                    {item.priceModifier > 0 && <span className="ml-auto text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">+${item.priceModifier}</span>}
+                                                                                </label>
+                                                                            ))}
+                                                                        </div>
+                                                                    );
+                                                                })() : (
                                                                     <div className="text-center text-gray-400 text-sm py-4 mb-4">
                                                                         {rawGroupItems.length > 0 ? (
                                                                             <div className="flex flex-col items-center gap-2">
@@ -1793,17 +2073,40 @@ export default function SaveDesignModal({
 
                                                             {validItems.length > 0 ? (
                                                                 <div className={`grid gap-3 ${group.code === 'lanyard' || displayType === 'list' ? 'grid-cols-1' : 'grid-cols-3'}`}>
-                                                                    {validItems.map(item => (
-                                                                        <button
-                                                                            type="button"
-                                                                            key={item.id}
-                                                                            onClick={() => handleSelectOption(groupKey, item.id)}
-                                                                            className={`${(group.code === 'lanyard' || displayType === 'list') ? 'w-full flex items-center justify-between px-4 py-3' : 'px-4 py-3 text-center flex flex-col items-center justify-center'} rounded-lg border transition-all ${selectedOptions[groupKey] === item.id ? 'border-black bg-black text-white shadow-md' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
-                                                                        >
-                                                                            <span className="font-medium text-sm">{item.name}</span>
-                                                                            {item.priceModifier > 0 && <span className={`text-xs opacity-70 ${(group.code === 'lanyard' || displayType === 'list') ? 'ml-2' : 'mt-1'}`}>+${item.priceModifier}</span>}
-                                                                        </button>
-                                                                    ))}
+                                                                    {validItems.map(item => {
+                                                                        const isList = group.code === 'lanyard' || displayType === 'list';
+                                                                        const isSelected = selectedOptions[groupKey] === item.id;
+                                                                        return (
+                                                                            <button
+                                                                                type="button"
+                                                                                key={item.id}
+                                                                                onClick={() => handleSelectOption(groupKey, item.id)}
+                                                                                className={`${isList ? 'w-full flex items-center px-4 py-3' : 'p-3 text-center flex flex-col items-center justify-center'} rounded-lg border transition-all ${isSelected ? 'border-black bg-black text-white shadow-md' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                                                                            >
+                                                                                {isList ? (
+                                                                                    <>
+                                                                                        {item.imageUrl && (
+                                                                                            <div className="w-12 h-12 shrink-0 rounded bg-white mr-3 overflow-hidden border border-gray-200">
+                                                                                                <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                                                                                            </div>
+                                                                                        )}
+                                                                                        <span className="font-medium text-sm flex-1 text-left">{item.name}</span>
+                                                                                        {item.priceModifier > 0 && <span className="text-xs opacity-70 ml-2">+${item.priceModifier}</span>}
+                                                                                    </>
+                                                                                ) : (
+                                                                                    <>
+                                                                                        {item.imageUrl && (
+                                                                                            <div className="w-full aspect-square mb-2 rounded bg-white overflow-hidden border border-gray-200">
+                                                                                                <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                                                                                            </div>
+                                                                                        )}
+                                                                                        <span className="font-medium text-sm">{item.name}</span>
+                                                                                        {item.priceModifier > 0 && <span className="text-xs opacity-70 mt-1">+${item.priceModifier}</span>}
+                                                                                    </>
+                                                                                )}
+                                                                            </button>
+                                                                        );
+                                                                    })}
                                                                 </div>
                                                             ) : (
                                                                 <div className="p-4 border border-dashed border-gray-300 rounded-lg text-center text-gray-400 text-sm">
@@ -1990,6 +2293,10 @@ export default function SaveDesignModal({
                                                             if (!nextStep) return;
                                                             if (!validateCurrentStep()) return;
                                                             setCurrentStep(nextStep);
+                                                            // 切換步驟時滾動到頂部
+                                                            setTimeout(() => {
+                                                                rightScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                                                            }, 50);
                                                         }}
                                                         disabled={currentStep === 1 && !hasChosenSpec}
                                                         className={`flex-1 md:flex-none md:w-auto px-8 py-3 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg ${currentStep === 1 && !hasChosenSpec
@@ -2007,9 +2314,6 @@ export default function SaveDesignModal({
                                                         type="button"
                                                         onClick={async () => {
                                                             if (!validateCurrentStep()) return;
-
-                                                            const storageKey = `ppbears_checkout_progress_${productId || 'default'}`;
-                                                            localStorage.removeItem(storageKey);
 
                                                             const customOptions: Record<string, any> = {};
 
@@ -2044,6 +2348,7 @@ export default function SaveDesignModal({
                                                                             // Find keys in selectedOptions that match this attribute
                                                                             const relevantKeys = Object.keys(selectedOptions).filter(k => {
                                                                                 if (k.endsWith('_label')) return false;
+                                                                                if (k.endsWith('_text_fallback')) return false;  // 過濾 AI 辨識的 fallback 追蹤鍵
                                                                                 if (!k.startsWith(`${groupKey}:`)) return false;
 
                                                                                 const parts = k.split(':');
@@ -2077,6 +2382,10 @@ export default function SaveDesignModal({
                                                             });
 
                                                             console.log('[SaveDesignModal] Submitting Ordered Options:', customOptions);
+                                                            // 如果有客戶上傳的 AI 辨識規格截圖，一起帶入（以 _ 開頭，Home.tsx 中特殊處理）
+                                                            if (uploadedSpecImageUrl) {
+                                                                customOptions['_spec_image_url'] = uploadedSpecImageUrl;
+                                                            }
                                                             try {
                                                                 setIsSubmitting(true);
                                                                 await onAddToCart(currentTotal, customOptions);

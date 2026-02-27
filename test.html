@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+</head>
+<body>
+    <div id="out"></div>
+    <script>
+        const input = '<p><section style="line-height:1.8; font-size:16px; max-width:800px; margin:0 auto;"> <p> 您好～為了更快幫您確認 </p> <div style="text-align:center; margin:30px 0;"> <a href="https://devilcase.com.tw/fitting-room" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding:20px 40px; font-size:22px; font-weight:bold; color:#ffffff; background-color:#d60000; border:5px solid #ff0000; border-radius:14px; text-decoration:none; box-shadow:0 8px 18px rgba(0,0,0,0.2);"> 🔴 Devilcase 配色試衣間（點我開啟） </a> </div> </section></p>';
+        
+        document.getElementById('out').innerHTML = DOMPurify.sanitize(input, { ADD_ATTR: ['target', 'style'] });
+        console.log("purified length:", DOMPurify.sanitize(input, { ADD_ATTR: ['target', 'style'] }).length);
+    </script>
+</body>
+</html>
