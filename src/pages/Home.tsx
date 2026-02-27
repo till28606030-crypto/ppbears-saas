@@ -962,13 +962,24 @@ export default function Home() {
             // 1. Convert Base64 to Blobs and Upload to Supabase Storage
             console.log('[Cart] Uploading images to Supabase Storage...');
 
+            const base64ToBlob = (base64: string, mime: string) => {
+                const parts = base64.split(',');
+                const byteString = atob(parts[1]);
+                const ab = new ArrayBuffer(byteString.length);
+                const ia = new Uint8Array(ab);
+                for (let i = 0; i < byteString.length; i++) {
+                    ia[i] = byteString.charCodeAt(i);
+                }
+                return new Blob([ab], { type: mime });
+            };
+
             let previewUrl = previewImage;
             let printUrl = printImage;
 
             try {
-                // Optimize base64 to Blob conversion natively (massive speedup on mobile)
-                const previewBlob = await (await fetch(previewImage)).blob();
-                const printBlob = await (await fetch(printImage)).blob();
+                // Using manual conversion because `fetch(dataURI)` fails on mobile for large payloads
+                const previewBlob = base64ToBlob(previewImage, 'image/jpeg');
+                const printBlob = base64ToBlob(printImage, 'image/png');
 
                 const [previewUpload, printUpload] = await Promise.all([
                     supabase.storage.from('design-previews').upload(`${designId}/preview.jpg`, previewBlob, { upsert: true, contentType: 'image/jpeg' }),
