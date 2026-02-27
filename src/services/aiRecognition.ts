@@ -57,22 +57,20 @@ export async function recognizeProductFromImage(file: File): Promise<RecognizedP
 2. 殼種款式名稱（如 惡魔防摔殼 PRO 3 磁吸版、惡魔防摔殼 標準版 等）
 3. 所有配件規格屬性（外框、鏡頭造型、按鍵組、動作按鍵、相機按鍵 等）
 
-請用以下 JSON 格式回傳（只回傳 JSON，不要其他文字）：
+請用以下 JSON 格式回傳（只回傳 JSON，不要其他文字）。
+【以下僅為 JSON 格式範例，請務必根據圖片「實際內容」填寫，絕對不要直接抄襲範例的值】：
 {
-  "phoneName": "Apple - iPhone 17 Pro Max",
-  "caseName": "惡魔防摔殼 PRO 3 磁吸版",
+  "phoneName": "填入實際的手機型號",
+  "caseName": "填入實際的殼種款式",
   "specs": [
-    {"category": "外框", "value": "迷霧黑"},
-    {"category": "鏡頭造型", "value": "黑色/斜面款"},
-    {"category": "按鍵組", "value": "黑色"},
-    {"category": "動作按鍵", "value": "黑色/平面款"},
-    {"category": "相機按鍵", "value": "黑色"}
+    {"category": "外框", "value": "填入實際外框規格"},
+    {"category": "鏡頭造型", "value": "填入實際鏡頭規格"}
   ]
 }
 
 注意：
 - ！！！極度重要：請【逐字完整照抄】圖片上的繁體中文文字，絕對不能自行猜測、翻譯或修改成相似的詞語。例如圖片寫「羅賓橘(不耐髒)」，就必須輸出「羅賓橘(不耐髒)」，絕對不能辨識為「羅家莊(不滅)」。
-- caseName 請完整包含版本資訊（如 PRO 3、磁吸版、標準版 等）
+- caseName 請完整包含版本資訊（根據圖片實際文字，可能是 PRO 3、磁吸版、標準版 等）
 - 動作按鍵和相機按鍵是不同的欄位，請分開辨識
 - 若截圖中看不到某欄位，就不要包含在 specs 裡`
                 },
