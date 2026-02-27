@@ -1946,14 +1946,57 @@ export default function SaveDesignModal({
 
                                                     // Render Checkbox (New Feature)
                                                     if (displayType === 'checkbox') {
+                                                        const isSelected = !!selectedOptions[groupKey];
                                                         return (
                                                             <div key={group.id} className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
                                                                 {/* Removed redundant group.name heading for checkbox type */}
 
+                                                                {/* Description Images (Moved to top) */}
+                                                                {descriptionImages.length > 0 && (
+                                                                    <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                                                                        {descriptionImages.map((img: string, idx: number) => (
+                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => openLightbox(descriptionImages, idx)}>
+                                                                                <img
+                                                                                    src={img}
+                                                                                    className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
+                                                                                    alt={`${group.name} 說明圖片 ${idx + 1}`}
+                                                                                />
+                                                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
+                                                                                    <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Description Text (Moved before options) */}
+                                                                {ui?.description && (
+                                                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                                                                        <div className="text-sm text-gray-600 leading-relaxed mb-3">
+                                                                            <span className="font-semibold text-gray-800 block mb-1">說明：</span>
+                                                                            <div
+                                                                                dangerouslySetInnerHTML={{
+                                                                                    __html: DOMPurify.sanitize(
+                                                                                        // Robust fix: Ensure unescaped HTML before sanitizing
+                                                                                        ui.description
+                                                                                            .replace(/&amp;/g, '&')
+                                                                                            .replace(/&lt;/g, '<')
+                                                                                            .replace(/&gt;/g, '>')
+                                                                                            .replace(/&quot;/g, '"'),
+                                                                                        { ADD_ATTR: ['target', 'style'] }
+                                                                                    )
+                                                                                }}
+                                                                                className="prose prose-sm max-w-none [&>a]:text-blue-600 [&>a]:underline [&>a]:hover:text-blue-800"
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Checkboxes (Moved to bottom) */}
                                                                 {validItems.length > 0 ? (() => {
                                                                     const hasImages = validItems.some(i => i.imageUrl);
                                                                     return hasImages ? (
-                                                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                                                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
                                                                             {validItems.map(item => (
                                                                                 <label key={item.id} className={`relative flex flex-col p-3 border-2 rounded-xl cursor-pointer transition-all hover:bg-gray-50 active:bg-gray-100 ${selectedOptions[groupKey] === item.id ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-300'}`}>
                                                                                     <div className="absolute top-4 left-4 z-10 bg-white/80 rounded flex items-center justify-center p-0.5 shadow-sm">
@@ -1982,7 +2025,7 @@ export default function SaveDesignModal({
                                                                             ))}
                                                                         </div>
                                                                     ) : (
-                                                                        <div className="space-y-3 mb-6">
+                                                                        <div className="space-y-3 mb-4">
                                                                             {validItems.map(item => (
                                                                                 <label key={item.id} className={`flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all active:bg-gray-100 ${selectedOptions[groupKey] === item.id ? 'border-black bg-gray-50/50' : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'}`}>
                                                                                     <input
@@ -2013,50 +2056,9 @@ export default function SaveDesignModal({
                                                                     </div>
                                                                 )}
 
-                                                                {/* Description Images */}
-                                                                {descriptionImages.length > 0 && (
-                                                                    <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
-                                                                        {descriptionImages.map((img: string, idx: number) => (
-                                                                            <div key={idx} className="relative group cursor-pointer" onClick={() => openLightbox(descriptionImages, idx)}>
-                                                                                <img
-                                                                                    src={img}
-                                                                                    className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
-                                                                                    alt={`${group.name} 說明圖片 ${idx + 1}`}
-                                                                                />
-                                                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
-                                                                                    <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
-                                                                                </div>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                )}
-
-                                                                {ui?.description && (
-                                                                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-                                                                        <div className="text-sm text-gray-600 leading-relaxed mb-3">
-                                                                            <span className="font-semibold text-gray-800 block mb-1">說明：</span>
-                                                                            <div
-                                                                                dangerouslySetInnerHTML={{
-                                                                                    __html: DOMPurify.sanitize(
-                                                                                        // Robust fix: Ensure unescaped HTML before sanitizing
-                                                                                        // Must replace &amp; first to handle double escaping (e.g. &amp;lt;)
-                                                                                        ui.description
-                                                                                            .replace(/&amp;/g, '&')
-                                                                                            .replace(/&lt;/g, '<')
-                                                                                            .replace(/&gt;/g, '>')
-                                                                                            .replace(/&quot;/g, '"'),
-                                                                                        { ADD_ATTR: ['target', 'style'] }
-                                                                                    )
-                                                                                }}
-                                                                                className="prose prose-sm max-w-none [&>a]:text-blue-600 [&>a]:underline [&>a]:hover:text-blue-800"
-                                                                            />
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-
-                                                                {/* Custom Attributes (Step 2+) */}
-                                                                {group.subAttributes && group.subAttributes.length > 0 && (
-                                                                    <div className="mt-4 rounded-xl border border-gray-200 bg-white overflow-hidden">
+                                                                {/* Custom Attributes (Step 2+) - Only shown when checkbox is checked */}
+                                                                {isSelected && group.subAttributes && group.subAttributes.length > 0 && (
+                                                                    <div className="mt-4 rounded-xl border border-gray-200 bg-white overflow-hidden animate-in slide-in-from-top-2">
                                                                         <div className="p-4">
                                                                             {renderCustomAttributes(group)}
                                                                         </div>
