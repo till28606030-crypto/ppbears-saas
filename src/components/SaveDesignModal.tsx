@@ -2009,8 +2009,18 @@ export default function SaveDesignModal({
                                                                                         />
                                                                                     </div>
                                                                                     {item.imageUrl ? (
-                                                                                        <div className="w-full aspect-square rounded-xl overflow-hidden border border-gray-200 bg-white mb-3">
-                                                                                            <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                                                                                        <div
+                                                                                            className="relative w-full aspect-square rounded-xl overflow-hidden border border-gray-200 bg-white mb-3 group/img cursor-pointer"
+                                                                                            onClick={(e) => {
+                                                                                                e.preventDefault();
+                                                                                                e.stopPropagation();
+                                                                                                openLightbox([item.imageUrl!], 0);
+                                                                                            }}
+                                                                                        >
+                                                                                            <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover transition-transform group-hover/img:scale-105" />
+                                                                                            <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors flex items-center justify-center">
+                                                                                                <ZoomIn className="w-8 h-8 text-white opacity-0 group-hover/img:opacity-100 drop-shadow-md" />
+                                                                                            </div>
                                                                                         </div>
                                                                                     ) : (
                                                                                         <div className="w-full aspect-square rounded-xl border border-gray-200 bg-gray-50 mb-3 flex items-center justify-center">
