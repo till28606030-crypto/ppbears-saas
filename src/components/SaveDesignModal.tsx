@@ -2440,11 +2440,13 @@ export default function SaveDesignModal({
             {zoomedImageList.length > 0 && (
                 <div className="fixed inset-0 z-[100002] bg-black/95 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={closeLightbox}>
                     <div className="relative w-full max-w-5xl h-full max-h-[90vh] flex items-center justify-center">
-                        <button onClick={closeLightbox} className="absolute -top-10 md:top-0 right-0 md:-right-12 text-white/50 hover:text-white p-2 z-20 transition-colors"><X className="w-8 h-8 drop-shadow-md" /></button>
+                        <button onClick={closeLightbox} className="absolute top-2 right-2 md:top-0 md:-right-12 text-white/80 hover:text-white p-2 z-30 transition-colors bg-black/40 rounded-full md:bg-transparent backdrop-blur-sm md:backdrop-blur-none">
+                            <X className="w-6 h-6 md:w-8 md:h-8 drop-shadow-md" />
+                        </button>
 
                         {zoomedImageList.length > 1 && (
-                            <button onClick={handlePrevImage} className="absolute left-2 md:-left-12 text-white/50 hover:text-white p-2 z-20 transition-colors hidden md:block">
-                                <ChevronLeft className="w-12 h-12 drop-shadow-lg" />
+                            <button onClick={handlePrevImage} className="absolute left-2 md:-left-12 text-white/80 hover:text-white p-2 z-30 transition-colors bg-black/40 rounded-full md:bg-transparent flex items-center justify-center backdrop-blur-sm md:backdrop-blur-none">
+                                <ChevronLeft className="w-8 h-8 md:w-12 md:h-12 drop-shadow-lg" />
                             </button>
                         )}
 
@@ -2457,17 +2459,9 @@ export default function SaveDesignModal({
                         />
 
                         {zoomedImageList.length > 1 && (
-                            <button onClick={handleNextImage} className="absolute right-2 md:-right-12 text-white/50 hover:text-white p-2 z-20 transition-colors hidden md:block">
-                                <ChevronRight className="w-12 h-12 drop-shadow-lg" />
+                            <button onClick={handleNextImage} className="absolute right-2 md:-right-12 text-white/80 hover:text-white p-2 z-30 transition-colors bg-black/40 rounded-full md:bg-transparent flex items-center justify-center backdrop-blur-sm md:backdrop-blur-none">
+                                <ChevronRight className="w-8 h-8 md:w-12 md:h-12 drop-shadow-lg" />
                             </button>
-                        )}
-
-                        {/* Mobile Navigation zones */}
-                        {zoomedImageList.length > 1 && (
-                            <div className="absolute inset-0 z-20 flex md:hidden" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex-1" onClick={handlePrevImage} />
-                                <div className="flex-1" onClick={handleNextImage} />
-                            </div>
                         )}
                     </div>
 
