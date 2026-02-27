@@ -367,24 +367,32 @@ const SellerShop: React.FC = () => {
                     </div>
                 </aside>
 
-                {/* Mobile Category Filter (Horizontal Scroll) */}
-                <div className="md:hidden fixed top-[100px] left-0 right-0 bg-white z-10 border-b border-gray-200 px-4 py-3 overflow-x-auto flex gap-2 no-scrollbar">
-                    {categories.map(category => (
+                {/* Right Product Grid */}
+                <div className="flex-1 min-w-0 md:mt-0">
+                    {/* Mobile Category Filter (Horizontal Scroll) */}
+                    <div className="md:hidden w-full overflow-x-auto flex gap-2 no-scrollbar mb-6 pb-2">
                         <button
-                            key={category.id}
-                            onClick={() => setActiveCategory(category.id)}
-                            className={`flex-shrink-0 px-4 py-1.5 text-sm font-medium rounded-full border transition-colors whitespace-nowrap ${activeCategory === category.id
+                            onClick={() => setActiveCategory('all')}
+                            className={`flex-shrink-0 px-4 py-1.5 text-[13px] font-medium rounded-full border transition-colors whitespace-nowrap ${activeCategory === 'all'
                                 ? 'bg-black text-white border-black'
-                                : 'bg-white text-gray-600 border-gray-200'
+                                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
                                 }`}
                         >
-                            {category.name}
+                            全部商品
                         </button>
-                    ))}
-                </div>
-
-                {/* Right Product Grid */}
-                <div className="flex-1 min-w-0 md:mt-0 mt-12">
+                        {Array.from(categoryMap.values()).map(category => (
+                            <button
+                                key={category.id}
+                                onClick={() => setActiveCategory(category.id)}
+                                className={`flex-shrink-0 px-4 py-1.5 text-[13px] font-medium rounded-full border transition-colors whitespace-nowrap ${activeCategory === category.id
+                                    ? 'bg-black text-white border-black'
+                                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                    }`}
+                            >
+                                {category.name}
+                            </button>
+                        ))}
+                    </div>
                     <div className="flex justify-between items-center mb-6">
 
                         <h2 className="text-xl font-bold text-gray-900">
