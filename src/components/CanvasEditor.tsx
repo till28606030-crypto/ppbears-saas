@@ -391,7 +391,7 @@ import {
     AlignCenter, Scissors, ArrowUp, ArrowDown, Bold, Italic, GripVertical, Eye,
     EyeOff, Lock, Unlock, Image as ImageIcon, Sticker, ScanBarcode, Check, X,
     Layers, Upload, Pencil, Sparkles, RefreshCw, Crop, ArrowLeft, Square, Circle as CircleIcon, Heart, Shapes,
-    AlignLeft, AlignRight, ChevronDown, PaintBucket, Baseline, Smartphone, Ban, Frame, LayoutTemplate, SlidersHorizontal, Wand2, Eraser, Sun
+    AlignLeft, AlignRight, ChevronDown, PaintBucket, Baseline, Smartphone, Ban, Frame, LayoutTemplate, SlidersHorizontal, Wand2, Eraser, Sun, ImagePlus
 } from 'lucide-react';
 import FontPicker from './FontPicker';
 import JsBarcode from 'jsbarcode';
@@ -2836,6 +2836,14 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                 canvas.setActiveObject(img);
                 canvas.renderAll();
+
+                // If no target image was selected, promptly prompt the user to pick an image for this new frame
+                if (!targetImage) {
+                    if (mobileActions?.onUpload) {
+                        // Small delay to ensure frame is rendered and selected first
+                        setTimeout(() => mobileActions.onUpload(), 100);
+                    }
+                }
             } catch (error) {
                 console.error("Failed to add frame", error);
             }
@@ -2872,16 +2880,29 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                 const clipPoints = (frame as any).clipPathPoints;
                 if (clipPoints) {
-                    img.clipPath = new Polygon(clipPoints, {
-                        left: frame.left,
-                        top: frame.top,
-                        originX: frame.originX,
-                        originY: frame.originY,
+                    const centroid = getPolygonCentroid(clipPoints);
+                    const offsetVec = rotateVector(
+                        centroid.x * frame.scaleX,
+                        centroid.y * frame.scaleY,
+                        frame.angle
+                    );
+
+                    const clipPathObj = new Polygon(clipPoints, {
+                        left: frame.left + offsetVec.x,
+                        top: frame.top + offsetVec.y,
+                        originX: 'center',
+                        originY: 'center',
                         scaleX: frame.scaleX,
                         scaleY: frame.scaleY,
                         angle: frame.angle,
                         absolutePositioned: true
                     });
+
+                    (clipPathObj as any).frameOffsetX = centroid.x;
+                    (clipPathObj as any).frameOffsetY = centroid.y;
+
+                    img.clipPath = clipPathObj;
+                    (img as any).isCropLocked = true;
                 } else {
                     img.clipPath = new Rect({
                         left: frame.left,
@@ -2895,6 +2916,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         angle: frame.angle,
                         absolutePositioned: true
                     });
+                    (img as any).isCropLocked = true;
                 }
 
                 canvas.add(img);
@@ -3773,11 +3795,20 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         frame.setCoords();
 
                         // Update ClipPath absolute position to match Frame
-                        // This is crucial: ClipPath MUST exactly match Frame
+                        // This is crucial: ClipPath MUST exactly match Frame plus its custom centroid offset
                         if (obj.clipPath) {
+                            const frameOffsetX = (obj.clipPath as any).frameOffsetX || 0;
+                            const frameOffsetY = (obj.clipPath as any).frameOffsetY || 0;
+
+                            const offsetVec = rotateVector(
+                                frameOffsetX * frame.scaleX,
+                                frameOffsetY * frame.scaleY,
+                                frame.angle
+                            );
+
                             obj.clipPath.set({
-                                left: frame.left,
-                                top: frame.top,
+                                left: frame.left + offsetVec.x,
+                                top: frame.top + offsetVec.y,
                                 scaleX: frame.scaleX,
                                 scaleY: frame.scaleY,
                                 angle: frame.angle,
@@ -5823,6 +5854,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 </div>
 
                 {/* Unified Top Controls & Floating Actions Container */}
+                {/* Unified Top Controls & Floating Actions Container */}
                 <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-col items-center gap-2 w-max max-w-full px-2">
 
                     {/* 1. Static Top Controls (Layers, Undo, Redo, Clear) */}
@@ -5870,112 +5902,121 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                             <span className="text-[9px] font-bold tracking-wider text-gray-500 group-hover:text-red-600">清空</span>
                         </button>
                     </div>
-
-                    {/* 2. Dynamic Floating Quick Actions (The "Pill") - Automatically stacked below */}
-                    {selectedObject && !showMobileTextInput && (
-                        <div className="pointer-events-auto bg-white/90 backdrop-blur-md rounded-xl shadow-lg border border-gray-100/50 flex flex-row items-center p-1.5 gap-1 animate-in slide-in-from-top-2 fade-in duration-200">
-                            <button onClick={deleteSelected} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-red-500 hover:bg-red-50 rounded-lg min-w-[2.5rem] transition-colors">
-                                <Trash2 className="w-4 h-4" />
-                                <span className="text-[9px] font-bold">刪除</span>
-                            </button>
-                            <div className="w-px h-6 bg-gray-200"></div>
-                            <button onClick={duplicateObject} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
-                                <Copy className="w-4 h-4" />
-                                <span className="text-[9px] font-bold">複製</span>
-                            </button>
-
-                            {(selectedObject as any).isFrameLayer && (
-                                <>
-                                    <div className="w-px h-6 bg-gray-200"></div>
-                                    {/* Frame-specific actions could go here */}
-                                </>
-                            )}
-
-                            {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
-                                <>
-                                    <div className="w-px h-6 bg-gray-200"></div>
-                                    <button onClick={() => { setActiveMobileSubMenu('edit'); setShowMobileTextInput(false); setShowMobilePropertyBar(true); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-blue-600 hover:bg-blue-50 rounded-lg min-w-[2.5rem] transition-colors">
-                                        <Pencil className="w-4 h-4" />
-                                        <span className="text-[9px] font-bold">編輯</span>
-                                    </button>
-                                </>
-                            )}
-
-                            {selectedObject.type === 'image' && (
-                                <>
-                                    <div className="w-px h-6 bg-gray-200"></div>
-
-                                    <button onClick={toggleFillCanvas} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
-                                        {(selectedObject as any).isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-                                        <span className="text-[9px] font-bold">{(selectedObject as any).isMaximized ? "還原" : "滿版"}</span>
-                                    </button>
-
-                                    <button onClick={flipObject} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
-                                        <FlipHorizontal className="w-4 h-4" />
-                                        <span className="text-[9px] font-bold">鏡像</span>
-                                    </button>
-
-                                    <button onClick={() => {
-                                        const obj = selectedObject;
-                                        // Rotate 90
-                                        obj.rotate((obj.angle || 0) + 90);
-                                        fabricCanvas.current?.requestRenderAll();
-                                        saveHistory();
-                                    }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
-                                        <RefreshCw className="w-4 h-4" />
-                                        <span className="text-[9px] font-bold">旋轉</span>
-                                    </button>
-
-                                    {/* Brightness Button with inline popover */}
-                                    <div className="relative">
-                                        <button onClick={() => setShowBrightnessSlider(v => !v)} className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[2.5rem] transition-colors ${showBrightnessSlider ? 'text-amber-600 bg-amber-50' : 'text-gray-600 hover:bg-gray-50'}`}>
-                                            <Sun className="w-4 h-4" />
-                                            <span className="text-[9px] font-bold">亮度</span>
-                                        </button>
-                                        {showBrightnessSlider && (
-                                            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-white rounded-xl shadow-xl border border-gray-200 p-3 z-50 w-48 animate-in fade-in slide-in-from-top-2 duration-150">
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <span className="text-xs font-bold text-gray-700">亮度</span>
-                                                    <span className="text-xs font-mono text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">{Math.round(brightness * 100)}%</span>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <Sun className="w-3 h-3 text-gray-400" />
-                                                    <input
-                                                        type="range"
-                                                        min="-1" max="1" step="0.01"
-                                                        value={brightness}
-                                                        onTouchStart={(e) => e.stopPropagation()}
-                                                        onTouchMove={(e) => e.stopPropagation()}
-                                                        onChange={(e) => {
-                                                            const val = parseFloat(e.target.value);
-                                                            setBrightness(val);
-                                                            applyBrightness(val);
-                                                        }}
-                                                        onMouseUp={saveHistory}
-                                                        onTouchEnd={saveHistory}
-                                                        className="flex-1 accent-amber-500"
-                                                    />
-                                                    <Sun className="w-4 h-4 text-amber-400" />
-                                                </div>
-                                                <button onClick={() => { setBrightness(0); applyBrightness(0); saveHistory(); }} className="mt-2 w-full text-[10px] text-center text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded py-1">重置</button>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="w-px h-6 bg-gray-200"></div>
-
-                                    {/* Only show Lock/Unlock if object has a clipPath (Crop/Frame) */}
-                                    {selectedObject.clipPath && (
-                                        <button onClick={toggleCropMode} className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg hover:bg-gray-50 min-w-[2.5rem] transition-colors ${isCropping ? 'text-blue-600 bg-blue-50' : 'text-gray-600'}`}>
-                                            {isCropping ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                                            <span className="text-[9px] font-bold">{isCropping ? "解鎖" : "鎖定"}</span>
-                                        </button>
-                                    )}
-                                </>
-                            )}
-                        </div>
-                    )}
                 </div>
+
+                {/* 2. Dynamic Floating Quick Actions (The "Pill") - Moved to bottom on mobile to avoid blocking template */}
+                {selectedObject && !showMobileTextInput && (
+                    <div className="fixed md:absolute md:top-16 top-auto bottom-[82px] md:bottom-auto left-1/2 -translate-x-1/2 z-[130] pointer-events-auto bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-gray-200/50 flex flex-row items-center p-1.5 gap-1 animate-in slide-in-from-top-2 md:slide-in-from-top-2 slide-in-from-bottom-2 fade-in duration-200">
+                        <button onClick={deleteSelected} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-red-500 hover:bg-red-50 rounded-lg min-w-[2.5rem] transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                            <span className="text-[9px] font-bold">刪除</span>
+                        </button>
+                        <div className="w-px h-6 bg-gray-200"></div>
+                        <button onClick={duplicateObject} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
+                            <Copy className="w-4 h-4" />
+                            <span className="text-[9px] font-bold">複製</span>
+                        </button>
+
+                        {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
+                            <>
+                                <div className="w-px h-6 bg-gray-200"></div>
+                                <button onClick={() => { setActiveMobileSubMenu('edit'); setShowMobileTextInput(false); setShowMobilePropertyBar(true); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-blue-600 hover:bg-blue-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                    <Pencil className="w-4 h-4" />
+                                    <span className="text-[9px] font-bold">編輯</span>
+                                </button>
+                            </>
+                        )}
+
+                        {(selectedObject as any).isFrameLayer && (
+                            (() => {
+                                const isFrameEmpty = !fabricCanvas.current?.getObjects().some(obj => (obj as any).frameId === (selectedObject as any).id);
+                                if (!isFrameEmpty) return null;
+                                return (
+                                    <>
+                                        <div className="w-px h-6 bg-gray-200"></div>
+                                        <button onClick={mobileActions?.onUpload} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-blue-600 hover:bg-blue-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                            <ImagePlus className="w-4 h-4" />
+                                            <span className="text-[9px] font-bold">加照片</span>
+                                        </button>
+                                    </>
+                                );
+                            })()
+                        )}
+
+                        {selectedObject.type === 'image' && !(selectedObject as any).isFrameLayer && (
+                            <>
+                                <div className="w-px h-6 bg-gray-200"></div>
+
+                                <button onClick={toggleFillCanvas} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                    {(selectedObject as any).isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                                    <span className="text-[9px] font-bold">{(selectedObject as any).isMaximized ? "還原" : "滿版"}</span>
+                                </button>
+
+                                <button onClick={flipObject} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                    <FlipHorizontal className="w-4 h-4" />
+                                    <span className="text-[9px] font-bold">鏡像</span>
+                                </button>
+
+                                <button onClick={() => {
+                                    const obj = selectedObject;
+                                    // Rotate 90
+                                    obj.rotate((obj.angle || 0) + 90);
+                                    fabricCanvas.current?.requestRenderAll();
+                                    saveHistory();
+                                }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                    <RefreshCw className="w-4 h-4" />
+                                    <span className="text-[9px] font-bold">旋轉</span>
+                                </button>
+
+                                {/* Brightness Button with inline popover */}
+                                <div className="relative">
+                                    <button onClick={() => setShowBrightnessSlider(v => !v)} className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[2.5rem] transition-colors ${showBrightnessSlider ? 'text-amber-600 bg-amber-50' : 'text-gray-600 hover:bg-gray-50'}`}>
+                                        <Sun className="w-4 h-4" />
+                                        <span className="text-[9px] font-bold">亮度</span>
+                                    </button>
+                                    {showBrightnessSlider && (
+                                        <div className="absolute md:top-full top-auto bottom-full left-1/2 -translate-x-1/2 mt-2 md:mt-2 mb-4 md:mb-0 bg-white rounded-xl shadow-xl border border-gray-200 p-3 z-50 w-48 animate-in fade-in slide-in-from-top-2 md:slide-in-from-top-2 slide-in-from-bottom-2 duration-150">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-xs font-bold text-gray-700">亮度</span>
+                                                <span className="text-xs font-mono text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">{Math.round(brightness * 100)}%</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Sun className="w-3 h-3 text-gray-400" />
+                                                <input
+                                                    type="range"
+                                                    min="-1" max="1" step="0.01"
+                                                    value={brightness}
+                                                    onTouchStart={(e) => e.stopPropagation()}
+                                                    onTouchMove={(e) => e.stopPropagation()}
+                                                    onChange={(e) => {
+                                                        const val = parseFloat(e.target.value);
+                                                        setBrightness(val);
+                                                        applyBrightness(val);
+                                                    }}
+                                                    onMouseUp={saveHistory}
+                                                    onTouchEnd={saveHistory}
+                                                    className="flex-1 accent-amber-500"
+                                                />
+                                                <Sun className="w-4 h-4 text-amber-400" />
+                                            </div>
+                                            <button onClick={() => { setBrightness(0); applyBrightness(0); saveHistory(); }} className="mt-2 w-full text-[10px] text-center text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded py-1">重置</button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="w-px h-6 bg-gray-200"></div>
+
+                                {/* Only show Lock/Unlock if object has a clipPath (Crop/Frame) */}
+                                {selectedObject.clipPath && (
+                                    <button onClick={toggleCropMode} className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg hover:bg-gray-50 min-w-[2.5rem] transition-colors ${isCropping ? 'text-blue-600 bg-blue-50' : 'text-gray-600'}`}>
+                                        {isCropping ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                                        <span className="text-[9px] font-bold">{isCropping ? "解鎖" : "鎖定"}</span>
+                                    </button>
+                                )}
+                            </>
+                        )}
+                    </div>
+                )}
 
             </div>
 

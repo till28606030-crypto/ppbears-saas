@@ -1109,7 +1109,34 @@ export default function Home() {
 
         } catch (error: any) {
             console.error("[Cart] Order processing error:", error);
-            alert(`處理失敗: ${error.message}\n\n請查看瀏覽器 Console (F12) 了解詳細錯誤訊息。`);
+
+            // 如果遇到 500 錯誤（通常是 WooCommerce Session 暫存衝突）
+            if (error.message.includes('500') || error.message.includes('伺服器錯誤')) {
+                try {
+                    // 清除 wp_woocommerce_session_ 開頭的所有 cookie 來強制重置購物車連線
+                    const cookies = document.cookie.split(';');
+                    for (let i = 0; i < cookies.length; i++) {
+                        const cookie = cookies[i];
+                        const eqPos = cookie.indexOf('=');
+                        const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+                        if (name.startsWith('wp_woocommerce_session_')) {
+                            document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+                            document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.' + window.location.hostname;
+                            document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=' + window.location.hostname;
+                        }
+                    }
+                } catch (e) { console.error('Failed to clear WC cookies', e); }
+
+                alert(`系統遭遇結帳暫存衝突 (伺服器錯誤 500)。\n為確保您的圖案安全，系統將保留您的設計，並為您重新整理頁面。\n\n【請放心，您的設計圖層已保存，重新整理後只需「重新選擇商品規格」即可正常結帳！】`);
+
+                // 強制跳出並重選（帶上 load_design_id 保留客戶心血）
+                const url = new URL(window.location.href);
+                url.searchParams.set('load_design_id', designId);
+                // 使用 location.replace 避免回上一頁又陷入錯誤迴圈
+                window.location.replace(url.toString());
+            } else {
+                alert(`處理失敗: ${error.message}\n\n請查看瀏覽器 Console (F12) 了解詳細錯誤訊息。`);
+            }
         }
     };
 
