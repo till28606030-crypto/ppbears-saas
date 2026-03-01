@@ -799,26 +799,12 @@ export default function AdminDesigns() {
             {/* Canvas Editor Modal (Placeholder for next step) */}
             {isCanvasEditorOpen && (
                 <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in zoom-in-95 duration-200">
-                    <div className="h-16 border-b border-gray-200 flex items-center justify-between px-6 bg-white shrink-0">
-                        <div className="flex items-center gap-3">
-                            <Palette className="w-5 h-5 text-blue-600" />
-                            <h2 className="text-lg font-bold text-gray-800">線上設計編輯器</h2>
-                        </div>
-                        <button
-                            onClick={() => setIsCanvasEditorOpen(false)}
-                            className="p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 rounded-full transition-colors"
-                        >
-                            <X className="w-5 h-5" />
-                        </button>
-                    </div>
 
-                    <div className="flex-1 bg-gray-50 flex items-center justify-center relative overflow-hidden">
-                        // TODO: Implement CanvasEditor Component wrapper here
-                        <div className="text-center">
-                            <Palette className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                            <h3 className="text-xl font-bold text-gray-700 mb-2">編輯器開發中</h3>
-                            <p className="text-gray-500">在此整合 CanvasEditor 與素材庫側邊欄元件</p>
-                        </div>
+                    <div className="flex-1 bg-gray-50 relative overflow-hidden">
+                        <AdminDesignBuilder
+                            onClose={() => setIsCanvasEditorOpen(false)}
+                            onSave={handleBuilderSave}
+                        />
                     </div>
                 </div>
             )}
