@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { get, update } from 'idb-keyval';
+import AdminDesignBuilder from '../../components/admin/AdminDesignBuilder';
 import { supabase } from '../../lib/supabase';
 import { listDesignTemplates, createDesignTemplate, DesignTemplate } from '../../lib/designTemplates';
-import { Upload, Trash2, Search, FileImage, Layers, Loader2, Edit2, X, Plus, GripVertical, Save, Copy, ExternalLink, Database } from 'lucide-react';
+import { Upload, Trash2, Search, FileImage, Layers, Loader2, Edit2, X, Plus, GripVertical, Save, Copy, ExternalLink, Database, Palette } from 'lucide-react';
 // @ts-ignore
 import { readPsd } from 'ag-psd';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
@@ -39,7 +40,7 @@ function SortableCategoryItem({ id, onDelete }: { id: string; onDelete: (id: str
                 <span>{id}</span>
             </div>
             {id !== '未分類' && (
-                <button 
+                <button
                     onClick={() => onDelete(id)}
                     className="text-red-400 hover:text-red-600 p-1"
                 >
@@ -159,11 +160,14 @@ export default function AdminDesigns() {
     const [isUploading, setIsUploading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('全部');
-    
+
     // Categories
     const [categories, setCategories] = useState<string[]>(DEFAULT_DESIGN_CATEGORIES);
     const [isAddingCategory, setIsAddingCategory] = useState(false);
     const [newCategory, setNewCategory] = useState('');
+
+    // Editor Modal
+    const [isCanvasEditorOpen, setIsCanvasEditorOpen] = useState(false);
 
     // Edit Modal
     const [editingDesign, setEditingDesign] = useState<DesignTemplate | null>(null);
@@ -195,7 +199,7 @@ export default function AdminDesigns() {
             setDesigns(data);
         } catch (error: any) {
             if (error.message?.includes('AbortError') || error.message?.includes('signal is aborted')) {
-                 return;
+                return;
             }
             console.error("Failed to load designs:", error);
             if (error.code === 'PGRST205' || error.message?.includes('does not exist') || error.message?.includes('design_templates')) {
@@ -292,7 +296,7 @@ export default function AdminDesigns() {
 
         } catch (error: any) {
             console.error("File processing failed:", error);
-            
+
             if (error.message?.includes('Bucket not found') || error.error === 'Bucket not found' || error.statusCode === '404') {
                 setStorageError(true);
                 alert("Storage Bucket 不存在，請執行上方 SQL 腳本建立 Bucket。");
@@ -305,9 +309,50 @@ export default function AdminDesigns() {
         }
     };
 
+    const handleBuilderSave = async (canvasData: any, previewUrl: string) => {
+        try {
+            // Convert data URI to Blob
+            const res = await fetch(previewUrl);
+            const blob = await res.blob();
+            const previewFile = new File([blob], `builder-preview-${Date.now()}.png`, { type: 'image/png' });
+
+            // Create a pseudo file for the 'file_path' which is required by DB schema 
+            // even though the real source of truth is 'canvas_data' now.
+            const emptyTxt = new Blob(['{"type":"canvas_design"}'], { type: 'application/json' });
+            const dummyFile = new File([emptyTxt], `builder-data-${Date.now()}.json`, { type: 'application/json' });
+
+            const newDesign = await createDesignTemplate({
+                name: `自訂排版 ${new Date().toLocaleDateString()}`,
+                category: selectedCategory === '全部' ? '未分類' : selectedCategory,
+                tags: ['線上排版'],
+                isFeatured: false,
+                fileType: 'canvas'
+            }, dummyFile, previewFile);
+
+            // Update the design to include canvas_data
+            const { error: updateError } = await supabase
+                .from('design_templates')
+                .update({ canvas_data: canvasData })
+                .eq('id', newDesign.id);
+
+            if (updateError) {
+                console.error("Failed to save canvas JSON:", updateError);
+                alert("排版資料儲存失敗，但已建立設計檔。");
+            }
+
+            await fetchData(); // Refresh list
+            alert('設計檔建立成功！');
+            // The modal will close because handleBuilderSave is called in onSave which triggers onClose inside AdminDesignBuilder
+        } catch (error: any) {
+            console.error("Builder save failed:", error);
+            alert(error.message || "設計檔建立失敗");
+            throw error; // Rethrow so the builder can catch it and keep the modal open
+        }
+    };
+
     const handleDeleteDesign = async (id: string) => {
         if (!confirm('確定要刪除此設計嗎？')) return;
-        
+
         try {
             const { error } = await supabase.from('design_templates').delete().eq('id', id);
             if (error) throw error;
@@ -325,7 +370,7 @@ export default function AdminDesigns() {
 
     const saveEdit = async () => {
         if (!editingDesign) return;
-        
+
         try {
             const { error } = await supabase
                 .from('design_templates')
@@ -392,7 +437,7 @@ export default function AdminDesigns() {
                                     {tableError ? '資料庫尚未設定' : 'Storage Bucket 尚未建立'}
                                 </h3>
                                 <p className="text-gray-600 mb-4">
-                                    {tableError 
+                                    {tableError
                                         ? <>系統偵測到 Supabase 中缺少必要的 <code>design_templates</code> 資料表。</>
                                         : <>系統偵測到 Supabase 中缺少必要的 Storage Buckets (<code>design-assets</code>, <code>design-previews</code>)。</>
                                     }
@@ -402,7 +447,7 @@ export default function AdminDesigns() {
                                     <pre className="bg-gray-800 text-gray-200 p-4 rounded-lg text-xs overflow-x-auto font-mono max-h-64">
                                         {tableError ? NEW_MIGRATION_SQL : (storageError ? STORAGE_MIGRATION_SQL : FIX_RLS_SQL)}
                                     </pre>
-                                    <button 
+                                    <button
                                         onClick={() => {
                                             navigator.clipboard.writeText(tableError ? NEW_MIGRATION_SQL : (storageError ? STORAGE_MIGRATION_SQL : FIX_RLS_SQL));
                                             alert("SQL 腳本已複製！");
@@ -436,8 +481,8 @@ export default function AdminDesigns() {
                                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
                                     <Search className="w-5 h-5" />
                                 </div>
-                                <input 
-                                    type="text" 
+                                <input
+                                    type="text"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     placeholder="搜尋設計名稱或標籤..."
@@ -467,28 +512,45 @@ export default function AdminDesigns() {
                             </div>
                         </div>
 
-                        {/* Upload Area */}
-                        <div className="mb-8">
+                        {/* Upload & Create Area */}
+                        <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Option 1: File Upload */}
                             <label className={`flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
                                     {isUploading ? (
                                         <Loader2 className="w-10 h-10 mb-3 text-blue-500 animate-spin" />
                                     ) : (
                                         <Upload className="w-10 h-10 mb-3 text-gray-400" />
                                     )}
                                     <p className="mb-2 text-sm text-gray-500">
-                                        {isUploading ? '正在處理檔案...' : <><span className="font-semibold">點擊上傳設計檔案</span></>}
+                                        {isUploading ? '正在處理檔案...' : <><span className="font-semibold text-gray-700">上傳設計檔案</span> (PSD, JPG, PNG)</>}
                                     </p>
-                                    <p className="text-xs text-gray-500">支援 PSD, JPG, PNG, AI 格式</p>
+                                    <p className="text-xs text-gray-400">適用於外部設計好的完整圖片</p>
                                 </div>
-                                <input 
-                                    type="file" 
-                                    className="hidden" 
+                                <input
+                                    type="file"
+                                    className="hidden"
                                     accept=".psd,.jpg,.jpeg,.png,.ai"
                                     onChange={handleFileUpload}
                                     disabled={isUploading}
                                 />
                             </label>
+
+                            {/* Option 2: Online Builder */}
+                            <button
+                                onClick={() => setIsCanvasEditorOpen(true)}
+                                className="flex flex-col items-center justify-center w-full h-48 border-2 border-blue-200 rounded-lg cursor-pointer bg-blue-50 hover:bg-blue-100 hover:border-blue-300 transition-colors group"
+                            >
+                                <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
+                                    <div className="p-3 bg-blue-100 rounded-full mb-3 group-hover:bg-blue-200 transition-colors">
+                                        <Palette className="w-8 h-8 text-blue-600" />
+                                    </div>
+                                    <p className="mb-2 text-sm font-semibold text-blue-800">
+                                        開啟線上排版設計
+                                    </p>
+                                    <p className="text-xs text-blue-600/80">使用系統素材庫 (相框、貼紙、文字) 自由排版</p>
+                                </div>
+                            </button>
                         </div>
 
                         {/* Gallery */}
@@ -503,7 +565,7 @@ export default function AdminDesigns() {
                                                 <FileImage className="w-8 h-8" />
                                             </div>
                                         )}
-                                        
+
                                         {/* Status Badge */}
                                         <div className="absolute top-1 left-1 flex gap-1">
                                             {design.isActive ? (
@@ -512,20 +574,20 @@ export default function AdminDesigns() {
                                                 <div className="bg-gray-300 w-2 h-2 rounded-full ring-2 ring-white" title="已停用"></div>
                                             )}
                                             {design.isFeatured && (
-                                                 <div className="bg-yellow-400 w-2 h-2 rounded-full ring-2 ring-white" title="熱門設計"></div>
+                                                <div className="bg-yellow-400 w-2 h-2 rounded-full ring-2 ring-white" title="熱門設計"></div>
                                             )}
                                         </div>
 
                                         {/* Actions Overlay */}
                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                                            <button 
+                                            <button
                                                 onClick={() => openEditModal(design)}
                                                 className="p-1.5 bg-white text-gray-700 rounded-full hover:bg-blue-50 hover:text-blue-600 transition-colors shadow-sm"
                                                 title="編輯資訊"
                                             >
                                                 <Edit2 className="w-3.5 h-3.5" />
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={() => handleDeleteDesign(design.id)}
                                                 className="p-1.5 bg-white text-gray-700 rounded-full hover:bg-red-50 hover:text-red-600 transition-colors shadow-sm"
                                                 title="刪除設計"
@@ -534,13 +596,13 @@ export default function AdminDesigns() {
                                             </button>
                                         </div>
                                     </div>
-                                    
+
                                     <div className="p-3 flex-1 flex flex-col min-w-0">
                                         <div className="flex items-center justify-between gap-2 mb-1">
                                             <h3 className="font-medium text-gray-800 text-sm truncate flex-1">{design.name}</h3>
                                             <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded flex-shrink-0">{design.category || '未分類'}</span>
                                         </div>
-                                        
+
                                         <div className="text-xs text-gray-400 mb-2 flex items-center gap-1">
                                             <span className="uppercase">{design.fileType}</span>
                                         </div>
@@ -554,9 +616,9 @@ export default function AdminDesigns() {
                                             >
                                                 <Copy className="w-3 h-3" />
                                             </button>
-                                            <a 
-                                                href={design.fileUrl} 
-                                                target="_blank" 
+                                            <a
+                                                href={design.fileUrl}
+                                                target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="p-1 hover:bg-gray-100 text-gray-500 hover:text-gray-700 rounded transition-colors"
                                                 title="下載原始檔"
@@ -573,8 +635,8 @@ export default function AdminDesigns() {
                             <div className="text-center py-12">
                                 <p className="text-gray-400 mb-2">找不到符合條件的設計。</p>
                                 {(searchTerm || selectedCategory !== '全部') && (
-                                    <button 
-                                        onClick={() => {setSearchTerm(''); setSelectedCategory('全部');}}
+                                    <button
+                                        onClick={() => { setSearchTerm(''); setSelectedCategory('全部'); }}
                                         className="text-blue-600 hover:underline text-sm"
                                     >
                                         清除篩選條件
@@ -596,7 +658,7 @@ export default function AdminDesigns() {
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
-                        
+
                         <div className="p-6 space-y-4">
                             <div className="flex justify-center mb-4">
                                 <div className="w-32 h-20 bg-gray-50 border rounded-lg p-2 flex items-center justify-center">
@@ -610,8 +672,8 @@ export default function AdminDesigns() {
                                     <label className="text-sm font-medium text-gray-900 block">啟用狀態</label>
                                     <span className="text-xs text-gray-500">控制是否在前台顯示</span>
                                 </div>
-                                <button 
-                                    onClick={() => setEditingDesign({...editingDesign, isActive: !editingDesign.isActive})}
+                                <button
+                                    onClick={() => setEditingDesign({ ...editingDesign, isActive: !editingDesign.isActive })}
                                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${editingDesign.isActive ? 'bg-blue-600' : 'bg-gray-200'}`}
                                 >
                                     <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editingDesign.isActive ? 'translate-x-6' : 'translate-x-1'}`} />
@@ -624,8 +686,8 @@ export default function AdminDesigns() {
                                     <label className="text-sm font-medium text-gray-900 block">熱門設計</label>
                                     <span className="text-xs text-gray-500">是否在「熱門設計」分類顯示</span>
                                 </div>
-                                <button 
-                                    onClick={() => setEditingDesign({...editingDesign, isFeatured: !editingDesign.isFeatured})}
+                                <button
+                                    onClick={() => setEditingDesign({ ...editingDesign, isFeatured: !editingDesign.isFeatured })}
                                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${editingDesign.isFeatured ? 'bg-yellow-400' : 'bg-gray-200'}`}
                                 >
                                     <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editingDesign.isFeatured ? 'translate-x-6' : 'translate-x-1'}`} />
@@ -634,10 +696,10 @@ export default function AdminDesigns() {
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">設計名稱</label>
-                                <input 
-                                    type="text" 
+                                <input
+                                    type="text"
                                     value={editingDesign.name}
-                                    onChange={(e) => setEditingDesign({...editingDesign, name: e.target.value})}
+                                    onChange={(e) => setEditingDesign({ ...editingDesign, name: e.target.value })}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                 />
                             </div>
@@ -645,25 +707,25 @@ export default function AdminDesigns() {
                             <div>
                                 <div className="flex items-center justify-between mb-1">
                                     <label className="block text-sm font-medium text-gray-700">分類</label>
-                                    <button 
+                                    <button
                                         onClick={() => setIsAddingCategory(!isAddingCategory)}
                                         className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
                                     >
                                         <Plus className="w-3 h-3" /> 管理分類
                                     </button>
                                 </div>
-                                
+
                                 {isAddingCategory ? (
                                     <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 mb-2 space-y-2">
                                         <div className="flex gap-2">
-                                            <input 
-                                                type="text" 
+                                            <input
+                                                type="text"
                                                 value={newCategory}
                                                 onChange={(e) => setNewCategory(e.target.value)}
                                                 placeholder="輸入新分類名稱"
                                                 className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
                                             />
-                                            <button 
+                                            <button
                                                 onClick={handleAddCategory}
                                                 className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
                                             >
@@ -671,20 +733,20 @@ export default function AdminDesigns() {
                                             </button>
                                         </div>
                                         <div className="max-h-48 overflow-y-auto space-y-1">
-                                            <DndContext 
+                                            <DndContext
                                                 sensors={sensors}
                                                 collisionDetection={closestCenter}
                                                 onDragEnd={handleDragEnd}
                                             >
-                                                <SortableContext 
+                                                <SortableContext
                                                     items={categories}
                                                     strategy={verticalListSortingStrategy}
                                                 >
                                                     {categories.map((cat) => (
-                                                        <SortableCategoryItem 
-                                                            key={cat} 
-                                                            id={cat} 
-                                                            onDelete={handleDeleteCategory} 
+                                                        <SortableCategoryItem
+                                                            key={cat}
+                                                            id={cat}
+                                                            onDelete={handleDeleteCategory}
                                                         />
                                                     ))}
                                                 </SortableContext>
@@ -692,9 +754,9 @@ export default function AdminDesigns() {
                                         </div>
                                     </div>
                                 ) : (
-                                    <select 
+                                    <select
                                         value={editingDesign.category || '未分類'}
-                                        onChange={(e) => setEditingDesign({...editingDesign, category: e.target.value})}
+                                        onChange={(e) => setEditingDesign({ ...editingDesign, category: e.target.value })}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                     >
                                         {categories.map(cat => (
@@ -706,10 +768,10 @@ export default function AdminDesigns() {
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">標籤 (以逗號分隔)</label>
-                                <input 
-                                    type="text" 
+                                <input
+                                    type="text"
                                     value={editingDesign.tags.join(', ')}
-                                    onChange={(e) => setEditingDesign({...editingDesign, tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean)})}
+                                    onChange={(e) => setEditingDesign({ ...editingDesign, tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) })}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                     placeholder="例如: 可愛, 紅色, 新年"
                                 />
@@ -717,18 +779,45 @@ export default function AdminDesigns() {
                         </div>
 
                         <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 sticky bottom-0 z-10">
-                            <button 
+                            <button
                                 onClick={() => setEditingDesign(null)}
                                 className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors"
                             >
                                 取消
                             </button>
-                            <button 
+                            <button
                                 onClick={saveEdit}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
                             >
                                 <Save className="w-4 h-4" /> 儲存變更
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Canvas Editor Modal (Placeholder for next step) */}
+            {isCanvasEditorOpen && (
+                <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in zoom-in-95 duration-200">
+                    <div className="h-16 border-b border-gray-200 flex items-center justify-between px-6 bg-white shrink-0">
+                        <div className="flex items-center gap-3">
+                            <Palette className="w-5 h-5 text-blue-600" />
+                            <h2 className="text-lg font-bold text-gray-800">線上設計編輯器</h2>
+                        </div>
+                        <button
+                            onClick={() => setIsCanvasEditorOpen(false)}
+                            className="p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 rounded-full transition-colors"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    <div className="flex-1 bg-gray-50 flex items-center justify-center relative overflow-hidden">
+                        // TODO: Implement CanvasEditor Component wrapper here
+                        <div className="text-center">
+                            <Palette className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                            <h3 className="text-xl font-bold text-gray-700 mb-2">編輯器開發中</h3>
+                            <p className="text-gray-500">在此整合 CanvasEditor 與素材庫側邊欄元件</p>
                         </div>
                     </div>
                 </div>

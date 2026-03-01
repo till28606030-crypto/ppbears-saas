@@ -826,6 +826,8 @@ interface CanvasEditorProps {
     };
     onCropModeChange?: (isCropping: boolean) => void;
     onSelectionChange?: (object: FabricObject | null) => void;
+    disableDraft?: boolean;
+    readOnly?: boolean;
 }
 
 export interface CanvasEditorRef {
@@ -852,8 +854,10 @@ export interface CanvasEditorRef {
     setBackgroundImage: (url: string) => Promise<void> | void;
     insertImageFromSrc: (src: string) => Promise<void>;
     getCanvasJSON: () => object;
-    restoreFromJSON: (json: object) => Promise<void>;
+    restoreFromJSON: (json: object | string) => Promise<void | boolean>;
     clearDraft: () => void;
+    exportAsJSON: () => Promise<string>;
+    exportAsDataURL: (options?: { withMask?: boolean }) => Promise<string>;
 }
 
 const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedRef<CanvasEditorRef>) => {
@@ -869,7 +873,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         onCropModeChange,
         onSelectionChange,
         permissions,
-        onImageLayerChange
+        onImageLayerChange,
+        disableDraft = false,
+        readOnly = false
     } = props;
 
     const [searchParams] = useSearchParams();
@@ -3108,6 +3114,29 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             canvas.requestRenderAll();
             return dataUrl;
         },
+        exportAsJSON: async () => {
+            const canvas = fabricCanvas.current;
+            if (!canvas) return "{}";
+            const json = (canvas as any).toJSON([
+                'id', 'selectable', 'evented', 'locked', 'excludeFromExport',
+                'isUserBackground', 'isBaseLayer', 'isMaskLayer', 'isFrameLayer', 'frameId', 'perPixelTargetFind',
+                'lockMovementX', 'lockMovementY', 'lockRotation', 'lockScalingX', 'lockScalingY',
+                'lockUniScaling', 'lockSkewingX', 'lockSkewingY', 'hasControls', 'hasBorders',
+                'hoverCursor', 'moveCursor', 'clipPath', 'visible', 'bgCornerRadius', 'padding', 'originX', 'originY',
+                'scaleX', 'scaleY', 'left', 'top', 'width', 'height', 'angle', 'fill', 'stroke', 'strokeWidth',
+                'data', 'hasClipPath', 'isCropLocked', 'frameMeta', '__baseScale'
+            ]);
+            return JSON.stringify(json);
+        },
+        exportAsDataURL: async (options?: { withMask?: boolean }) => {
+            const canvas = fabricCanvas.current;
+            if (!canvas) return "";
+            return canvas.toDataURL({
+                format: 'png',
+                quality: 1,
+                multiplier: 1 // We can adjust this if we want higher res previews
+            });
+        },
         // --- Image Crop (Mask) System ---
         applyCrop,
         updateFrameParams,
@@ -3935,8 +3964,11 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         };
 
         try {
-            // [TPL] T2: (3) 冪等清理
+            // [TPL] T2: (3) 冪等清理：只清理底圖和遮罩，保留使用者物件
             removeTemplateObjects(canvas);
+
+            // 重要修正：此處「不」呼叫 canvas.clear() 或 removeAllUserObjects()，
+            // 讓原本畫布上的貼紙、背景、相框等物件得以保留，實現跨手機殼套用的功能。
             canvas.requestRenderAll();
 
             const loadPromises = [];
@@ -4821,11 +4853,19 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 console.log('[ENTER] tpl done', { seq, ts: Date.now(), counts: getTemplateCounts(canvas) });
 
                 // (2) Draft after template is stable
-                const draftKey = getDraftKey();
-                if (draftKey) {
-                    await loadDraftUserObjects(draftKey, seq);
+                // 重要修正：如果是從本機開發或剛換商品進來，
+                // 如果畫布上「已經有非系統物件」(例如使用者剛剛排好的設計)，
+                // 則【跳過讀取草稿】。避免換商品後，草稿去覆蓋掉目前正在進行的設計。
+                const currentNonSystemObjects = canvas.getObjects().filter((obj: any) => !isSystemRuntimeObject(obj));
+                if (currentNonSystemObjects.length > 0) {
+                    console.log('[ENTER] Canvas already has user objects, skipping draft load to preserve layout', { count: currentNonSystemObjects.length });
                 } else {
-                    console.log('[DRAFT] skip (draftKey null)', { seq, ts: Date.now() });
+                    const draftKey = getDraftKey();
+                    if (draftKey) {
+                        await loadDraftUserObjects(draftKey, seq);
+                    } else {
+                        console.log('[DRAFT] skip (draftKey null)', { seq, ts: Date.now() });
+                    }
                 }
 
                 if (seq !== enterSeqRef.current) return;
