@@ -30,7 +30,9 @@ export const toDbItem = (item: OptionItem) => ({
     price_modifier: item.priceModifier,
     color_hex: item.colorHex,
     image_url: item.imageUrl,
+    required_tags: item.requiredTags || [],
     is_default: item.isDefault || false,
+    sort_order: item.sortOrder || 0,
     is_active: true
 });
 
@@ -41,5 +43,7 @@ export const fromDbItem = (record: any): OptionItem => ({
     priceModifier: record.price_modifier,
     colorHex: record.color_hex,
     imageUrl: record.image_url,
-    isDefault: record.is_default || false
+    requiredTags: record.required_tags || [],
+    isDefault: record.is_default || false,
+    sortOrder: record.sort_order || 0
 });

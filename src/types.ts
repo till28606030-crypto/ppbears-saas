@@ -56,6 +56,7 @@ export interface OptionItem {
     imageUrl?: string;
     requiredTags?: string[];
     isDefault?: boolean;
+    sortOrder?: number;
 }
 
 export interface ProductAvailability {

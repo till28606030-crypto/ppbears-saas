@@ -36,7 +36,8 @@ import {
     SortableContext,
     sortableKeyboardCoordinates,
     useSortable,
-    verticalListSortingStrategy
+    verticalListSortingStrategy,
+    rectSortingStrategy
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { get, set } from 'idb-keyval';
@@ -1158,6 +1159,104 @@ export default function AdminOptionManager() {
         );
     };
 
+    const SortableItemCard = ({ item, isDeleting, onEdit, onDelete, onSetDefault }: any) => {
+        const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+        const style = {
+            transform: CSS.Transform.toString(transform),
+            transition,
+            zIndex: isDragging ? 999 : 1,
+            position: 'relative' as any,
+            opacity: isDragging ? 0.3 : 1
+        };
+
+        return (
+            <div
+                ref={setNodeRef}
+                style={style}
+                className={`bg-white rounded-xl border overflow-hidden group hover:shadow-md transition-shadow relative ${item.isDefault ? 'border-yellow-400 ring-1 ring-yellow-400' : 'border-gray-200'}`}
+            >
+                <div className="aspect-square bg-gray-100 relative">
+                    <div {...attributes} {...listeners} className="absolute top-2 right-2 z-20 cursor-move text-white bg-black/30 hover:bg-black/50 p-1 rounded backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                        <GripVertical className="w-4 h-4" />
+                    </div>
+                    {item.imageUrl ? (
+                        <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: item.colorHex || '#eee' }}>
+                            {!item.colorHex && <ImageIcon className="w-8 h-8 text-gray-400" />}
+                        </div>
+                    )}
+
+                    <div className="absolute top-2 left-2 z-10">
+                        <label className="flex items-center gap-1 cursor-pointer bg-white/90 backdrop-blur-sm px-1.5 py-0.5 rounded shadow-sm border border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <input
+                                type="checkbox"
+                                checked={!!item.isDefault}
+                                onChange={(e) => onSetDefault(item.id, e.target.checked)}
+                                className="w-3 h-3 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                            />
+                            <span className="text-[10px] text-gray-600 font-bold">預設</span>
+                        </label>
+                    </div>
+
+                    <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-between gap-1">
+                        <button
+                            onClick={() => onEdit(item)}
+                            className="flex-1 bg-white/90 hover:bg-white text-gray-800 text-[10px] font-bold py-1 rounded shadow-sm transition-colors"
+                        >
+                            編輯
+                        </button>
+                        <button
+                            onClick={() => onDelete(item.id)}
+                            disabled={isDeleting}
+                            className="bg-red-500/90 hover:bg-red-500 text-white p-1 rounded shadow-sm transition-colors"
+                        >
+                            {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        </button>
+                    </div>
+                </div>
+                <div className="p-2">
+                    <div className="font-bold text-xs text-gray-800 truncate" title={item.name}>{item.name}</div>
+                    <div className="text-[10px] text-gray-500 font-medium">
+                        {item.priceModifier > 0 ? `+$${item.priceModifier}` : '包含'}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const handleItemDragEnd = async (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+
+        const activeItem = items.find(i => i.id === active.id);
+        const overItem = items.find(i => i.id === over.id);
+        if (!activeItem || !overItem || activeItem.parentId !== overItem.parentId) return;
+
+        const parentId = activeItem.parentId;
+        let groupItems = items.filter(i => i.parentId === parentId)
+            .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+        const oldIndex = groupItems.findIndex(i => i.id === active.id);
+        const newIndex = groupItems.findIndex(i => i.id === over.id);
+
+        groupItems = arrayMove(groupItems, oldIndex, newIndex);
+
+        const updates = groupItems.map((item, index) => ({
+            ...item,
+            sortOrder: index
+        }));
+
+        setItems(prev => prev.map(i => {
+            const updated = updates.find(u => u.id === i.id);
+            return updated ? updated : i;
+        }));
+
+        for (const updatedItem of updates) {
+            await supabase.from('option_items').update({ sort_order: updatedItem.sortOrder }).eq('id', updatedItem.id);
+        }
+    };
+
     const TagInput = ({ tags, onChange }: { tags: string[], onChange: (tags: string[]) => void }) => {
         const [input, setInput] = useState('');
 
@@ -1376,73 +1475,36 @@ export default function AdminOptionManager() {
 
                         {/* Tab Content: Items */}
                         {rightPanelTab === 'items' && (
-                            <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto">
-                                {items.filter(i => i.parentId === selectedGroupId).map(item => (
-                                    <div key={item.id} className={`bg-white rounded-xl border overflow-hidden group hover:shadow-md transition-shadow relative ${item.isDefault ? 'border-yellow-400 ring-1 ring-yellow-400' : 'border-gray-200'}`}>
-                                        <div className="aspect-square bg-gray-100 relative">
-                                            {item.imageUrl ? (
-                                                <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: item.colorHex || '#eee' }}>
-                                                    {!item.colorHex && <ImageIcon className="w-8 h-8 text-gray-400" />}
-                                                </div>
-                                            )}
-
-                                            {/* Default Toggle Overlay */}
-                                            <div className="absolute top-2 left-2 z-10">
-                                                <label className="flex items-center gap-1 cursor-pointer bg-white/90 backdrop-blur-sm px-1.5 py-0.5 rounded shadow-sm border border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={!!item.isDefault}
-                                                        onChange={(e) => handleSetItemDefault(item.id, e.target.checked)}
-                                                        className="w-3 h-3 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                            <div className="p-4 overflow-y-auto">
+                                <DndContext
+                                    collisionDetection={closestCenter}
+                                    onDragEnd={handleItemDragEnd}
+                                >
+                                    <SortableContext
+                                        items={items.filter(i => i.parentId === selectedGroupId).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).map(i => i.id)}
+                                        strategy={rectSortingStrategy}
+                                    >
+                                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                            {items.filter(i => i.parentId === selectedGroupId)
+                                                .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+                                                .map(item => (
+                                                    <SortableItemCard
+                                                        key={item.id}
+                                                        item={item}
+                                                        isDeleting={deletingItemId === item.id}
+                                                        onEdit={(item: OptionItem) => {
+                                                            setEditingItemData(item);
+                                                            setIsEditingItem(true);
+                                                        }}
+                                                        onDelete={handleDeleteItem}
+                                                        onSetDefault={handleSetItemDefault}
                                                     />
-                                                    <span className="text-[10px] text-gray-600 font-bold">預設</span>
-                                                </label>
-                                            </div>
-
-                                            {item.isDefault && (
-                                                <div className="absolute top-2 left-2 z-0">
-                                                    <div className="bg-yellow-400 text-white p-1 rounded shadow-md">
-                                                        <Check className="w-3 h-3 font-bold" />
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button
-                                                    onClick={() => {
-                                                        setEditingItemData(item);
-                                                        setIsEditingItem(true);
-                                                    }}
-                                                    className="p-1.5 bg-white rounded shadow text-gray-600 hover:text-blue-600"
-                                                >
-                                                    <Settings className="w-3 h-3" />
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDeleteItem(item.id)}
-                                                    disabled={deletingItemId !== null}
-                                                    className="p-1.5 bg-white rounded shadow text-gray-600 hover:text-red-600 disabled:opacity-50"
-                                                >
-                                                    {deletingItemId === item.id ? (
-                                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                                    ) : (
-                                                        <Trash2 className="w-3 h-3" />
-                                                    )}
-                                                </button>
-                                            </div>
+                                                ))}
                                         </div>
-                                        <div className="p-3">
-                                            <div className="font-bold text-gray-900 truncate flex items-center gap-1">
-                                                {item.name}
-                                                {item.isDefault && <Check className="w-3 h-3 text-yellow-500" />}
-                                            </div>
-                                            <div className="text-sm text-gray-500">+${item.priceModifier}</div>
-                                        </div>
-                                    </div>
-                                ))}
+                                    </SortableContext>
+                                </DndContext>
                                 {items.filter(i => i.parentId === selectedGroupId).length === 0 && (
-                                    <div className="col-span-full py-10 text-center text-gray-400 flex flex-col items-center">
+                                    <div className="py-10 text-center text-gray-400 flex flex-col items-center">
                                         <Search className="w-8 h-8 mb-2 opacity-50" />
                                         <p>此類別尚無子項</p>
                                     </div>
@@ -1648,7 +1710,7 @@ export default function AdminOptionManager() {
                                         <>
                                             <img src={editingGroupData.thumbnail} alt="Preview" className="w-full h-full object-contain" />
                                             <button
-                                                onClick={() => setEditingGroupData(prev => ({ ...prev, thumbnail: undefined }))}
+                                                onClick={() => setEditingGroupData(prev => ({ ...prev, thumbnail: null }))}
                                                 className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
                                             >
                                                 <Trash2 className="w-5 h-5" />
