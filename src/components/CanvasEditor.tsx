@@ -1083,6 +1083,21 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             });
         }
 
+        // Add template relative coordinate metadata
+        const baseLayer = canvas.getObjects().find(o => (o as any).isBaseLayer) as FabricImage;
+        if (baseLayer) {
+            json.template_meta = {
+                scaleX: baseLayer.scaleX,
+                scaleY: baseLayer.scaleY,
+                left: baseLayer.left,
+                top: baseLayer.top,
+                width: baseLayer.width,
+                height: baseLayer.height,
+                canvasWidth: canvas.width,
+                canvasHeight: canvas.height
+            };
+        }
+
         const draftStr = JSON.stringify(json);
         if (draftStr.length > 8 * 1024 * 1024) {
             console.warn("Draft too large, skipping auto-save");
@@ -3018,6 +3033,22 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     );
                 });
             }
+
+            // Add template relative coordinate metadata
+            const baseLayer = canvas.getObjects().find(o => (o as any).isBaseLayer) as FabricImage;
+            if (baseLayer) {
+                json.template_meta = {
+                    scaleX: baseLayer.scaleX,
+                    scaleY: baseLayer.scaleY,
+                    left: baseLayer.left,
+                    top: baseLayer.top,
+                    width: baseLayer.width,
+                    height: baseLayer.height,
+                    canvasWidth: canvas.width,
+                    canvasHeight: canvas.height
+                };
+            }
+
             return json;
         },
         restoreFromJSON: async (input: any) => {
@@ -3080,6 +3111,38 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         return;
                     }
 
+                    // 4. Alignment Compensation (Fix 设计跑位)
+                    // If the draft includes template metadata, we compare it with the current template
+                    // to see if we need to adjust position or scale.
+                    let scaleFactor = 1;
+                    let offsetX = 0;
+                    let offsetY = 0;
+
+                    const currentBase = canvas.getObjects().find(o => (o as any).isBaseLayer) as FabricImage;
+                    const savedMeta = json.template_meta;
+
+                    if (currentBase && savedMeta) {
+                        // Calculate scale delta
+                        const currentScaleX = currentBase.scaleX || 1;
+                        const savedScaleX = savedMeta.scaleX || currentScaleX;
+                        scaleFactor = currentScaleX / savedScaleX;
+
+                        // Calculate position delta (relative to base layer center/origin)
+                        // Note: Origin check is important.
+                        const currentLeft = currentBase.left || 0;
+                        const currentTop = currentBase.top || 0;
+                        const savedLeft = savedMeta.left || 0;
+                        const savedTop = savedMeta.top || 0;
+
+                        // Total shift = current position - (saved position * scaleFactor) ?
+                        // Better: restored objects are in their original absolute space.
+                        // We need to shift them by the delta of base layer movement.
+                        offsetX = currentLeft - (savedLeft * scaleFactor);
+                        offsetY = currentTop - (savedTop * scaleFactor);
+
+                        console.log('[CanvasEditor] Alignment compensation applied:', { scaleFactor, offsetX, offsetY });
+                    }
+
                     // 4. Boundary Alignment (Apply case clipPath)
                     const systemBaseObj = canvas.getObjects().find(obj => (obj as any).isBaseLayer) as FabricImage;
                     let boundary: Rect | null = null;
@@ -3108,7 +3171,19 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     enlivenedObjects.forEach(obj => {
                         ensureObjectId(obj, 'tpl');
 
-                        // Apply boundary clipPath if available
+                        // Apply alignment compensation if needed
+                        if (scaleFactor !== 1) {
+                            obj.scaleX = (obj.scaleX || 1) * scaleFactor;
+                            obj.scaleY = (obj.scaleY || 1) * scaleFactor;
+                            obj.left = (obj.left || 0) * scaleFactor;
+                            obj.top = (obj.top || 0) * scaleFactor;
+                        }
+                        if (offsetX !== 0 || offsetY !== 0) {
+                            obj.left = (obj.left || 0) + offsetX;
+                            obj.top = (obj.top || 0) + offsetY;
+                        }
+
+                        // 5. Boundary Alignment (Apply case clipPath)
                         if (boundary) {
                             const preserveInner = (obj as any).hasClipPath === true || (obj as any).frameId;
                             if (preserveInner && obj.clipPath) {

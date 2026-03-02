@@ -138,6 +138,19 @@ export default function Home() {
     const [dynamicCategories, setDynamicCategories] = useState<{ id: string, label: string }[]>([]);
     const [dynamicBrands, setDynamicBrands] = useState<{ id: string, label: string }[]>([]);
 
+    // [Design Session Initialization]
+    useEffect(() => {
+        const loadId = searchParams.get('load_design_id');
+        if (loadId && loadId !== designId) {
+            console.log('[Session] Using existing design ID from URL:', loadId);
+            setDesignId(loadId);
+        } else if (!designId) {
+            const newId = generateDesignId();
+            console.log('[Session] Generating new design ID:', newId);
+            setDesignId(newId);
+        }
+    }, [searchParams]);
+
     // Assets & Designs
     const [stickers, setStickers] = useState<AssetItem[]>([]);
     const [backgrounds, setBackgrounds] = useState<AssetItem[]>([]);
@@ -626,6 +639,9 @@ export default function Home() {
                 if (design.canvas_json) {
                     // Small delay to ensure canvas is fully initialized
                     setTimeout(async () => {
+                        // Ensure we use the loaded ID for current state
+                        if (loadDesignId !== designId) setDesignId(loadDesignId);
+
                         await canvasRef.current?.restoreFromJSON?.(design.canvas_json);
                         console.log('[DesignLoad] Design restored successfully');
                     }, 1000);
@@ -976,12 +992,12 @@ export default function Home() {
 
                 if (dataUrl && dataUrl.length > 100) {
                     setPreviewImage(dataUrl);
-                    setDesignId(generateDesignId());
+                    // DONT regenerate designId here, it breaks re-edit sessions
+                    // setDesignId(generateDesignId()); 
                     setShowCheckout(true);
                 } else {
                     console.error('Preview generation returned empty string or invalid data');
                     setPreviewImage('https://placehold.co/600x600?text=Preview+Failed');
-                    setDesignId(generateDesignId());
                     setShowCheckout(true);
                 }
             } catch (error) {
@@ -1198,11 +1214,15 @@ export default function Home() {
                     console.error('[Cart] Failed to clear cookies:', cookieErr);
                 }
 
-                alert(`系統遭遇結帳暫存衝突 (伺服器錯誤 500)。\n為確保您的圖案安全，系統已嘗試清除衝突緩存，並保留您的設計。\n\n【請放心，您的設計圖層已保存，重新整理後只需「重新選擇商品規格」即可正常結帳！】`);
+                alert(`系統遭遇結帳暫存衝突 (伺服器錯誤 500)。\n為確保您的圖案安全，系統已嘗試清除衝突快取，並保留您的設計。\n\n【請放心，您的設計圖層已保存，重新整理後只需「重新選擇商品規格」即可正常結帳！】`);
 
-                // 強制跳出並重選（帶上 load_design_id 保留客戶心血）
+                // 強制跳出並重選（帶上 load_design_id 與 productId 保留客戶心血）
                 const url = new URL(window.location.href);
+                const currentProductId = searchParams.get('productId') || currentProduct?.id;
+
                 url.searchParams.set('load_design_id', designId);
+                if (currentProductId) url.searchParams.set('productId', currentProductId);
+
                 // 使用 location.replace 避免回上一頁又陷入錯誤迴圈
                 window.location.replace(url.toString());
             } else {

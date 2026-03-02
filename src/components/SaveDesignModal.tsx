@@ -1635,7 +1635,7 @@ export default function SaveDesignModal({
                                                                                 type="button"
                                                                                 onClick={() => handleSelectOption(groupKey, item.id)}
                                                                                 className={`relative flex flex-col items-center p-3 rounded-2xl border-[3px] transition-all duration-300 ${isSelected
-                                                                                    ? 'border-black bg-blue-50/30 shadow-md scale-[1.02] z-10'
+                                                                                    ? 'border-black bg-blue-50/50 shadow-lg scale-[1.02] z-10'
                                                                                     : 'border-gray-100 bg-white hover:border-gray-300 hover:shadow-sm'
                                                                                     }`}
                                                                             >
@@ -1665,11 +1665,11 @@ export default function SaveDesignModal({
                                                                                 </div>
                                                                                 {/* Standard Radio Indicator */}
                                                                                 <div className="absolute top-4 right-4 flex items-center justify-center">
-                                                                                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${isSelected
-                                                                                        ? 'border-black bg-black shadow-md scale-110'
+                                                                                    <div className={`w-7 h-7 rounded-full border-[3px] flex items-center justify-center transition-all duration-300 ${isSelected
+                                                                                        ? 'border-black bg-black shadow-xl scale-110 ring-4 ring-black/10'
                                                                                         : 'border-gray-300 bg-white group-hover:border-gray-400'
                                                                                         }`}>
-                                                                                        {isSelected && <Check className="w-4 h-4 text-white stroke-[3.5px] animate-in zoom-in duration-300" />}
+                                                                                        {isSelected && <Check className="w-5 h-5 text-white stroke-[4px] animate-in zoom-in duration-300" />}
                                                                                     </div>
                                                                                 </div>
                                                                             </button>
@@ -1684,17 +1684,17 @@ export default function SaveDesignModal({
                                                                 type="button"
                                                                 key={item.id}
                                                                 onClick={() => handleSelectOption(groupKey, item.id)}
-                                                                className={`relative p-4 rounded-2xl border-[3px] text-left transition-all group hover:shadow-lg ${selectedOptions[groupKey] === item.id
-                                                                    ? 'border-black bg-blue-50/40 shadow-md scale-[1.01] z-10'
+                                                                className={`relative p-5 rounded-2xl border-[3px] text-left transition-all group hover:shadow-xl ${selectedOptions[groupKey] === item.id
+                                                                    ? 'border-black bg-blue-50/60 shadow-lg scale-[1.01] z-10'
                                                                     : 'border-gray-100 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
                                                             >
                                                                 {/* Standard Radio Indicator for Horizontal Cards */}
                                                                 <div className="absolute top-6 right-6 flex items-center justify-center">
-                                                                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${selectedOptions[groupKey] === item.id
-                                                                        ? 'border-black bg-black shadow-md scale-110'
+                                                                    <div className={`w-8 h-8 rounded-full border-[3px] flex items-center justify-center transition-all duration-300 ${selectedOptions[groupKey] === item.id
+                                                                        ? 'border-black bg-black shadow-xl scale-110 ring-4 ring-black/10'
                                                                         : 'border-gray-300 bg-white group-hover:border-gray-400'
                                                                         }`}>
-                                                                        {selectedOptions[groupKey] === item.id && <Check className="w-4 h-4 text-white stroke-[3.5px] animate-in zoom-in duration-300" />}
+                                                                        {selectedOptions[groupKey] === item.id && <Check className="w-6 h-6 text-white stroke-[4px] animate-in zoom-in duration-300" />}
                                                                     </div>
                                                                 </div>
                                                                 <div className="flex gap-4">
@@ -1810,7 +1810,7 @@ export default function SaveDesignModal({
                                                                                 handleSelectOption(groupKey, validItems[0].id);
                                                                             }
                                                                         }}
-                                                                        className={`w-full p-4 rounded-xl border-2 transition-all text-left group flex items-center justify-between ${isSelected ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-black hover:bg-gray-50'}`}
+                                                                        className={`w-full p-5 rounded-xl border-[3px] transition-all text-left group flex items-center justify-between ${isSelected ? 'border-black bg-blue-50/30' : 'border-gray-100 hover:border-black hover:bg-gray-50'}`}
                                                                     >
                                                                         <div className="flex items-center gap-4">
                                                                             {group.thumbnail && (
@@ -1823,9 +1823,13 @@ export default function SaveDesignModal({
                                                                                 <p className="text-sm text-gray-500">{group.priceModifier > 0 ? `NT$ ${group.priceModifier}` : ''}</p>
                                                                             </div>
                                                                         </div>
-                                                                        <div className="flex items-center gap-2 shrink-0">
-                                                                            {isSelected && <Check className="w-4 h-4 text-black" />}
-                                                                            <ChevronRight className={`w-5 h-5 transition-colors ${isSelected ? 'text-black' : 'text-gray-300 group-hover:text-black'}`} />
+                                                                        <div className="flex items-center gap-3 shrink-0">
+                                                                            {isSelected && (
+                                                                                <div className="w-7 h-7 rounded-full bg-black flex items-center justify-center shadow-lg animate-in zoom-in duration-300">
+                                                                                    <Check className="w-4 h-4 text-white stroke-[3px]" />
+                                                                                </div>
+                                                                            )}
+                                                                            <ChevronRight className={`w-6 h-6 transition-colors ${isSelected ? 'text-black' : 'text-gray-300 group-hover:text-black'}`} />
                                                                         </div>
                                                                     </button>
                                                                 </div>
@@ -1942,16 +1946,16 @@ export default function SaveDesignModal({
                                                                                 type="button"
                                                                                 key={item.id}
                                                                                 onClick={() => handleSelectOption(groupKey, item.id)}
-                                                                                className={`relative p-4 rounded-2xl border-[3px] text-left transition-all hover:shadow-lg ${selectedOptions[groupKey] === item.id ? 'border-black bg-blue-50/40 shadow-md scale-[1.01] z-10' : 'border-gray-100 hover:border-gray-300'
+                                                                                className={`relative p-5 rounded-2xl border-[3px] text-left transition-all hover:shadow-xl ${selectedOptions[groupKey] === item.id ? 'border-black bg-blue-50/50 shadow-lg scale-[1.01] z-10' : 'border-gray-100 hover:border-gray-300'
                                                                                     }`}
                                                                             >
                                                                                 <div className="flex gap-4 items-center">
                                                                                     {/* Checkbox UI */}
-                                                                                    <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-colors shadow-sm shrink-0 ${selectedOptions[groupKey] === item.id
-                                                                                        ? 'bg-black border-black'
+                                                                                    <div className={`w-8 h-8 rounded-full border-[3px] flex items-center justify-center transition-all shadow-xl shrink-0 ${selectedOptions[groupKey] === item.id
+                                                                                        ? 'bg-black border-black ring-4 ring-black/10'
                                                                                         : 'border-gray-300 bg-white'
                                                                                         }`}>
-                                                                                        {selectedOptions[groupKey] === item.id && <Check className="w-4 h-4 text-white stroke-[3px]" />}
+                                                                                        {selectedOptions[groupKey] === item.id && <Check className="w-5 h-5 text-white stroke-[4px]" />}
                                                                                     </div>
 
                                                                                     <div
