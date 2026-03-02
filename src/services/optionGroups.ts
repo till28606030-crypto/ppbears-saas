@@ -9,9 +9,19 @@ export async function loadOptionGroups(): Promise<OptionGroup[]> {
 
         // 1. Fetch from Supabase
         const { data: dbGroups, error: errG } = await supabase.from('option_groups').select('*');
-        const { data: dbItems, error: errI } = await supabase.from('option_items')
+
+        let { data: dbItems, error: errI } = await supabase.from('option_items')
             .select('*')
             .order('sort_order', { ascending: true });
+
+        // Fallback if sort_order missing (Postgres error code 42703)
+        if (errI && (errI.code === '42703' || errI.message?.includes('sort_order'))) {
+            console.warn('loadOptionGroups: sort_order column missing, falling back to unsorted fetch');
+            const { data: fallbackData, error: fallbackErr } = await supabase.from('option_items').select('*');
+            if (fallbackErr) throw fallbackErr;
+            dbItems = fallbackData;
+            errI = null; // Clear error since we recovered
+        }
 
         if (errG) throw errG;
         if (errI) throw errI;

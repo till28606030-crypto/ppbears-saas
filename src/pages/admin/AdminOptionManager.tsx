@@ -174,15 +174,27 @@ export default function AdminOptionManager() {
             try {
                 // 1. Fetch from Supabase
                 const { data: dbGroups, error: errG } = await supabase.from('option_groups').select('*');
-                const { data: dbItems, error: errI } = await supabase.from('option_items')
+
+                // Try sorted fetch for items
+                let { data: dbItems, error: errI } = await supabase.from('option_items')
                     .select('*')
                     .order('sort_order', { ascending: true });
 
-                if (errG) {
-                    if (!errG.message?.includes('AbortError')) console.error('Error loading groups:', errG);
+                // Fallback if sort_order column is missing (Postgres error code 42703)
+                if (errI && (errI.code === '42703' || errI.message?.includes('sort_order'))) {
+                    console.warn('sort_order column missing, falling back to unsorted fetch');
+                    const { data: fallbackData, error: fallbackErr } = await supabase.from('option_items').select('*');
+                    if (!fallbackErr) {
+                        dbItems = fallbackData;
+                        errI = null;
+                    }
                 }
-                if (errI) {
-                    if (!errI.message?.includes('AbortError')) console.error('Error loading items:', errI);
+
+                if (errG && !errG.message?.includes('AbortError')) {
+                    console.error('Error loading groups:', errG);
+                }
+                if (errI && !errI.message?.includes('AbortError')) {
+                    console.error('Error loading items:', errI);
                 }
 
                 // DB has data
@@ -195,11 +207,15 @@ export default function AdminOptionManager() {
 
             } catch (error) {
                 console.error('Critical error loading data:', error);
-                alert('載入資料發生錯誤，請檢查網路連線');
+                // @ts-ignore
+                if (!error?.message?.includes('AbortError')) {
+                    alert('載入資料發生錯誤，請檢查網路連線');
+                }
             } finally {
                 setLoading(false);
             }
         };
+
         load();
     }, []);
 
