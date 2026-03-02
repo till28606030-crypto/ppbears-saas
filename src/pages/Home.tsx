@@ -1112,16 +1112,19 @@ export default function Home() {
             const timeoutId = setTimeout(() => controller.abort(), 30000);
 
             try {
+                const payload = {
+                    product_id: WOOCOMMERCE_PRODUCT_ID,
+                    price: finalPrice,
+                    design_id: designId,
+                    product_name: currentProduct?.name || '客製化商品',
+                    options: finalOptions,
+                };
+                console.log('[Cart] Calling WP add-to-cart API with payload:', JSON.stringify(payload, null, 2));
+
                 const response = await fetch(`${WOOCOMMERCE_URL}/wp-json/ppbears/v1/add-to-cart`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        product_id: WOOCOMMERCE_PRODUCT_ID,
-                        price: finalPrice,
-                        design_id: designId,
-                        product_name: currentProduct?.name || '客製化商品',
-                        options: finalOptions,
-                    }),
+                    body: JSON.stringify(payload),
                     credentials: 'include',
                     signal: controller.signal
                 });
@@ -1146,20 +1149,26 @@ export default function Home() {
                         await idbSet('mock_orders', [newOrder, ...existingOrders]);
                         console.log('[Cart] Order saved to mock_orders:', newOrder);
 
-                        // window.location.href = result.checkout_url;
-                        // Instead of redirecting, set success state to show choice dialog
                         setCheckoutUrl(result.checkout_url);
                         setCartStatus('success');
-                        setShowCheckout(false); // Close the options modal
+                        setShowCheckout(false);
                         return;
                     } else {
                         throw new Error(result.message || '無法獲取結帳連結');
                     }
                 }
 
-                // API failed
-                const errText = await response.text().catch(() => '');
-                throw new Error(`伺服器錯誤 (${response.status}): ${errText}`);
+                // API failed - Capture details
+                let errDetails = '';
+                try {
+                    const errJson = await response.clone().json();
+                    errDetails = JSON.stringify(errJson, null, 2);
+                    console.error('[Cart] WP API error JSON:', errJson);
+                } catch (e) {
+                    errDetails = await response.text().catch(() => 'Unknown error');
+                    console.error('[Cart] WP API error text:', errDetails);
+                }
+                throw new Error(`伺服器錯誤 (${response.status}): ${errDetails}`);
             } catch (apiErr: any) {
                 if (apiErr.name === 'AbortError') {
                     throw new Error('加入購物車超時 (30秒)，請重新嘗試。');
@@ -1175,10 +1184,21 @@ export default function Home() {
 
             // 如果遇到 500 錯誤（通常是 WooCommerce Session 暫存衝突）
             if (error.message.includes('500') || error.message.includes('伺服器錯誤')) {
-                // REMOVED: Destruction cookie clearing that was wiping out previous cart items.
-                // Preserving the session is better for multi-item multi-tasking.
+                console.warn('[Cart] 500 Error detected. Attempting to clear WooCommerce session cookie for recovery.');
 
-                alert(`系統遭遇結帳暫存衝突 (伺服器錯誤 500)。\n為確保您的圖案安全，系統將保留您的設計，並為您重新整理頁面。\n\n【請放心，您的設計圖層已保存，重新整理後只需「重新選擇商品規格」即可正常結帳！】`);
+                // Try clearing local session cookies that might be causing conflicts
+                try {
+                    document.cookie.split(";").forEach((c) => {
+                        const cookieName = c.split("=")[0].trim();
+                        if (cookieName.startsWith("wp_woocommerce_session_") || cookieName === "woocommerce_items_in_cart") {
+                            document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+                        }
+                    });
+                } catch (cookieErr) {
+                    console.error('[Cart] Failed to clear cookies:', cookieErr);
+                }
+
+                alert(`系統遭遇結帳暫存衝突 (伺服器錯誤 500)。\n為確保您的圖案安全，系統已嘗試清除衝突緩存，並保留您的設計。\n\n【請放心，您的設計圖層已保存，重新整理後只需「重新選擇商品規格」即可正常結帳！】`);
 
                 // 強制跳出並重選（帶上 load_design_id 保留客戶心血）
                 const url = new URL(window.location.href);

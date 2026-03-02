@@ -1634,9 +1634,9 @@ export default function SaveDesignModal({
                                                                                 key={item.id}
                                                                                 type="button"
                                                                                 onClick={() => handleSelectOption(groupKey, item.id)}
-                                                                                className={`relative flex flex-col items-center p-2 rounded-xl border-2 transition-all ${isSelected
-                                                                                        ? 'border-black bg-white shadow-sm'
-                                                                                        : 'border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50'
+                                                                                className={`relative flex flex-col items-center p-3 rounded-2xl border-[3px] transition-all duration-300 ${isSelected
+                                                                                    ? 'border-black bg-blue-50/30 shadow-md scale-[1.02] z-10'
+                                                                                    : 'border-gray-100 bg-white hover:border-gray-300 hover:shadow-sm'
                                                                                     }`}
                                                                             >
                                                                                 {item.imageUrl ? (
@@ -1663,11 +1663,15 @@ export default function SaveDesignModal({
                                                                                         </div>
                                                                                     )}
                                                                                 </div>
-                                                                                {isSelected && (
-                                                                                    <div className="absolute top-2 right-2 bg-black text-white rounded-full p-0.5">
-                                                                                        <Check className="w-3 h-3" />
+                                                                                {/* Standard Radio Indicator */}
+                                                                                <div className="absolute top-4 right-4 flex items-center justify-center">
+                                                                                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${isSelected
+                                                                                        ? 'border-black bg-black shadow-md scale-110'
+                                                                                        : 'border-gray-300 bg-white group-hover:border-gray-400'
+                                                                                        }`}>
+                                                                                        {isSelected && <Check className="w-4 h-4 text-white stroke-[3.5px] animate-in zoom-in duration-300" />}
                                                                                     </div>
-                                                                                )}
+                                                                                </div>
                                                                             </button>
                                                                         );
                                                                     })}
@@ -1680,8 +1684,19 @@ export default function SaveDesignModal({
                                                                 type="button"
                                                                 key={item.id}
                                                                 onClick={() => handleSelectOption(groupKey, item.id)}
-                                                                className={`relative p-4 rounded-xl border-2 text-left transition-all group hover:shadow-md ${selectedOptions[groupKey] === item.id ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-gray-300'}`}
+                                                                className={`relative p-4 rounded-2xl border-[3px] text-left transition-all group hover:shadow-lg ${selectedOptions[groupKey] === item.id
+                                                                    ? 'border-black bg-blue-50/40 shadow-md scale-[1.01] z-10'
+                                                                    : 'border-gray-100 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
                                                             >
+                                                                {/* Standard Radio Indicator for Horizontal Cards */}
+                                                                <div className="absolute top-6 right-6 flex items-center justify-center">
+                                                                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${selectedOptions[groupKey] === item.id
+                                                                        ? 'border-black bg-black shadow-md scale-110'
+                                                                        : 'border-gray-300 bg-white group-hover:border-gray-400'
+                                                                        }`}>
+                                                                        {selectedOptions[groupKey] === item.id && <Check className="w-4 h-4 text-white stroke-[3.5px] animate-in zoom-in duration-300" />}
+                                                                    </div>
+                                                                </div>
                                                                 <div className="flex gap-4">
                                                                     <div
                                                                         className="relative w-20 h-20 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center group/img cursor-pointer"
@@ -1707,7 +1722,7 @@ export default function SaveDesignModal({
                                                                     <div className="flex-1">
                                                                         <div className="flex justify-between items-start">
                                                                             <h3 className="font-bold text-gray-900">{item.name}</h3>
-                                                                            {selectedOptions[groupKey] === item.id && <div className="bg-black text-white rounded-full p-1"><Check className="w-3 h-3" /></div>}
+                                                                            {/* Removed redundant indicator here as it's now absolute positioned at top-right */}
                                                                         </div>
                                                                         <div className="mt-3 font-medium text-blue-600">{item.priceModifier > 0 ? `NT$ ${item.priceModifier}` : ''}</div>
                                                                     </div>
@@ -1927,16 +1942,16 @@ export default function SaveDesignModal({
                                                                                 type="button"
                                                                                 key={item.id}
                                                                                 onClick={() => handleSelectOption(groupKey, item.id)}
-                                                                                className={`relative p-4 rounded-xl border-2 text-left transition-all hover:shadow-md ${selectedOptions[groupKey] === item.id ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-gray-300'
+                                                                                className={`relative p-4 rounded-2xl border-[3px] text-left transition-all hover:shadow-lg ${selectedOptions[groupKey] === item.id ? 'border-black bg-blue-50/40 shadow-md scale-[1.01] z-10' : 'border-gray-100 hover:border-gray-300'
                                                                                     }`}
                                                                             >
                                                                                 <div className="flex gap-4 items-center">
                                                                                     {/* Checkbox UI */}
-                                                                                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors shrink-0 ${selectedOptions[groupKey] === item.id
+                                                                                    <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-colors shadow-sm shrink-0 ${selectedOptions[groupKey] === item.id
                                                                                         ? 'bg-black border-black'
                                                                                         : 'border-gray-300 bg-white'
                                                                                         }`}>
-                                                                                        {selectedOptions[groupKey] === item.id && <Check className="w-4 h-4 text-white" />}
+                                                                                        {selectedOptions[groupKey] === item.id && <Check className="w-4 h-4 text-white stroke-[3px]" />}
                                                                                     </div>
 
                                                                                     <div
