@@ -14,8 +14,8 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $DistPath = Join-Path $ProjectRoot "dist"
 $FtpHost = "178.16.135.30"
-$FtpUser = "u141631622.ppbears.com"
-$FtpRemotePath = "/public_html/design/"
+$FtpUser = "u141631622.czcz28606030"
+$FtpRemotePath = "/"
 
 # --- 顏色輸出 helpers ---
 function Write-Step { param([string]$msg) Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
@@ -104,9 +104,12 @@ Write-Step "步驟 4: FTP 上傳到 Hostinger /design/"
 # 嘗試找 WinSCP
 $winscpPaths = @(
     "C:\Program Files (x86)\WinSCP\WinSCP.com",
-    "C:\Program Files\WinSCP\WinSCP.com",
-    (Get-Command winscp.com -ErrorAction SilentlyContinue)?.Source
+    "C:\Program Files\WinSCP\WinSCP.com"
 )
+$winscpCmd = Get-Command winscp.com -ErrorAction SilentlyContinue
+if ($winscpCmd) {
+    $winscpPaths += $winscpCmd.Source
+}
 $winscpExe = $winscpPaths | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 
 if (-not $winscpExe) {
@@ -118,12 +121,23 @@ if (-not $winscpExe) {
 }
 
 Write-Host "  使用 WinSCP: $winscpExe" -ForegroundColor Gray
-& $winscpExe /command `
-    "open ftp://${FtpUser}:${FtpPassword}@${FtpHost}/" `
-    "synchronize remote `"$DistPath`" `"$FtpRemotePath`" -delete" `
-    "exit"
 
-if ($LASTEXITCODE -ne 0) { Write-Fail "WinSCP 上傳失敗，請檢查 FTP 密碼與連線！" }
+# 將密碼進行 URL Encoding，避免特殊字元解析失敗
+$encPass = [Uri]::EscapeDataString($FtpPassword)
+$winscpScript = "C:\Temp\winscp_deploy_script.txt"
+$scriptContent = @"
+option batch abort
+option confirm off
+open ftp://${FtpUser}:${encPass}@${FtpHost}/
+synchronize remote `"$DistPath`" `"$FtpRemotePath`" -delete
+exit
+"@
+$scriptContent | Out-File -FilePath $winscpScript -Encoding ASCII
+
+& $winscpExe /script=$winscpScript /log="C:\Temp\winscp_deploy.log"
+
+if ($LASTEXITCODE -ne 0) { Write-Fail "WinSCP 上傳失敗，請檢查 FTP 密碼與連線！查看日誌 C:\Temp\winscp_deploy.log" }
+if (Test-Path $winscpScript) { Remove-Item $winscpScript -Force }
 Write-OK "FTP 上傳完成"
 
 # =============================================
