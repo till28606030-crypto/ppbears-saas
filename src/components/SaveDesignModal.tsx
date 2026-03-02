@@ -1472,7 +1472,7 @@ export default function SaveDesignModal({
                                                     const ui = getUI(group);
                                                     const descriptionImages = ui?.descriptionImages || (ui?.descriptionImage ? [ui.descriptionImage] : []);
 
-                                                    if (!descriptionImages || descriptionImages.length === 0) return null;
+                                                    if (!ui?.description && (!descriptionImages || descriptionImages.length === 0)) return null;
 
                                                     return (
                                                         <>
@@ -1623,6 +1623,58 @@ export default function SaveDesignModal({
 
                                                         const groupKey = getGroupKey(group);
                                                         const validItems = getFilteredItems(group.id);
+
+                                                        if (displayType === 'checkbox') {
+                                                            return (
+                                                                <div className="col-span-1 sm:col-span-2 grid grid-cols-2 md:grid-cols-3 gap-3">
+                                                                    {validItems.map(item => {
+                                                                        const isSelected = selectedOptions[groupKey] === item.id;
+                                                                        return (
+                                                                            <button
+                                                                                key={item.id}
+                                                                                type="button"
+                                                                                onClick={() => handleSelectOption(groupKey, item.id)}
+                                                                                className={`relative flex flex-col items-center p-2 rounded-xl border-2 transition-all ${isSelected
+                                                                                        ? 'border-black bg-white shadow-sm'
+                                                                                        : 'border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50'
+                                                                                    }`}
+                                                                            >
+                                                                                {item.imageUrl ? (
+                                                                                    <div className="w-full aspect-square rounded-lg overflow-hidden bg-gray-100 mb-2 group/img cursor-pointer" onClick={(e) => { e.preventDefault(); e.stopPropagation(); openLightbox([item.imageUrl!], 0); }}>
+                                                                                        <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover transition-transform group-hover/img:scale-105" />
+                                                                                        <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors flex items-center justify-center">
+                                                                                            <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover/img:opacity-100 drop-shadow-md" />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <div className="w-full aspect-square rounded-lg overflow-hidden bg-white border border-gray-100 mb-2 flex items-center justify-center">
+                                                                                        {item.colorHex ? (
+                                                                                            <div className="w-full h-full" style={{ backgroundColor: item.colorHex }} />
+                                                                                        ) : (
+                                                                                            <span className="text-gray-300 text-xs">無圖片</span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                )}
+                                                                                <div className="text-center w-full">
+                                                                                    <div className="text-sm font-bold text-gray-900 truncate w-full">{item.name}</div>
+                                                                                    {item.priceModifier > 0 && (
+                                                                                        <div className="text-xs font-semibold text-blue-600 mt-1">
+                                                                                            +NT$ {item.priceModifier}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                                {isSelected && (
+                                                                                    <div className="absolute top-2 right-2 bg-black text-white rounded-full p-0.5">
+                                                                                        <Check className="w-3 h-3" />
+                                                                                    </div>
+                                                                                )}
+                                                                            </button>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            );
+                                                        }
+
                                                         return validItems.map(item => (
                                                             <button
                                                                 type="button"
@@ -1731,7 +1783,7 @@ export default function SaveDesignModal({
                                                             const isSelected = !!selectedOptions[groupKey];
 
                                                             return (
-                                                                <div key={group.id} className="mb-2">
+                                                                <div key={group.id} className="mb-4">
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => {
@@ -1758,7 +1810,7 @@ export default function SaveDesignModal({
                                                                         </div>
                                                                         <div className="flex items-center gap-2 shrink-0">
                                                                             {isSelected && <Check className="w-4 h-4 text-black" />}
-                                                                            <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-black transition-colors" />
+                                                                            <ChevronRight className={`w-5 h-5 transition-colors ${isSelected ? 'text-black' : 'text-gray-300 group-hover:text-black'}`} />
                                                                         </div>
                                                                     </button>
                                                                 </div>
@@ -1782,6 +1834,9 @@ export default function SaveDesignModal({
                                                                     // Check if any group in this category has a selection
                                                                     const selectedInCat = groups.find(g => !!selectedOptions[getGroupKey(g)]);
                                                                     const selectedGroup = selectedInCat ? selectedInCat : null;
+
+                                                                    // Use the first group in the category to get the UI description for the category
+                                                                    const catUi = groups.length > 0 ? getUI(groups[0]) : null;
 
                                                                     return (
                                                                         <div key={cat} className="mb-3">
@@ -2475,42 +2530,44 @@ export default function SaveDesignModal({
                 )}
             </div>
 
-            {zoomedImageList.length > 0 && (
-                <div className="fixed inset-0 z-[100002] bg-black/95 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={closeLightbox}>
-                    <div className="relative w-full max-w-5xl h-full max-h-[90vh] flex items-center justify-center">
-                        <button onClick={closeLightbox} className="absolute top-2 right-2 md:top-0 md:-right-12 text-white/80 hover:text-white p-2 z-30 transition-colors bg-black/40 rounded-full md:bg-transparent backdrop-blur-sm md:backdrop-blur-none">
-                            <X className="w-6 h-6 md:w-8 md:h-8 drop-shadow-md" />
-                        </button>
+            {
+                zoomedImageList.length > 0 && (
+                    <div className="fixed inset-0 z-[100002] bg-black/95 flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={closeLightbox}>
+                        <div className="relative w-full max-w-5xl h-full max-h-[90vh] flex items-center justify-center">
+                            <button onClick={closeLightbox} className="absolute top-2 right-2 md:top-0 md:-right-12 text-white/80 hover:text-white p-2 z-30 transition-colors bg-black/40 rounded-full md:bg-transparent backdrop-blur-sm md:backdrop-blur-none">
+                                <X className="w-6 h-6 md:w-8 md:h-8 drop-shadow-md" />
+                            </button>
+
+                            {zoomedImageList.length > 1 && (
+                                <button onClick={handlePrevImage} className="absolute left-2 md:-left-12 text-white/80 hover:text-white p-2 z-30 transition-colors bg-black/40 rounded-full md:bg-transparent flex items-center justify-center backdrop-blur-sm md:backdrop-blur-none">
+                                    <ChevronLeft className="w-8 h-8 md:w-12 md:h-12 drop-shadow-lg" />
+                                </button>
+                            )}
+
+                            <img
+                                src={zoomedImageList[zoomedImageIndex]}
+                                alt={`Zoomed ${zoomedImageIndex + 1}`}
+                                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl relative z-10"
+                                onClick={(e) => e.stopPropagation()}
+                                style={{ maxHeight: '90vh' }}
+                            />
+
+                            {zoomedImageList.length > 1 && (
+                                <button onClick={handleNextImage} className="absolute right-2 md:-right-12 text-white/80 hover:text-white p-2 z-30 transition-colors bg-black/40 rounded-full md:bg-transparent flex items-center justify-center backdrop-blur-sm md:backdrop-blur-none">
+                                    <ChevronRight className="w-8 h-8 md:w-12 md:h-12 drop-shadow-lg" />
+                                </button>
+                            )}
+                        </div>
 
                         {zoomedImageList.length > 1 && (
-                            <button onClick={handlePrevImage} className="absolute left-2 md:-left-12 text-white/80 hover:text-white p-2 z-30 transition-colors bg-black/40 rounded-full md:bg-transparent flex items-center justify-center backdrop-blur-sm md:backdrop-blur-none">
-                                <ChevronLeft className="w-8 h-8 md:w-12 md:h-12 drop-shadow-lg" />
-                            </button>
-                        )}
-
-                        <img
-                            src={zoomedImageList[zoomedImageIndex]}
-                            alt={`Zoomed ${zoomedImageIndex + 1}`}
-                            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl relative z-10"
-                            onClick={(e) => e.stopPropagation()}
-                            style={{ maxHeight: '90vh' }}
-                        />
-
-                        {zoomedImageList.length > 1 && (
-                            <button onClick={handleNextImage} className="absolute right-2 md:-right-12 text-white/80 hover:text-white p-2 z-30 transition-colors bg-black/40 rounded-full md:bg-transparent flex items-center justify-center backdrop-blur-sm md:backdrop-blur-none">
-                                <ChevronRight className="w-8 h-8 md:w-12 md:h-12 drop-shadow-lg" />
-                            </button>
+                            <div className="absolute bottom-6 left-0 right-0 text-center text-white/60 text-sm font-bold tracking-[0.2em] drop-shadow-sm z-20 select-none">
+                                {zoomedImageIndex + 1} / {zoomedImageList.length}
+                            </div>
                         )}
                     </div>
-
-                    {zoomedImageList.length > 1 && (
-                        <div className="absolute bottom-6 left-0 right-0 text-center text-white/60 text-sm font-bold tracking-[0.2em] drop-shadow-sm z-20 select-none">
-                            {zoomedImageIndex + 1} / {zoomedImageList.length}
-                        </div>
-                    )}
-                </div>
-            )}
-        </div>,
+                )
+            }
+        </div >,
         document.body
     );
 }
