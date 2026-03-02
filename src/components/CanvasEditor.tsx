@@ -854,6 +854,8 @@ export interface CanvasEditorRef {
     removeBackgroundFromSelection: () => Promise<void>;
     setBackgroundImage: (url: string) => Promise<void> | void;
     insertImageFromSrc: (src: string) => Promise<void>;
+    clearCanvas: () => void;
+    confirmClearCanvas: () => void;
     getCanvasJSON: () => object;
     restoreFromJSON: (json: object | string) => Promise<void | boolean>;
     clearDraft: () => void;
@@ -2981,6 +2983,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
     useImperativeHandle(ref, () => ({
         insertImageFromSrc: handleInsertImageFromSrc,
+        clearCanvas: clearCanvas,
+        confirmClearCanvas: confirmClearCanvas,
         getCanvasJSON: () => {
             const canvas = fabricCanvas.current;
             if (!canvas) return {};

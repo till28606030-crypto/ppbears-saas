@@ -114,6 +114,8 @@ export default function Home() {
     })();
 
     const [designId, setDesignId] = useState('');
+    const [cartStatus, setCartStatus] = useState<'idle' | 'success' | 'checking_out'>('idle');
+    const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [isCropping, setIsCropping] = useState(false);
     const [hasClipPath, setHasClipPath] = useState(false);
@@ -1144,9 +1146,11 @@ export default function Home() {
                         await idbSet('mock_orders', [newOrder, ...existingOrders]);
                         console.log('[Cart] Order saved to mock_orders:', newOrder);
 
-                        window.location.href = result.checkout_url;
-                        // 讓 Promise 永遠不 resolve，這樣外層的 finally { setIsSubmitting(false) } 就不會執行，保持載入動畫直到跳轉完成
-                        await new Promise(() => { });
+                        // window.location.href = result.checkout_url;
+                        // Instead of redirecting, set success state to show choice dialog
+                        setCheckoutUrl(result.checkout_url);
+                        setCartStatus('success');
+                        setShowCheckout(false); // Close the options modal
                         return;
                     } else {
                         throw new Error(result.message || '無法獲取結帳連結');
@@ -1171,20 +1175,8 @@ export default function Home() {
 
             // 如果遇到 500 錯誤（通常是 WooCommerce Session 暫存衝突）
             if (error.message.includes('500') || error.message.includes('伺服器錯誤')) {
-                try {
-                    // 清除 wp_woocommerce_session_ 開頭的所有 cookie 來強制重置購物車連線
-                    const cookies = document.cookie.split(';');
-                    for (let i = 0; i < cookies.length; i++) {
-                        const cookie = cookies[i];
-                        const eqPos = cookie.indexOf('=');
-                        const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
-                        if (name.startsWith('wp_woocommerce_session_')) {
-                            document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-                            document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.' + window.location.hostname;
-                            document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=' + window.location.hostname;
-                        }
-                    }
-                } catch (e) { console.error('Failed to clear WC cookies', e); }
+                // REMOVED: Destruction cookie clearing that was wiping out previous cart items.
+                // Preserving the session is better for multi-item multi-tasking.
 
                 alert(`系統遭遇結帳暫存衝突 (伺服器錯誤 500)。\n為確保您的圖案安全，系統將保留您的設計，並為您重新整理頁面。\n\n【請放心，您的設計圖層已保存，重新整理後只需「重新選擇商品規格」即可正常結帳！】`);
 
@@ -1197,6 +1189,21 @@ export default function Home() {
                 alert(`處理失敗: ${error.message}\n\n請查看瀏覽器 Console (F12) 了解詳細錯誤訊息。`);
             }
         }
+    };
+
+    const handleContinueShopping = () => {
+        // Clear current design to prevent accidental double purchase of same design
+        if (canvasRef.current) {
+            canvasRef.current.clearCanvas();
+        }
+        setPreviewImage(null);
+        setUploadedImage(null);
+        setDesignId(generateDesignId());
+        setCartStatus('idle');
+        setCheckoutUrl(null);
+        setActivePanel('none');
+        // Option: Return to shop or keep editing
+        // For better multi-tasking, we keep them on the editor but with empty canvas
     };
 
 
@@ -2110,6 +2117,37 @@ export default function Home() {
                                     暫時不需要
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Cart Success Overlay */}
+            {cartStatus === 'success' && (
+                <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl scale-in-center animate-in zoom-in-95 duration-200">
+                        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <Check className="w-10 h-10 text-green-600" />
+                        </div>
+                        <h3 className="text-2xl font-bold mb-2">已成功加入購物車</h3>
+                        <p className="text-gray-500 mb-8">您的設計已成功保存並加入清單，您可以繼續設計下一款商品，或直接結帳。</p>
+
+                        <div className="flex flex-col gap-3">
+                            <button
+                                onClick={() => {
+                                    if (checkoutUrl) window.location.href = checkoutUrl;
+                                }}
+                                className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2"
+                            >
+                                <ShoppingCart className="w-5 h-5" />
+                                立即結帳
+                            </button>
+                            <button
+                                onClick={handleContinueShopping}
+                                className="w-full py-4 border-2 border-gray-200 text-gray-700 rounded-xl font-bold text-lg hover:bg-gray-50 transition-all active:scale-95"
+                            >
+                                繼續設計下一款
+                            </button>
                         </div>
                     </div>
                 </div>
