@@ -641,30 +641,11 @@ export default function AdminOptionManager() {
             return;
         }
 
-        // Update Local State & Database Exclusivity
-        if (groupToSave.isDefault) {
-            const currentStep = groupToSave.uiConfig?.step || 1;
-            const otherGroupsInStep = groups.filter(g => (g.uiConfig?.step || 1) === currentStep && g.id !== groupToSave.id);
-
-            // Clear others in DB
-            for (const g of otherGroupsInStep) {
-                if (g.isDefault) {
-                    await supabase.from('option_groups').update({ is_default: false }).eq('id', g.id);
-                }
-            }
-
-            // Update local state by clearing others
-            setGroups(prev => prev.map(g => {
-                if (g.id === groupToSave.id) return groupToSave;
-                if ((g.uiConfig?.step || 1) === currentStep) return { ...g, isDefault: false };
-                return g;
-            }));
+        // Update Local State
+        if (editingGroupData.id) {
+            setGroups(prev => prev.map(g => g.id === groupToSave.id ? groupToSave : g));
         } else {
-            if (editingGroupData.id) {
-                setGroups(prev => prev.map(g => g.id === groupToSave.id ? groupToSave : g));
-            } else {
-                setGroups(prev => [...prev, groupToSave]);
-            }
+            setGroups(prev => [...prev, groupToSave]);
         }
 
         setIsEditingGroup(false);
@@ -791,30 +772,11 @@ export default function AdminOptionManager() {
             return;
         }
 
-        // Update Local State & Database Exclusivity
-        if (itemToSave.isDefault) {
-            const parentId = itemToSave.parentId;
-            const otherItemsInParent = items.filter(i => i.parentId === parentId && i.id !== itemToSave.id);
-
-            // Clear others in DB
-            for (const i of otherItemsInParent) {
-                if (i.isDefault) {
-                    await supabase.from('option_items').update({ is_default: false }).eq('id', i.id);
-                }
-            }
-
-            // Update local state
-            setItems(prev => prev.map(i => {
-                if (i.id === itemToSave.id) return itemToSave;
-                if (i.parentId === parentId) return { ...i, isDefault: false };
-                return i;
-            }));
+        // Update Local State
+        if (editingItemData.id) {
+            setItems(prev => prev.map(i => i.id === itemToSave.id ? itemToSave : i));
         } else {
-            if (editingItemData.id) {
-                setItems(prev => prev.map(i => i.id === itemToSave.id ? itemToSave : i));
-            } else {
-                setItems(prev => [...prev, itemToSave]);
-            }
+            setItems(prev => [...prev, itemToSave]);
         }
 
         setIsEditingItem(false);
@@ -842,36 +804,15 @@ export default function AdminOptionManager() {
         const group = groups.find(g => g.id === groupId);
         if (!group) return;
 
-        const currentStep = group.uiConfig?.step || 1;
-
-        // If setting to true, un-default others in the same step
-        let updatedGroups = groups.map(g => {
-            if (isDefault && (g.uiConfig?.step || 1) === currentStep && g.id !== groupId) {
-                return { ...g, isDefault: false };
-            }
-            if (g.id === groupId) {
-                return { ...g, isDefault: isDefault };
-            }
-            return g;
-        });
-
-        setGroups(updatedGroups);
+        // Update local state
+        setGroups(prev => prev.map(g => g.id === groupId ? { ...g, isDefault } : g));
 
         // Save to DB
         try {
-            if (isDefault) {
-                // Bulk update to clear others in same step (simplistic way)
-                for (const g of updatedGroups) {
-                    if ((g.uiConfig?.step || 1) === currentStep) {
-                        await supabase.from('option_groups').update({ is_default: g.isDefault }).eq('id', g.id);
-                    }
-                }
-            } else {
-                await supabase.from('option_groups').update({ is_default: false }).eq('id', groupId);
-            }
+            await supabase.from('option_groups').update({ is_default: isDefault }).eq('id', groupId);
         } catch (err: any) {
             console.error('Failed to update group default:', err);
-            alert('設定預設失敗 (需確認資料庫是否有 is_default 欄位): ' + err.message);
+            alert('設定預設失敗: ' + err.message);
         }
     };
 
@@ -879,35 +820,15 @@ export default function AdminOptionManager() {
         const item = items.find(i => i.id === itemId);
         if (!item) return;
 
-        const parentId = item.parentId;
-
-        // If setting to true, un-default others in same parent
-        let updatedItems = items.map(i => {
-            if (isDefault && i.parentId === parentId && i.id !== itemId) {
-                return { ...i, isDefault: false };
-            }
-            if (i.id === itemId) {
-                return { ...i, isDefault: isDefault };
-            }
-            return i;
-        });
-
-        setItems(updatedItems);
+        // Update local state
+        setItems(prev => prev.map(i => i.id === itemId ? { ...i, isDefault } : i));
 
         // Save to DB
         try {
-            if (isDefault) {
-                for (const i of updatedItems) {
-                    if (i.parentId === parentId) {
-                        await supabase.from('option_items').update({ is_default: i.isDefault }).eq('id', i.id);
-                    }
-                }
-            } else {
-                await supabase.from('option_items').update({ is_default: false }).eq('id', itemId);
-            }
+            await supabase.from('option_items').update({ is_default: isDefault }).eq('id', itemId);
         } catch (err: any) {
             console.error('Failed to update item default:', err);
-            alert('設定子項預設失敗 (需確認資料庫是否有 is_default 欄位): ' + err.message);
+            alert('設定子項預設失敗: ' + err.message);
         }
     };
 

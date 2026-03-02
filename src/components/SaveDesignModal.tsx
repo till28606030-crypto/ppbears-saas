@@ -544,30 +544,35 @@ export default function SaveDesignModal({
                         }
                     });
 
-                    // 2. 處理大類 (OptionGroup) 的預設值 (Step 1)
                     const step1Groups = filteredGroups.filter(g => getStep(g) === 1);
-                    const defaultStep1Group = step1Groups.find(g => g.isDefault);
+                    const defaultGroups = filteredGroups.filter(g => g.isDefault);
 
-                    if (defaultStep1Group) {
-                        console.log(`[Default] Found default group for Step 1: ${defaultStep1Group.name}`);
-                        setSelectedCaseGroupId(defaultStep1Group.id);
-                        setActiveCaseGroupId(defaultStep1Group.id);
-
-                        // 如果該大類是 list 型態且尚未選中任何子項，嘗試選中其第一個子項
-                        const ui = getUI(defaultStep1Group);
-                        const dt = normalizeDisplayType(ui.displayType || ui.display_type);
-                        const gKey = getGroupKey(defaultStep1Group);
-
-                        if (dt === 'list' && !initialSelections[gKey]) {
-                            const groupItems = allItems.filter(i => i.parentId === defaultStep1Group.id);
-                            if (groupItems.length > 0) {
-                                initialSelections[gKey] = groupItems[0].id;
+                    if (defaultGroups.length > 0) {
+                        defaultGroups.forEach(g => {
+                            const gKey = getGroupKey(g);
+                            if (!initialSelections[gKey]) {
+                                // 找尋子項中的預設值，若無則挑選第一個
+                                const groupItems = allItems.filter(i => i.parentId === g.id);
+                                const defaultItem = groupItems.find(i => i.isDefault) || groupItems[0];
+                                if (defaultItem) {
+                                    initialSelections[gKey] = defaultItem.id;
+                                    console.log(`[Default] Pre-selected item ${defaultItem.name} for group ${g.name}`);
+                                }
                             }
+
+                            // 針對 Step 1，選中第一個預設群組為 Active (用於展開細節)
+                            if (getStep(g) === 1 && !activeCaseGroupId) {
+                                console.log(`[Default] Setting ${g.name} as active Step 1 group`);
+                                setSelectedCaseGroupId(g.id);
+                                setActiveCaseGroupId(g.id);
+                            }
+                        });
+                    } else {
+                        // 降級處理：若無預設，則在 Step 1 只有一個群組時自動展開
+                        if (step1Groups.length === 1) {
+                            setSelectedCaseGroupId(step1Groups[0].id);
+                            setActiveCaseGroupId(step1Groups[0].id);
                         }
-                    } else if (step1Groups.length === 1) {
-                        // 如果只有一個群組，自動選中它
-                        setSelectedCaseGroupId(step1Groups[0].id);
-                        setActiveCaseGroupId(step1Groups[0].id);
                     }
 
                     if (Object.keys(initialSelections).length > 0) {
@@ -893,11 +898,15 @@ export default function SaveDesignModal({
 
             // Step1：維持「必選」+ 同層互斥
             if (isStep1) {
+                const myCategory = (getUI(group)?.category || '').trim();
                 (stepGroups.get(1) || []).forEach(g => {
-                    const k = getGroupKey(g);
-                    if (k !== groupKey) {
-                        delete next[k];
-                        clearSubAttributes(k);
+                    const otherCategory = (getUI(g)?.category || '').trim();
+                    if (myCategory === otherCategory) {
+                        const k = getGroupKey(g);
+                        if (k !== groupKey) {
+                            delete next[k];
+                            clearSubAttributes(k);
+                        }
                     }
                 });
                 next[groupKey] = itemId;
