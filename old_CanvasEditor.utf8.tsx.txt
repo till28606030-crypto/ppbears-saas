@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback } from 'react';
+﻿import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { apiUrl } from '../lib/apiBase';
 import {
@@ -278,9 +278,9 @@ function isPathLike(o: AnyObj) {
 }
 
 /** 
- * 取「真正的愛心 mask」，避免拿到 boundary。 
- * - 若 obj.clipPath 是 path 且 obj.clipPath.clipPath 是 rect => mask = obj.clipPath 
- * - 若 obj.clipPath 是 rect 且 obj.clipPath.clipPath 是 path => mask = obj.clipPath.clipPath 
+ * ??甇???? mask???踹??踹 boundary??
+ * - ??obj.clipPath ??path 銝?obj.clipPath.clipPath ??rect => mask = obj.clipPath 
+ * - ??obj.clipPath ??rect 銝?obj.clipPath.clipPath ??path => mask = obj.clipPath.clipPath 
  */
 function getHeartMask(obj: AnyObj): FabricObject | null {
     const cp = obj?.clipPath as AnyObj | undefined;
@@ -288,13 +288,13 @@ function getHeartMask(obj: AnyObj): FabricObject | null {
 
     const nested = cp.clipPath as AnyObj | undefined;
 
-    // 常見：mask(path) 外層，nested 是 boundary(rect) 
+    // 撣貉?嚗ask(path) 憭惜嚗ested ??boundary(rect) 
     if (isPathLike(cp) && nested && isRect(nested)) return cp;
 
-    // 另一種：boundary(rect) 外層，nested 是 mask(path) 
+    // ?虫?蝔殷?boundary(rect) 憭惜嚗ested ??mask(path) 
     if (isRect(cp) && nested && isPathLike(nested)) return nested;
 
-    // fallback：盡量回傳 path-like 
+    // fallback嚗????path-like 
     if (isPathLike(cp)) return cp;
     if (nested && isPathLike(nested)) return nested;
 
@@ -304,11 +304,11 @@ function getHeartMask(obj: AnyObj): FabricObject | null {
 function ensureMaskCenteredOnOwner(owner: AnyObj, mask: AnyObj) {
     if (!owner || !mask) return;
 
-    // 不允許旋轉 + 錨點固定中心 
+    // 銝?閮望?頧?+ ?券??箏?銝剖? 
     mask.set({ originX: 'center', originY: 'center', angle: 0 });
 
-    // 相對 clip（最常見）：用 0,0 + center 
-    // 這裡不要硬改 absolutePositioned，避免破壞既有座標系 
+    // ?詨? clip嚗?撣貉?嚗???0,0 + center 
+    // ?ㄐ銝?蝖祆 absolutePositioned嚗?憯?漣璅頂 
     if (!mask.absolutePositioned) {
         mask.set({ left: 0, top: 0 });
     } else {
@@ -328,16 +328,14 @@ function getInnerClip(obj: AnyObj): FabricObject | null {
 function centerClipOnOwner(owner: AnyObj, clip: AnyObj) {
     if (!owner || !clip) return;
 
-    // 一律鎖中心 + 不旋轉
-    clip.set({ originX: 'center', originY: 'center', angle: 0 });
+    // 銝敺?銝剖? + 銝?頧?    clip.set({ originX: 'center', originY: 'center', angle: 0 });
 
-    // 絕對定位的 clip：用 owner 的畫布中心點
+    // 蝯?摰???clip嚗 owner ?撣葉敹?
     if (clip.absolutePositioned) {
         const c = owner.getCenterPoint();
         clip.set({ left: c.x, top: c.y });
     } else {
-        // 相對定位的 clip：用 (0,0) 且 center origin，避免左上錨點
-        clip.set({ left: 0, top: 0 });
+        // ?詨?摰???clip嚗 (0,0) 銝?center origin嚗?椰銝暺?        clip.set({ left: 0, top: 0 });
     }
 
     clip.setCoords?.();
@@ -356,11 +354,11 @@ function getFrameMask(owner: any) {
 
         if (cp?.data?.frameRole === 'mask') return cp;
 
-        // 常見 nested：root.clipPath 內再包一層 
+        // 撣貉? nested嚗oot.clipPath ?批???撅?
         if (cp?.clipPath) {
             const inner = cp.clipPath;
             if (inner?.data?.frameRole === 'mask') return inner;
-            // 往更深層走 
+            // 敺?湔楛撅方粥 
             cp = inner;
             depth++;
             continue;
@@ -369,7 +367,7 @@ function getFrameMask(owner: any) {
         break;
     }
 
-    // fallback：如果沒標記 role，就用 shape/type 猜（避免舊稿讀入壞掉） 
+    // fallback嚗???璅? role嚗停??shape/type ???踹??阮霈?亙??? 
     const root = owner?.clipPath;
     if (!root) return null;
     if (root.type === 'path' || root.type === 'polygon') return root;
@@ -426,22 +424,19 @@ function normalizeImageSrc(input: any): string | null {
     if (!input) return null;
     let s = String(input).trim();
 
-    // 去掉可能的引號包裹
-    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    // ?餅??航????鋆?    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
         s = s.slice(1, -1).trim();
     }
 
-    // data/blob 直接回傳，不做任何改寫
-    if (s.startsWith('data:') || s.startsWith('blob:')) return s;
+    // data/blob ?湔?嚗??遙雿撖?    if (s.startsWith('data:') || s.startsWith('blob:')) return s;
 
-    // 若看起來是純 base64（沒有 scheme，且只有 base64 字元），補上 prefix
-    // 允許包含 '=' '+' '/' 以及換行空白（先清掉）
-    const b64 = s.replace(/\s+/g, '');
+    // ?亦?韏瑚??舐? base64嚗???scheme嚗??芣? base64 摮?嚗?鋆? prefix
+    // ?迂? '=' '+' '/' 隞亙???蝛箇嚗?皜?嚗?    const b64 = s.replace(/\s+/g, '');
     const looksLikeBareBase64 =
         !b64.includes('://') &&
         !b64.startsWith('/') &&
         /^[A-Za-z0-9+/=]+$/.test(b64) &&
-        b64.length > 100; // 太短的不當成圖片
+        b64.length > 100; // 憭芰???嗆???
 
     if (looksLikeBareBase64) {
         return `data:image/png;base64,${b64}`;
@@ -454,15 +449,14 @@ function withCacheBuster(url: any, v: string) {
     const src = normalizeImageSrc(url);
     if (!src) return src;
 
-    // ✅ data/blob 不支援 query param，直接回傳
-    if (src.startsWith('data:') || src.startsWith('blob:')) return src;
+    // ??data/blob 銝??query param嚗?亙???    if (src.startsWith('data:') || src.startsWith('blob:')) return src;
 
     try {
         const u = new URL(src, window.location.origin);
         u.searchParams.set('v', v);
         return u.toString();
     } catch {
-        // 可能是相對路徑（/xxx.png），手動拼 query
+        // ?航?舐撠楝敺?/xxx.png嚗?????query
         const joiner = src.includes('?') ? '&' : '?';
         return `${src}${joiner}v=${encodeURIComponent(v)}`;
     }
@@ -479,14 +473,13 @@ async function loadImageElementFresh(url: string): Promise<HTMLImageElement> {
         };
         img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
 
-        // IMPORTANT: 先綁事件再設定 src，避免同步命中快取漏接 onload
+        // IMPORTANT: ??鈭辣?身摰?src嚗??甇亙銝剖翰????onload
         img.src = url;
     });
 }
 
 function disposeObjectDeep(obj: FabricObject) {
-    // fabric.Image 才有 dispose；其他物件忽略
-    // @ts-ignore
+    // fabric.Image ?? dispose嚗隞隞嗅蕭??    // @ts-ignore
     if (typeof (obj as any).dispose === 'function') {
         try { (obj as any).dispose(); } catch { }
     }
@@ -504,24 +497,24 @@ const FONT_OPTIONS = [
     { family: 'Georgia', label: 'Georgia' },
     { family: 'Verdana', label: 'Verdana' },
     { family: 'Impact', label: 'Impact' },
-    // English Cursive (草寫英文)
+    // English Cursive (?神?望?)
     { family: 'Dancing Script', label: 'Dancing Script' },
     { family: 'Great Vibes', label: 'Great Vibes' },
     { family: 'Pacifico', label: 'Pacifico' },
-    // Traditional Chinese (繁體中文)
-    { family: 'Taipei Sans TC Beta', label: '台北黑體' },
-    { family: 'LXGW WenKai TC', label: '霞鶩文楷' },
-    { family: 'Cactus Classical Serif', label: '仙人掌體' },
+    // Traditional Chinese (蝜?銝剜?)
+    { family: 'Taipei Sans TC Beta', label: '?啣?暺?' },
+    { family: 'LXGW WenKai TC', label: '?隆?扑' },
+    { family: 'Cactus Classical Serif', label: '隞犖??' },
     { family: 'Chocolate Classical Sans', label: 'Chocolate Sans' },
-    { family: 'Noto Sans TC', label: '思源黑體' },
-    { family: 'Noto Serif TC', label: '思源宋體' },
-    // Japanese (日文)
-    { family: 'Noto Sans JP', label: '日本語 (黑體)' },
-    { family: 'Kiwi Maru', label: 'Kiwi Maru (圓體)' },
-    { family: 'Zen Maru Gothic', label: 'Zen Maru (圓體)' },
-    // Korean (韓文)
-    { family: 'Noto Sans KR', label: '한국어 (黑體)' },
-    { family: 'Nanum Pen Script', label: 'Nanum Pen (手寫)' }
+    { family: 'Noto Sans TC', label: '??暺?' },
+    { family: 'Noto Serif TC', label: '??摰?' },
+    // Japanese (?交?)
+    { family: 'Noto Sans JP', label: '?交隤?(暺?)' },
+    { family: 'Kiwi Maru', label: 'Kiwi Maru (??)' },
+    { family: 'Zen Maru Gothic', label: 'Zen Maru (??)' },
+    // Korean (??)
+    { family: 'Noto Sans KR', label: '?筏??(暺?)' },
+    { family: 'Nanum Pen Script', label: 'Nanum Pen (?神)' }
 ];
 const PRESET_COLORS = [
     '#000000', '#ffffff', '#808080', '#C0C0C0', '#FF0000', '#FFFF00', '#00FF00', '#00FFFF', '#0000FF', '#FF00FF',
@@ -893,9 +886,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const isRestoringDraft = useRef(false);
     const initOnceRef = useRef(false);
-    const templateApplyInFlightRef = useRef(false); // [TPL] 防重入鎖
-    const appliedTemplateKeyRef = useRef<string | null>(null); // [TPL] 同產品跳過標記
-    const isHistoryProcessing = useRef(false);
+    const templateApplyInFlightRef = useRef(false); // [TPL] ?脤??仿?
+    const appliedTemplateKeyRef = useRef<string | null>(null); // [TPL] ??歲??閮?    const isHistoryProcessing = useRef(false);
     const isRestoring = useRef(false);
     const activeBaseImageRef = useRef<FabricImage | null>(null);
     const activeMaskImageRef = useRef<FabricImage | null>(null);
@@ -972,7 +964,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const [history, setHistory] = useState<string[]>([]);
     const [historyStep, setHistoryStep] = useState<number>(-1);
 
-    // ✅ 真相放 ref，避免 Fabric event listener 捕捉到舊 state
+    // ?????ref嚗??Fabric event listener ???啗? state
     const historyRef = useRef<string[]>([]);
     const historyStepRef = useRef<number>(-1);
 
@@ -983,7 +975,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         setHistoryStep(nextStep);
     };
 
-    // ✅ 產生/保證物件 id
+    // ???Ｙ?/靽??拐辣 id
     const genId = (prefix = 'obj') =>
         `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -992,9 +984,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         if (!obj.id || typeof obj.id !== 'string') obj.id = genId(prefix);
     };
 
-    // ✅ 批次操作：關閉 object:added/modified/removed listener 的存檔（避免重複）
-    // 批次結束後只存一次
-    const historyLockDepthRef = useRef(0);
+    // ???寞活??嚗???object:added/modified/removed listener ??瑼??踹???嚗?    // ?寞活蝯?敺摮?甈?    const historyLockDepthRef = useRef(0);
     const lockHistory = () => {
         historyLockDepthRef.current += 1;
         isHistoryProcessing.current = true;
@@ -1013,8 +1003,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         } finally {
             unlockHistory();
         }
-        // transaction 結束後只存一次
-        saveHistory();
+        // transaction 蝯?敺摮?甈?        saveHistory();
         updateLayers();
     };
 
@@ -1106,7 +1095,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             // To avoid spamming, we might use a toast or just log if it happens often.
             // But requirements say "show prompt".
             // We'll use a simple alert but throttle it? Or just alert.
-            if (isForced) alert("草稿太大，請先減少圖片或重新上傳較小檔案");
+            if (isForced) alert("?阮憭芸之嚗???撠????銝頛?瑼?");
             return;
         }
 
@@ -1685,7 +1674,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const [showGalleryModal, setShowGalleryModal] = useState(false); // Gallery Modal State
     const [showFrameSelectionModal, setShowFrameSelectionModal] = useState(false); // Custom Frame Modal
     const [customFrames, setCustomFrames] = useState<FrameTemplate[]>([]);
-    const [selectedCategory, setSelectedCategory] = useState<string>('全部');
+    const [selectedCategory, setSelectedCategory] = useState<string>('?券');
     const [frameCategories, setFrameCategories] = useState<string[]>([]);
     const [uploadedHistory, setUploadedHistory] = useState<string[]>([]); // Track history
 
@@ -1713,7 +1702,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     }, [showFrameSelectionModal]);
 
     const filteredFrames = customFrames.filter(f =>
-        selectedCategory === '全部' || f.category === selectedCategory
+        selectedCategory === '?券' || f.category === selectedCategory
     );
     // Get parameters from Store (Default)
     const {
@@ -1981,7 +1970,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         if (!fabricCanvas.current || isHistoryProcessing.current || isRestoring.current) return;
         const canvas = fabricCanvas.current;
 
-        // 避免 ActiveSelection 污染 JSON 
+        // ?踹? ActiveSelection 瘙⊥? JSON 
         const activeObj = canvas.getActiveObject();
         if (activeObj && activeObj.type === 'activeSelection') {
             canvas.discardActiveObject();
@@ -2188,7 +2177,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     return;
                 }
 
-                // 你原本的策略：載入前刪 clipPath，後面再重綁
+                // 雿??祉?蝑嚗??亙???clipPath嚗??Ｗ???
                 const canvas = fabricCanvas.current;
 
                 // --- Hybrid Restore Strategy ---
@@ -2253,7 +2242,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         baseLayerRef.current = baseObj;
                     }
 
-                    // --- FORCE MASK RE-BINDING (保留你原本邏輯) ---
+                    // --- FORCE MASK RE-BINDING (靽?雿??祇?頛? ---
                     const systemBaseObj = objects.find(obj => (obj as any).isBaseLayer) as FabricImage;
                     if (systemBaseObj) {
                         const rawWidth = systemBaseObj.width || 0;
@@ -2289,12 +2278,11 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                             const preserveInner = (obj as any).hasClipPath === true || (obj as any).frameId;
 
                             if (preserveInner && obj.clipPath) {
-                                // 保留內層裁切（愛心/星形/圓角/相框洞），只補 boundary 做交集
-                                (obj.clipPath as any).clipPath = boundary;
+                                // 靽??批惜鋆?嚗?敹??耦/??/?豢?瘣?嚗鋆?boundary ?漱??                                (obj.clipPath as any).clipPath = boundary;
                                 (obj.clipPath as any).dirty = true;
                                 obj.dirty = true;
                             } else {
-                                // 沒有內層裁切：直接用 boundary
+                                // 瘝??批惜鋆?嚗?亦 boundary
                                 obj.set({ clipPath: boundary, dirty: true });
                             }
                         });
@@ -2309,8 +2297,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     updateLayers();
 
                     // --- FINAL LAYER CHECK ---
-                    // 確保遮罩層在最上層，但不會遮擋使用者操作 (穿透點擊)
-                    // 並且確保它是視覺上正確的 (例如中間透明)
+                    // 蝣箔??桃蔗撅文?銝惜嚗?銝??格?雿輻??雿?(蝛輸???
+                    // 銝虫?蝣箔?摰閬死銝迤蝣箇? (靘?銝剝???)
 
                     // DEBUG: Log all objects to see what we have
                     console.log('[UNDO] All canvas objects after restore:', canvas.getObjects().map(obj => ({
@@ -2333,13 +2321,12 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         console.log('[UNDO] Restoring mask layer to front');
                         canvas.bringObjectToFront(topMask);
                         topMask.set({
-                            evented: false, // 讓滑鼠可以穿透遮罩點擊下面的文字
+                            evented: false, // 霈?曌隞亦忽?蝵拚????Ｙ???
                             selectable: false,
-                            opacity: 1, // 確保可見
-                            visible: true, // 明確設置可見狀態
-                            excludeFromExport: true
+                            opacity: 1, // 蝣箔??航?
+                            visible: true, // ?Ⅱ閮剔蔭?航????                            excludeFromExport: true
                         });
-                        topMask.setCoords(); // 更新坐標
+                        topMask.setCoords(); // ?湔??
                     } else {
                         console.warn('[UNDO] Mask layer not found after restore!');
                     }
@@ -3111,7 +3098,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         return;
                     }
 
-                    // 4. Alignment Compensation (Fix 設計跑位)
+                    // 4. Alignment Compensation (Fix 霈曇恣頝?)
                     // If the draft includes template metadata, we compare it with the current template
                     // to see if we need to adjust position or scale.
                     let scaleFactor = 1;
@@ -3127,76 +3114,64 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         const savedScaleX = savedMeta.scaleX || currentScaleX;
                         scaleFactor = currentScaleX / savedScaleX;
 
-                        // Calculate position delta (relative to current absolute space)
+                        // Calculate position delta (relative to base layer center/origin)
+                        // Note: Origin check is important.
                         const currentLeft = currentBase.left || 0;
                         const currentTop = currentBase.top || 0;
                         const savedLeft = savedMeta.left || 0;
                         const savedTop = savedMeta.top || 0;
 
-                        // Important: savedLeft/Top were at savedScale.
-                        // When we restore objects, they are at savedScale.
-                        // If we scale them by scaleFactor, they move.
-                        // The expected final position of base center is currentLeft/Top.
-                        // Objects' relative position to base center should be preserved.
+                        // Total shift = current position - (saved position * scaleFactor) ?
+                        // Better: restored objects are in their original absolute space.
+                        // We need to shift them by the delta of base layer movement.
                         offsetX = currentLeft - (savedLeft * scaleFactor);
                         offsetY = currentTop - (savedTop * scaleFactor);
 
-                        console.log('[CanvasEditor] Alignment compensation detail:', {
-                            current: { scaleX: currentScaleX, left: currentLeft, top: currentTop },
-                            saved: { scaleX: savedScaleX, left: savedLeft, top: savedTop },
-                            calc: { scaleFactor, offsetX, offsetY }
-                        });
-                    } else {
-                        // Fallback for old designs or missing meta: 
-                        // Since objects are already in absolute coords, we don't need to shift them by base.left/top
-                        offsetX = 0;
-                        offsetY = 0;
-                        console.log('[CanvasEditor] No savedMeta or currentBase, assuming absolute coordinates (offset=0)');
+                        console.log('[CanvasEditor] Alignment compensation applied:', { scaleFactor, offsetX, offsetY });
                     }
 
                     // 4. Boundary Alignment (Apply case clipPath)
                     const systemBaseObj = canvas.getObjects().find(obj => (obj as any).isBaseLayer) as FabricImage;
-                    // ... (rest of boundary logic is below in enlivenedObjects loop)
+                    let boundary: Rect | null = null;
+                    if (systemBaseObj) {
+                        const finalWidth = (systemBaseObj.width! * systemBaseObj.scaleX!) || 3000;
+                        const finalHeight = (systemBaseObj.height! * systemBaseObj.scaleY!) || 3000;
+                        const finalLeft = systemBaseObj.left ?? (canvas.width! / 2);
+                        const finalTop = systemBaseObj.top ?? (canvas.height! / 2);
+
+                        boundary = new Rect({
+                            left: finalLeft,
+                            top: finalTop,
+                            originX: systemBaseObj.originX || 'center',
+                            originY: systemBaseObj.originY || 'center',
+                            width: finalWidth,
+                            height: finalHeight,
+                            scaleX: 1,
+                            scaleY: 1,
+                            angle: systemBaseObj.angle || 0,
+                            rx: (systemBaseObj as any).rx || CASE_RADIUS || 0,
+                            ry: (systemBaseObj as any).ry || CASE_RADIUS || 0,
+                            absolutePositioned: true,
+                        });
+                    }
 
                     enlivenedObjects.forEach(obj => {
                         ensureObjectId(obj, 'tpl');
 
-                        // Apply alignment compensation
+                        // Apply alignment compensation if needed
                         if (scaleFactor !== 1) {
                             obj.scaleX = (obj.scaleX || 1) * scaleFactor;
                             obj.scaleY = (obj.scaleY || 1) * scaleFactor;
-                            // If it's a group or has specific origin, translate its position
                             obj.left = (obj.left || 0) * scaleFactor;
                             obj.top = (obj.top || 0) * scaleFactor;
                         }
-
                         if (offsetX !== 0 || offsetY !== 0) {
-                            // If base was centered and we are centering, this moves them to the new center
                             obj.left = (obj.left || 0) + offsetX;
                             obj.top = (obj.top || 0) + offsetY;
                         }
 
-                        // Re-calculate boundary for EACH object to ensure it matches current base
-                        const currentBaseForClip = canvas.getObjects().find(o => (o as any).isBaseLayer) as FabricImage;
-                        if (currentBaseForClip) {
-                            const bLeft = currentBaseForClip.left!;
-                            const bTop = currentBaseForClip.top!;
-                            const bW = currentBaseForClip.width! * currentBaseForClip.scaleX!;
-                            const bH = currentBaseForClip.height! * currentBaseForClip.scaleY!;
-
-                            const boundary = new Rect({
-                                left: bLeft,
-                                top: bTop,
-                                originX: 'center',
-                                originY: 'center',
-                                width: bW,
-                                height: bH,
-                                angle: currentBaseForClip.angle || 0,
-                                rx: (currentBaseForClip as any).rx || 0,
-                                ry: (currentBaseForClip as any).ry || 0,
-                                absolutePositioned: true,
-                            });
-
+                        // 5. Boundary Alignment (Apply case clipPath)
+                        if (boundary) {
                             const preserveInner = (obj as any).hasClipPath === true || (obj as any).frameId;
                             if (preserveInner && obj.clipPath) {
                                 (obj.clipPath as any).clipPath = boundary;
@@ -3516,7 +3491,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             const canvas = fabricCanvas.current;
             const activeObject = canvas?.getActiveObject();
             if (!canvas || !activeObject || activeObject.type !== 'image') {
-                alert("請先選擇一張圖片");
+                alert("隢??豢?銝撘萄???);
                 return;
             }
 
@@ -3603,7 +3578,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     ? `${import.meta.env.VITE_API_ORIGIN}/api/ai/remove-bg`
                     : `${import.meta.env.VITE_API_ORIGIN}/api/ai/cartoon`;
 
-                alert(`AI 處理失敗 (Connection Failed)\n\nEndpoint: ${endpoint}\nError: ${error.message}\n\n請檢查瀏覽器 Console (F12) 的 Network 分頁，確認 OPTIONS 是否回傳 204，POST 是否回傳 200。`);
+                alert(`AI ??憭望? (Connection Failed)\n\nEndpoint: ${endpoint}\nError: ${error.message}\n\n隢炎?亦汗??Console (F12) ??Network ??嚗Ⅱ隤?OPTIONS ?臬? 204嚗OST ?臬? 200?);
             }
         },
 
@@ -3748,14 +3723,14 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             const canvas = fabricCanvas.current;
             if (!canvas) return;
 
-            // Step 4: 清空只清 user，絕不清 system
+            // Step 4: 皜征?芣? user嚗?銝? system
             removeByPredicate(canvas, o => {
                 const sid = o?.data?.systemId || o?.id;
                 const isSystem = ['system_base_image', 'system_mask_image', 'system_template_group'].includes(sid);
                 return !isSystem;
             });
 
-            // Step 4: 同時清掉 Canvas 背景
+            // Step 4: ??皜? Canvas ?
             canvas.backgroundColor = 'transparent';
             canvas.backgroundImage = undefined;
 
@@ -3772,16 +3747,16 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             const canvas = fabricCanvas.current;
             if (!canvas) return;
 
-            // Step 4: 清空只清 user，絕不清 system
+            // Step 4: 皜征?芣? user嚗?銝? system
             removeByPredicate(canvas, o => {
                 const sid = o?.data?.systemId || o?.id;
                 const isSystem = ['system_base_image', 'system_mask_image', 'system_template_group'].includes(sid);
-                if (isSystem) return false; // 保護
-                if (predicate && !predicate(o)) return false; // 額外過濾
+                if (isSystem) return false; // 靽風
+                if (predicate && !predicate(o)) return false; // 憿??蕪
                 return true;
             });
 
-            // Step 4: 同時清掉 Canvas 背景
+            // Step 4: ??皜? Canvas ?
             canvas.backgroundColor = 'transparent';
             canvas.backgroundImage = undefined;
 
@@ -4054,7 +4029,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         const canvas = fabricCanvas.current;
         if (!canvas) return;
 
-        // [TPL] 1. 防重入鎖 (Anti-reentry)
+        // [TPL] 1. ?脤??仿? (Anti-reentry)
         if (templateApplyInFlightRef.current) {
             console.warn("[TPL] apply already in flight, skipping...");
             return;
@@ -4081,8 +4056,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         console.log('[TPL] raw', { rawBase, rawMask });
         templateFinalSrcRef.current = { baseFinal, maskFinal };
 
-        // [TPL] T2: (4) 早退條件：Key 相同 且 模板存在 且 src 一致
-        const nextKey = `${productCtx.id || 'unknown'}|${baseFinal}|${maskFinal}`;
+        // [TPL] T2: (4) ?拚璇辣嚗ey ?詨? 銝?璅⊥摮 銝?src 銝??        const nextKey = `${productCtx.id || 'unknown'}|${baseFinal}|${maskFinal}`;
         if (appliedTemplateKeyRef.current === nextKey) {
             const stats = getTemplateCounts(canvas);
             const baseObj = canvas.getObjects().find(o => (o as any).data?.systemId === 'system_base_image') as any;
@@ -4128,12 +4102,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         };
 
         try {
-            // [TPL] T2: (3) 冪等清理：只清理底圖和遮罩，保留使用者物件
-            removeTemplateObjects(canvas);
+            // [TPL] T2: (3) ?芰?皜?嚗皜?摨??蝵抬?靽?雿輻?隞?            removeTemplateObjects(canvas);
 
-            // 重要修正：此處「不」呼叫 canvas.clear() 或 removeAllUserObjects()，
-            // 讓原本畫布上的貼紙、背景、相框等物件得以保留，實現跨手機殼套用的功能。
-            canvas.requestRenderAll();
+            // ??靽格迤嚗迨?????canvas.clear() ??removeAllUserObjects()嚗?            // 霈??祉撣??票蝝??胯獢??拐辣敺誑靽?嚗祕?曇楊??畾澆??函????            canvas.requestRenderAll();
 
             const loadPromises = [];
             if (baseFinal) loadPromises.push(loadImageElement(baseFinal).catch(e => { console.warn('Base image failed to load:', e); return null; }));
@@ -4399,12 +4370,11 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
         // =====================================================================
         // [PPBears] ENFORCE IMAGE UNIFORM SCALING (NO DISTORT) - START
-        // 目的：所有「使用者圖片」（含相框照片）只能等比縮放，永遠不能被拉伸變形
+        // ?桃?嚗??蝙?刻????怎獢???芾蝑?蝮格嚗偶???質◤?撓霈耦
         // =====================================================================
         const enforceImageUniformScaling = (obj: any) => {
             if (!obj || obj.type !== 'image') return;
-            // 排除系統底圖/遮罩（或你標記過的系統層）
-            if ((obj as any).isBaseLayer || (obj as any).isMaskLayer) return;
+            // ?蝟餌絞摨?/?桃蔗嚗?雿?閮??頂蝯勗惜嚗?            if ((obj as any).isBaseLayer || (obj as any).isMaskLayer) return;
 
             obj.set({
                 lockUniScaling: true,
@@ -4413,7 +4383,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 lockScalingFlip: true,
             });
 
-            // 隱藏邊中點控制柄（避免左右/上下拉伸），只留四角
+            // ?梯??葉暺?嗆?嚗?椰??銝??撓嚗??芰???
             if (typeof obj.setControlsVisibility === 'function') {
                 obj.setControlsVisibility({
                     mt: false,
@@ -4426,18 +4396,17 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             obj.setCoords?.();
         };
 
-        // ✅ 手機端也要等比：Fabric 預設行為改成「不用按 Shift 也等比」
-        if ('uniformScaling' in canvas) (canvas as any).uniformScaling = true;
+        // ????蝡臭?閬?瘥?Fabric ?身銵?寞????冽? Shift 銋?瘥?        if ('uniformScaling' in canvas) (canvas as any).uniformScaling = true;
         if ('uniScaleTransform' in canvas) (canvas as any).uniScaleTransform = true;
         if ('uniScaleKey' in canvas) (canvas as any).uniScaleKey = null;
 
-        // ✅ 最終保險：不管 Fabric 算出什麼縮放，都把 scaleY 硬鎖回 scaleX
+        // ???蝯??迎?銝恣 Fabric 蝞隞暻潛葬?橘??賣? scaleY 蝖祇???scaleX
         canvas.on('object:scaling', (e: any) => {
             const obj = e?.target;
             if (!obj || obj.type !== 'image') return;
             if ((obj as any).isBaseLayer || (obj as any).isMaskLayer) return;
 
-            // 避免遞迴抖動
+            // ?踹??艘??
             if ((obj as any).__lockingUniform) return;
             (obj as any).__lockingUniform = true;
 
@@ -4449,9 +4418,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             (obj as any).__lockingUniform = false;
         });
 
-        // ✅ Undo/Redo(loadFromJSON) 時 controlsVisibility 不會被 JSON 保存
-        // 所以加一個「永遠執行」的 object:added 監聽：每次物件被加入都重新套用
-        canvas.on('object:added', (e: any) => {
+        // ??Undo/Redo(loadFromJSON) ??controlsVisibility 銝?鋡?JSON 靽?
+        // ?隞亙?銝?偶?銵? object:added ??嚗?甈∠隞嗉◤??賡??啣???        canvas.on('object:added', (e: any) => {
             const obj = e?.target;
             enforceImageUniformScaling(obj);
         });
@@ -4635,8 +4603,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     setTextValue(e.selected[0].text || '');
                     setActiveMobileSubMenu('edit'); // Default to Edit tab on selection
                 } else if (isImage) {
-                    // [PPBears] 每次選到圖片都強制套用（修復 Undo/Redo 後控制點復活）
-                    enforceImageUniformScaling(e.selected[0] as any);
+                    // [PPBears] 瘥活?詨???賢撥?嗅??剁?靽桀儔 Undo/Redo 敺?園?敺拇暑嚗?                    enforceImageUniformScaling(e.selected[0] as any);
                     setActiveMobileSubMenu('image');
                 }
                 updateToolbar();
@@ -4660,8 +4627,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         // @ts-ignore
                         setTextValue(activeObj.text || '');
                     } else if (isImage) {
-                        // [PPBears] 每次選到圖片都強制套用（修復 Undo/Redo 後控制點復活）
-                        enforceImageUniformScaling(activeObj as any);
+                        // [PPBears] 瘥活?詨???賢撥?嗅??剁?靽桀儔 Undo/Redo 敺?園?敺拇暑嚗?                        enforceImageUniformScaling(activeObj as any);
                         setActiveMobileSubMenu('image');
                     }
                 } else {
@@ -5121,7 +5087,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         const activeObject = canvas?.getActiveObject();
 
         if (!canvas || !activeObject || !(activeObject instanceof FabricImage)) {
-            alert("請先選取一張圖片");
+            alert("隢??詨?銝撘萄???);
             return;
         }
         setIsGenerating(true);
@@ -5156,7 +5122,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             const MAX_DIMENSION = 2500; // Client-side pre-resize limit
 
             if (blob.size > MAX_SIZE_BYTES) {
-                throw new Error("圖片過大 (超過 10MB)，請先壓縮");
+                throw new Error("???之 (頞? 10MB)嚗???蝮?);
             }
 
             // Check if compression is needed (Size > 7MB or Large Dimensions)
@@ -5287,28 +5253,28 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 if (!response.ok || !result.success || !outputUrl) {
                     console.error('[AI] API Error:', result);
                     const errorCode = result.errorCode || result.code || 'UNKNOWN';
-                    const errorMessage = result.message || result.error || '未知錯誤';
+                    const errorMessage = result.message || result.error || '?芰?航炊';
 
                     const mapError = (code: string, msg: string) => {
-                        if (code === 'FILE_TOO_LARGE') return '圖片太大 (超過 4MB)，請換小一點或自動壓縮';
-                        if (code === 'MISSING_ENV') return '系統設定錯誤 (Missing ENV)，請聯繫管理員';
-                        if (code === 'IMAGE_TOO_LARGE') return '圖片過大（超過 10MB），請換一張或先壓縮';
-                        if (code === 'UPLOAD_FAILED') return '上傳失敗';
-                        if (code === 'AI_TIMEOUT') return 'AI 處理超時，請稍後再試';
+                        if (code === 'FILE_TOO_LARGE') return '??憭芸之 (頞? 4MB)嚗???銝暺??芸?憯葬';
+                        if (code === 'MISSING_ENV') return '蝟餌絞閮剖??航炊 (Missing ENV)嚗??舐鼠蝞∠???;
+                        if (code === 'IMAGE_TOO_LARGE') return '???之嚗???10MB嚗?隢?銝撘菜???蝮?;
+                        if (code === 'UPLOAD_FAILED') return '銝憭望?';
+                        if (code === 'AI_TIMEOUT') return 'AI ??頞?嚗?蝔??岫';
 
                         // Special handling for INVALID_OUTPUT
                         if (code === 'INVALID_OUTPUT') {
                             console.log('[AI Debug] INVALID_OUTPUT Response:', result);
-                            return 'AI 回傳格式異常，請稍後再試；若持續發生請回報客服。';
+                            return 'AI ??澆??啣虜嚗?蝔??岫嚗???潛?隢??勗恥??;
                         }
 
                         // B2. New Explicit Error for success:true but missing url
                         if (result?.success === true && !outputUrl) {
-                            return `後端回傳 success:true 但缺少 url（後端錯誤） | endpoint:${endpoint} | Status:${response.status} | x-backend:${backendHeader} | Body:${responseText.slice(0, 200)}`;
+                            return `敺垢? success:true 雿撩撠?url嚗?蝡舫隤歹? | endpoint:${endpoint} | Status:${response.status} | x-backend:${backendHeader} | Body:${responseText.slice(0, 200)}`;
                         }
 
                         // Show status and snippet for debugging
-                        return `處理失敗 (${code}): ${msg} | endpoint:${endpoint} | Status:${response.status} | x-backend:${backendHeader} | Body:${responseText.slice(0, 200)}`;
+                        return `??憭望? (${code}): ${msg} | endpoint:${endpoint} | Status:${response.status} | x-backend:${backendHeader} | Body:${responseText.slice(0, 200)}`;
                     };
                     throw new Error(mapError(errorCode, errorMessage));
                 }
@@ -5365,9 +5331,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         origin: window.location.origin,
                         hint: 'Check CORS, CSP, or if the server is down.'
                     });
-                    alert(`AI 連線失敗 (CORS/Network Error): 請檢查網路或稍後再試。`);
+                    alert(`AI ???憭望? (CORS/Network Error): 隢炎?亦雯頝舀?蝔??岫?);
                 } else {
-                    alert(`AI 處理失敗: ${error.message}`);
+                    alert(`AI ??憭望?: ${error.message}`);
                 }
             }
             // B1. Do NOT reset canvas or template here.
@@ -5514,13 +5480,13 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     mr: false
                 });
 
-                // [PPBears] 最終一槍：新增圖片當下也強制等比 + 禁止拉伸 
-                // （避免某些手機/某些 Fabric 狀態仍出現非等比）
-                // @ts-ignore (enforceImageUniformScaling 在 useEffect scope，這裡同檔案可見即可)
+                // [PPBears] ?蝯?瑽??啣????嗡?銋撥?嗥?瘥?+ 蝳迫?撓 
+                // 嚗??鈭?璈??? Fabric ????箇??瘥?
+                // @ts-ignore (enforceImageUniformScaling ??useEffect scope嚗ㄐ??獢閬??
                 // NOTE: This will FAIL at runtime if addImageToCanvas is called outside of the useEffect scope where enforceImageUniformScaling is defined.
                 // HOWEVER, based on the user request "don't split, don't change other files", I must paste it.
                 // To make it work, I must move enforceImageUniformScaling OUTSIDE useEffect or duplicate it.
-                // BUT the user said "enforceImageUniformScaling 在 useEffect scope". This implies they think it's visible.
+                // BUT the user said "enforceImageUniformScaling ??useEffect scope". This implies they think it's visible.
                 // If I paste it as requested, it will break.
                 // I will define enforceImageUniformScaling again here locally to satisfy the requirement without breaking the app.
                 const enforceImageUniformScalingLocal = (obj: any) => {
@@ -5975,20 +5941,20 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4 text-red-600">
                             <Eraser className="w-6 h-6" />
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900 mb-2">確定要清空設計嗎？</h3>
-                        <p className="text-sm text-gray-500 mb-6">這將會清除您在畫布上的所有設計，且<span className="font-semibold text-red-500">無法復原</span>。確定要繼續嗎？</p>
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">蝣箏?閬?蝛箄身閮?嚗?/h3>
+                        <p className="text-sm text-gray-500 mb-6">?????斗?函撣????身閮?銝?span className="font-semibold text-red-500">?⊥?敺拙?</span>?Ⅱ摰?蝜潛???</p>
                         <div className="flex gap-3 w-full">
                             <button
                                 onClick={() => setShowClearConfirm(false)}
                                 className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors"
                             >
-                                取消
+                                ??
                             </button>
                             <button
                                 onClick={confirmClearCanvas}
                                 className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl shadow-sm shadow-red-200 transition-colors"
                             >
-                                確定清空
+                                蝣箏?皜征
                             </button>
                         </div>
                     </div>
@@ -6007,8 +5973,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             {isGenerating && (
                 <div className="absolute inset-0 z-50 bg-white/80 flex flex-col items-center justify-center backdrop-blur-sm">
                     <Loader2 className="w-12 h-12 text-purple-600 animate-spin mb-4" />
-                    <h3 className="text-xl font-semibold text-gray-800">正在施展 AI 魔法...</h3>
-                    <p className="text-gray-500">正在轉換您的圖片風格</p>
+                    <h3 className="text-xl font-semibold text-gray-800">甇??賢? AI 擳?...</h3>
+                    <p className="text-gray-500">甇?頧??函???憸冽</p>
                 </div>
             )}
 
@@ -6036,10 +6002,10 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         <button
                             onClick={() => setIsMobileLayersOpen(true)}
                             className="group relative flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-gray-900 active:scale-95 transition-all min-w-[2.5rem]"
-                            title="圖層"
+                            title="?惜"
                         >
                             <Layers className="w-4 h-4" />
-                            <span className="text-[9px] font-bold tracking-wider text-gray-500 group-hover:text-gray-900">圖層</span>
+                            <span className="text-[9px] font-bold tracking-wider text-gray-500 group-hover:text-gray-900">?惜</span>
                             {layers.length > 0 && <span className="absolute top-0 right-0 w-1.5 h-1.5 bg-red-500 rounded-full ring-1 ring-white"></span>}
                         </button>
 
@@ -6049,20 +6015,20 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                             onClick={undo}
                             disabled={historyStep <= 0}
                             className="group relative flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 transition-all min-w-[2.5rem]"
-                            title="復原"
+                            title="敺拙?"
                         >
                             <Undo2 className="w-4 h-4" />
-                            <span className="text-[9px] font-bold tracking-wider text-gray-500 group-hover:text-gray-900">復原</span>
+                            <span className="text-[9px] font-bold tracking-wider text-gray-500 group-hover:text-gray-900">敺拙?</span>
                         </button>
 
                         <button
                             onClick={redo}
                             disabled={historyStep >= history.length - 1}
                             className="group relative flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 transition-all min-w-[2.5rem]"
-                            title="重做"
+                            title="??"
                         >
                             <Redo2 className="w-4 h-4" />
-                            <span className="text-[9px] font-bold tracking-wider text-gray-500 group-hover:text-gray-900">重做</span>
+                            <span className="text-[9px] font-bold tracking-wider text-gray-500 group-hover:text-gray-900">??</span>
                         </button>
 
                         <div className="w-px h-6 bg-gray-200"></div>
@@ -6070,10 +6036,10 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         <button
                             onClick={clearCanvas}
                             className="group relative flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-red-600 active:scale-95 transition-all min-w-[2.5rem]"
-                            title="清空全部"
+                            title="皜征?券"
                         >
                             <Eraser className="w-4 h-4" />
-                            <span className="text-[9px] font-bold tracking-wider text-gray-500 group-hover:text-red-600">清空</span>
+                            <span className="text-[9px] font-bold tracking-wider text-gray-500 group-hover:text-red-600">皜征</span>
                         </button>
                     </div>
                 </div>
@@ -6083,12 +6049,12 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     <div className="fixed md:absolute md:top-16 top-auto bottom-[82px] md:bottom-auto left-1/2 -translate-x-1/2 z-[130] pointer-events-auto bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-gray-200/50 flex flex-row items-center p-1.5 gap-1 animate-in slide-in-from-top-2 md:slide-in-from-top-2 slide-in-from-bottom-2 fade-in duration-200">
                         <button onClick={deleteSelected} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-red-500 hover:bg-red-50 rounded-lg min-w-[2.5rem] transition-colors">
                             <Trash2 className="w-4 h-4" />
-                            <span className="text-[9px] font-bold">刪除</span>
+                            <span className="text-[9px] font-bold">?芷</span>
                         </button>
                         <div className="w-px h-6 bg-gray-200"></div>
                         <button onClick={duplicateObject} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
                             <Copy className="w-4 h-4" />
-                            <span className="text-[9px] font-bold">複製</span>
+                            <span className="text-[9px] font-bold">銴ˊ</span>
                         </button>
 
                         {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
@@ -6096,7 +6062,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 <div className="w-px h-6 bg-gray-200"></div>
                                 <button onClick={() => { setActiveMobileSubMenu('edit'); setShowMobileTextInput(false); setShowMobilePropertyBar(true); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-blue-600 hover:bg-blue-50 rounded-lg min-w-[2.5rem] transition-colors">
                                     <Pencil className="w-4 h-4" />
-                                    <span className="text-[9px] font-bold">編輯</span>
+                                    <span className="text-[9px] font-bold">蝺刻摩</span>
                                 </button>
                             </>
                         )}
@@ -6110,7 +6076,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                         <div className="w-px h-6 bg-gray-200"></div>
                                         <button onClick={mobileActions?.onUpload} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-blue-600 hover:bg-blue-50 rounded-lg min-w-[2.5rem] transition-colors">
                                             <ImagePlus className="w-4 h-4" />
-                                            <span className="text-[9px] font-bold">加照片</span>
+                                            <span className="text-[9px] font-bold">???/span>
                                         </button>
                                     </>
                                 );
@@ -6123,12 +6089,12 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                                 <button onClick={toggleFillCanvas} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
                                     {(selectedObject as any).isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-                                    <span className="text-[9px] font-bold">{(selectedObject as any).isMaximized ? "還原" : "滿版"}</span>
+                                    <span className="text-[9px] font-bold">{(selectedObject as any).isMaximized ? "??" : "皛輻?"}</span>
                                 </button>
 
                                 <button onClick={flipObject} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
                                     <FlipHorizontal className="w-4 h-4" />
-                                    <span className="text-[9px] font-bold">鏡像</span>
+                                    <span className="text-[9px] font-bold">?∪?</span>
                                 </button>
 
                                 <button onClick={() => {
@@ -6139,19 +6105,19 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     saveHistory();
                                 }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
                                     <RefreshCw className="w-4 h-4" />
-                                    <span className="text-[9px] font-bold">旋轉</span>
+                                    <span className="text-[9px] font-bold">??</span>
                                 </button>
 
                                 {/* Brightness Button with inline popover */}
                                 <div className="relative">
                                     <button onClick={() => setShowBrightnessSlider(v => !v)} className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[2.5rem] transition-colors ${showBrightnessSlider ? 'text-amber-600 bg-amber-50' : 'text-gray-600 hover:bg-gray-50'}`}>
                                         <Sun className="w-4 h-4" />
-                                        <span className="text-[9px] font-bold">亮度</span>
+                                        <span className="text-[9px] font-bold">鈭桀漲</span>
                                     </button>
                                     {showBrightnessSlider && (
                                         <div className="absolute md:top-full top-auto bottom-full left-1/2 -translate-x-1/2 mt-2 md:mt-2 mb-4 md:mb-0 bg-white rounded-xl shadow-xl border border-gray-200 p-3 z-50 w-48 animate-in fade-in slide-in-from-top-2 md:slide-in-from-top-2 slide-in-from-bottom-2 duration-150">
                                             <div className="flex justify-between items-center mb-2">
-                                                <span className="text-xs font-bold text-gray-700">亮度</span>
+                                                <span className="text-xs font-bold text-gray-700">鈭桀漲</span>
                                                 <span className="text-xs font-mono text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">{Math.round(brightness * 100)}%</span>
                                             </div>
                                             <div className="flex items-center gap-2">
@@ -6173,7 +6139,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                 />
                                                 <Sun className="w-4 h-4 text-amber-400" />
                                             </div>
-                                            <button onClick={() => { setBrightness(0); applyBrightness(0); saveHistory(); }} className="mt-2 w-full text-[10px] text-center text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded py-1">重置</button>
+                                            <button onClick={() => { setBrightness(0); applyBrightness(0); saveHistory(); }} className="mt-2 w-full text-[10px] text-center text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded py-1">?蔭</button>
                                         </div>
                                     )}
                                 </div>
@@ -6184,7 +6150,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 {selectedObject.clipPath && (
                                     <button onClick={toggleCropMode} className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg hover:bg-gray-50 min-w-[2.5rem] transition-colors ${isCropping ? 'text-blue-600 bg-blue-50' : 'text-gray-600'}`}>
                                         {isCropping ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                                        <span className="text-[9px] font-bold">{isCropping ? "解鎖" : "鎖定"}</span>
+                                        <span className="text-[9px] font-bold">{isCropping ? "閫??" : "??"}</span>
                                     </button>
                                 )}
                             </>
@@ -6213,14 +6179,14 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-white sticky top-0 z-10">
                             <span className="font-semibold text-xs text-gray-500 uppercase tracking-wider">
                                 {selectedObject.type === 'i-text' || selectedObject.type === 'text'
-                                    ? (activeMobileSubMenu === 'edit' ? '編輯文字' : activeMobileSubMenu)
-                                    : '圖片屬性'}
+                                    ? (activeMobileSubMenu === 'edit' ? '蝺刻摩??' : activeMobileSubMenu)
+                                    : '??撅祆?}
                             </span>
                             <button
                                 onClick={() => setShowMobilePropertyBar(false)}
                                 className="px-4 py-1.5 bg-black text-white text-xs font-bold rounded-full shadow-sm active:scale-95 transition-transform"
                             >
-                                完成
+                                摰?
                             </button>
                         </div>
 
@@ -6246,9 +6212,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                 }
                                             }}
                                             className="w-full border border-gray-300 rounded-lg px-4 py-3 text-base outline-none focus:border-blue-500 bg-white shadow-sm"
-                                            placeholder="在此輸入文字..."
+                                            placeholder="?冽迨頛詨??..."
                                         />
-                                        <p className="text-xs text-gray-400 text-center">在上方輸入以更新文字</p>
+                                        <p className="text-xs text-gray-400 text-center">?其??寡撓?乩誑?湔??</p>
                                     </div>
                                 )}
 
@@ -6274,15 +6240,15 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 {/* TAB: COLOR */}
                                 {activeMobileSubMenu === 'color' && (
                                     <div className="space-y-4">
-                                        <ColorPickerSection label="文字顏色" property="fill" currentVal={selectedObject.fill as string} onChange={updateSelectedObject} />
+                                        <ColorPickerSection label="??憿" property="fill" currentVal={selectedObject.fill as string} onChange={updateSelectedObject} />
                                         <div className="h-px bg-gray-200"></div>
 
                                         <div className="space-y-2">
-                                            <ColorPickerSection label="背景顏色" property="backgroundColor" currentVal={(selectedObject.backgroundColor as string) || 'transparent'} onChange={updateSelectedObject} />
+                                            <ColorPickerSection label="?憿" property="backgroundColor" currentVal={(selectedObject.backgroundColor as string) || 'transparent'} onChange={updateSelectedObject} />
 
                                             {/* Corner Radius Slider */}
                                             <div className="flex items-center justify-between px-2 pt-1">
-                                                <span className="text-xs text-gray-500 font-medium">圓角半徑</span>
+                                                <span className="text-xs text-gray-500 font-medium">????</span>
                                                 <div className="flex items-center gap-2">
                                                     <input
                                                         type="range"
@@ -6306,25 +6272,25 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                         <div className="flex justify-center gap-4">
                                             <button onClick={() => updateSelectedObject('fontWeight', (selectedObject as any).fontWeight === 'bold' ? 'normal' : 'bold')} className={`flex flex-col items-center gap-1 p-3 rounded-xl border w-20 ${(selectedObject as any).fontWeight === 'bold' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'}`}>
                                                 <Bold className="w-6 h-6" />
-                                                <span className="text-[10px] font-medium">粗體</span>
+                                                <span className="text-[10px] font-medium">蝎?</span>
                                             </button>
                                             <button onClick={() => updateSelectedObject('fontStyle', (selectedObject as any).fontStyle === 'italic' ? 'normal' : 'italic')} className={`flex flex-col items-center gap-1 p-3 rounded-xl border w-20 ${(selectedObject as any).fontStyle === 'italic' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'}`}>
                                                 <Italic className="w-6 h-6" />
-                                                <span className="text-[10px] font-medium">斜體</span>
+                                                <span className="text-[10px] font-medium">??</span>
                                             </button>
                                         </div>
 
                                         {/* Canvas Align */}
                                         <div>
-                                            <p className="text-[10px] text-gray-400 mb-1 ml-1 font-medium">畫布位置</p>
+                                            <p className="text-[10px] text-gray-400 mb-1 ml-1 font-medium">?怠?雿蔭</p>
                                             <div className="bg-white p-2 rounded-xl border border-gray-200 flex justify-between gap-2">
-                                                <button onClick={() => alignCanvas('left')} className="p-2 rounded-lg flex-1 flex justify-center text-gray-600 hover:bg-gray-50 hover:text-blue-600 active:scale-95 transition-all" title="靠左">
+                                                <button onClick={() => alignCanvas('left')} className="p-2 rounded-lg flex-1 flex justify-center text-gray-600 hover:bg-gray-50 hover:text-blue-600 active:scale-95 transition-all" title="?椰">
                                                     <AlignLeft className="w-5 h-5" />
                                                 </button>
-                                                <button onClick={() => alignCanvas('center')} className="p-2 rounded-lg flex-1 flex justify-center text-gray-600 hover:bg-gray-50 hover:text-blue-600 active:scale-95 transition-all" title="水平置中">
+                                                <button onClick={() => alignCanvas('center')} className="p-2 rounded-lg flex-1 flex justify-center text-gray-600 hover:bg-gray-50 hover:text-blue-600 active:scale-95 transition-all" title="瘞游像蝵桐葉">
                                                     <AlignCenter className="w-5 h-5" />
                                                 </button>
-                                                <button onClick={() => alignCanvas('right')} className="p-2 rounded-lg flex-1 flex justify-center text-gray-600 hover:bg-gray-50 hover:text-blue-600 active:scale-95 transition-all" title="靠右">
+                                                <button onClick={() => alignCanvas('right')} className="p-2 rounded-lg flex-1 flex justify-center text-gray-600 hover:bg-gray-50 hover:text-blue-600 active:scale-95 transition-all" title="?">
                                                     <AlignRight className="w-5 h-5" />
                                                 </button>
                                             </div>
@@ -6355,7 +6321,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                         {(!((selectedObject as any).clipPath?.data?.frameShape === 'heart' || (selectedObject as any).clipPath?.data?.frameShape === 'star')) && (
                                             <>
                                                 <div className="flex justify-between items-center px-1">
-                                                    <span className="text-xs text-gray-500 font-medium">尺寸 (寬 x 高)</span>
+                                                    <span className="text-xs text-gray-500 font-medium">撠箏站 (撖?x 擃?</span>
                                                     <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-600">
                                                         {Math.round(selectedObject.getScaledWidth())} x {Math.round(selectedObject.getScaledHeight())} px
                                                     </span>
@@ -6363,7 +6329,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                                                 <div className="space-y-2 bg-white p-3 rounded-xl border border-gray-200">
                                                     <div className="flex justify-between items-center mb-1">
-                                                        <span className="text-xs font-bold text-gray-700">縮放比例</span>
+                                                        <span className="text-xs font-bold text-gray-700">蝮格瘥?</span>
                                                         <button
                                                             onClick={() => {
                                                                 selectedObject.scale(1);
@@ -6373,7 +6339,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                             }}
                                                             className="text-[10px] text-blue-600 hover:bg-blue-50 px-2 py-0.5 rounded"
                                                         >
-                                                            重置 (100%)
+                                                            ?蔭 (100%)
                                                         </button>
                                                     </div>
                                                     <div className="flex items-center gap-3">
@@ -6404,11 +6370,11 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                 <div className="flex gap-2">
                                                     <button onClick={toggleFillCanvas} className="flex-1 flex items-center justify-center gap-2 p-3 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 active:scale-95 transition-all text-gray-700">
                                                         {(selectedObject as any).isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-                                                        <span className="text-xs font-medium">{(selectedObject as any).isMaximized ? "還原大小" : "填滿畫布"}</span>
+                                                        <span className="text-xs font-medium">{(selectedObject as any).isMaximized ? "??憭批?" : "憛急遛?怠?"}</span>
                                                     </button>
                                                     <button onClick={flipObject} className="flex-1 flex items-center justify-center gap-2 p-3 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 active:scale-95 transition-all text-gray-700">
                                                         <FlipHorizontal className="w-4 h-4" />
-                                                        <span className="text-xs font-medium">水平翻轉</span>
+                                                        <span className="text-xs font-medium">瘞游像蝧餉?</span>
                                                     </button>
                                                 </div>
                                             </>
@@ -6431,7 +6397,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                               <>
                                                   <div className="flex items-center justify-between mb-4">
                                                       <span className="text-sm font-medium text-gray-600">
-                                                          {frameShape === 'star' ? '星形變化' : '圓潤程度'}
+                                                          {frameShape === 'star' ? '?耦霈?' : '?膜蝔漲'}
                                                       </span>
                                                       <span className="text-sm font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">
                                                           {Math.round(frameMeta.param)}%
@@ -6459,8 +6425,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                   </div>
 
                                                   <div className="flex justify-between text-xs text-gray-400 font-medium mt-1">
-                                                      <span>{frameShape === 'star' ? '標準星型' : '尖銳'}</span>
-                                                      <span>{frameShape === 'star' ? '五角形' : '圓潤'}</span>
+                                                      <span>{frameShape === 'star' ? '璅???' : '撠'}</span>
+                                                      <span>{frameShape === 'star' ? '鈭?敶? : '?膜'}</span>
                                                   </div>
                                               </>
                                           );
@@ -6471,7 +6437,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                             </div>
                             {!activeMobileSubMenu && (
                                 <div className="p-4 flex items-center justify-center gap-2 text-gray-400 text-sm">
-                                    請使用下方工具列進行編輯
+                                    隢蝙?其??孵極?瑕??脰?蝺刻摩
                                 </div>
                             )}
                         </div>
@@ -6490,19 +6456,19 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                             <div className="flex w-full justify-around">
                                 <button onClick={() => { setActiveMobileSubMenu('edit'); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center gap-1 p-2 min-w-[4rem] ${activeMobileSubMenu === 'edit' ? 'text-blue-600' : 'text-gray-400'}`}>
                                     <Pencil className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">編輯</span>
+                                    <span className="text-[10px] font-medium">蝺刻摩</span>
                                 </button>
                                 <button onClick={() => { setActiveMobileSubMenu('font'); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center gap-1 p-2 min-w-[4rem] ${activeMobileSubMenu === 'font' ? 'text-blue-600' : 'text-gray-400'}`}>
                                     <Type className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">字體</span>
+                                    <span className="text-[10px] font-medium">摮?</span>
                                 </button>
                                 <button onClick={() => { setActiveMobileSubMenu('color'); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center gap-1 p-2 min-w-[4rem] ${activeMobileSubMenu === 'color' ? 'text-blue-600' : 'text-gray-400'}`}>
                                     <Palette className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">顏色</span>
+                                    <span className="text-[10px] font-medium">憿</span>
                                 </button>
                                 <button onClick={() => { setActiveMobileSubMenu('align'); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center gap-1 p-2 min-w-[4rem] ${activeMobileSubMenu === 'align' ? 'text-blue-600' : 'text-gray-400'}`}>
                                     <AlignLeft className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">對齊</span>
+                                    <span className="text-[10px] font-medium">撠?</span>
                                 </button>
                             </div>
                         )}
@@ -6514,14 +6480,14 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 {(selectedObject as any).isFrameLayer && mobileActions?.onUpload && (
                                     <button onClick={mobileActions.onUpload} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-blue-600">
                                         <Upload className="w-6 h-6" />
-                                        <span className="text-[10px] font-medium">上傳照片</span>
+                                        <span className="text-[10px] font-medium">銝?抒?</span>
                                     </button>
                                 )}
                                 {/* AI Tools: Cartoonize */}
                                 {mobileActions?.onAiCartoon && (
                                     <button onClick={mobileActions?.onAiCartoon} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-purple-600">
                                         <Wand2 className="w-6 h-6" />
-                                        <span className="text-[10px] font-medium">卡通化</span>
+                                        <span className="text-[10px] font-medium">?⊿?</span>
                                     </button>
                                 )}
 
@@ -6529,15 +6495,15 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 {mobileActions?.onAiRemoveBg && (
                                     <button onClick={mobileActions?.onAiRemoveBg} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-red-600">
                                         <Scissors className="w-6 h-6" />
-                                        <span className="text-[10px] font-medium">去背</span>
+                                        <span className="text-[10px] font-medium">?餉?</span>
                                     </button>
                                 )}
 
-                                {/* 相框 Button - shown when image is selected */}
+                                {/* ?豢? Button - shown when image is selected */}
                                 {mobileActions?.onOpenFrames && !(selectedObject as any).isFrameLayer && (
                                     <button onClick={mobileActions?.onOpenFrames} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-amber-600">
                                         <Frame className="w-6 h-6" />
-                                        <span className="text-[10px] font-medium">相框</span>
+                                        <span className="text-[10px] font-medium">?豢?</span>
                                     </button>
                                 )}
 
@@ -6545,7 +6511,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 {!mobileActions?.onAiCartoon && !mobileActions?.onAiRemoveBg && mobileActions?.onOpenAI && (
                                     <button onClick={mobileActions?.onOpenAI} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-purple-600">
                                         <Sparkles className="w-6 h-6" />
-                                        <span className="text-[10px] font-medium">AI 魔法</span>
+                                        <span className="text-[10px] font-medium">AI 擳?</span>
                                     </button>
                                 )}
 
@@ -6553,7 +6519,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                                 <button onClick={centerObject} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-gray-500 active:text-blue-600">
                                     <AlignCenter className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">置中</span>
+                                    <span className="text-[10px] font-medium">蝵桐葉</span>
                                 </button>
                             </div>
                         )}
@@ -6574,7 +6540,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         className="w-full flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-gray-50/50 active:bg-gray-100 transition-colors"
                     >
                         <div className="flex flex-col items-start">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{currentProduct.brand || '產品'}</span>
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{currentProduct.brand || '?Ｗ?'}</span>
                             <div className="flex items-center gap-1">
                                 <span className="text-sm font-semibold text-gray-800">{currentProduct.name}</span>
                                 <ChevronDown className="w-3 h-3 text-gray-400" />
@@ -6582,7 +6548,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         </div>
                         <div className="flex items-center gap-2">
                             <span className="text-xs font-medium text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded-full shadow-sm">
-                                更換
+                                ?湔?
                             </span>
                         </div>
                     </button>
@@ -6593,7 +6559,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     style={{ scrollbarWidth: 'none' }}
                 >
                     {showCropMenu ? (
-                        // === 狀態 B: 裁切子選單 (Crop Sub-menu) ===
+                        // === ???B: 鋆?摮??(Crop Sub-menu) ===
                         <>
                             <button
                                 onMouseDown={(e) => e.preventDefault()}
@@ -6601,10 +6567,10 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 text-gray-500"
                             >
                                 <ArrowLeft className="w-6 h-6" />
-                                <span className="text-[10px] font-medium">返回</span>
+                                <span className="text-[10px] font-medium">餈?</span>
                             </button>
 
-                            <div className="w-px h-8 bg-gray-300 mx-2"></div> {/* 分隔線 */}
+                            <div className="w-px h-8 bg-gray-300 mx-2"></div> {/* ??蝺?*/}
 
                             {/* Removed all Frame/Crop buttons from here as requested by user to "remove all mobile frame functions" */}
 
@@ -6617,13 +6583,13 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                         className={`flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 transition-colors ${isCropping ? 'text-yellow-600 bg-yellow-50' : 'text-gray-500 active:text-blue-600'}`}
                                     >
                                         {isCropping ? <Unlock className="w-6 h-6" /> : <Lock className="w-6 h-6" />}
-                                        <span className="text-[10px] font-medium">{isCropping ? '解鎖' : '鎖定'}</span>
+                                        <span className="text-[10px] font-medium">{isCropping ? '閫??' : '??'}</span>
                                     </button>
                                 </>
                             )}
                         </>
                     ) : (
-                        // === 狀態 A: 主功能選單 (Main Menu) ===
+                        // === ???A: 銝餃??賡??(Main Menu) ===
                         <>
                             <button
                                 onMouseDown={(e) => e.preventDefault()}
@@ -6631,7 +6597,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
                             >
                                 <Upload className="w-6 h-6" />
-                                <span className="text-[10px] font-medium">上傳</span>
+                                <span className="text-[10px] font-medium">銝</span>
                             </button>
 
                             {mobileActions?.onAddText && (
@@ -6641,7 +6607,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
                                 >
                                     <Type className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">文字</span>
+                                    <span className="text-[10px] font-medium">??</span>
                                 </button>
                             )}
 
@@ -6652,7 +6618,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
                                 >
                                     <Sticker className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">貼圖</span>
+                                    <span className="text-[10px] font-medium">鞎澆?</span>
                                 </button>
                             )}
 
@@ -6663,7 +6629,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
                                 >
                                     <ImageIcon className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">背景</span>
+                                    <span className="text-[10px] font-medium">?</span>
                                 </button>
                             )}
 
@@ -6674,7 +6640,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
                                 >
                                     <Frame className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">相框</span>
+                                    <span className="text-[10px] font-medium">?豢?</span>
                                 </button>
                             )}
 
@@ -6685,7 +6651,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
                                 >
                                     <ScanBarcode className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">條碼</span>
+                                    <span className="text-[10px] font-medium">璇Ⅳ</span>
                                 </button>
                             )}
 
@@ -6696,7 +6662,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
                                 >
                                     <LayoutTemplate className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">設計</span>
+                                    <span className="text-[10px] font-medium">閮剛?</span>
                                 </button>
                             )}
 
@@ -6716,7 +6682,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
       `}>
                 <div className="p-3 border-b border-gray-200 bg-gray-50 font-semibold text-gray-700 flex justify-between items-center rounded-t-2xl md:rounded-none sticky top-0 z-10">
                     <div className="flex items-center gap-2">
-                        <span>圖層</span>
+                        <span>?惜</span>
                         <span className="text-xs font-normal text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">{layers.length}</span>
                     </div>
 
@@ -6741,8 +6707,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         >
                             {layers.length === 0 ? (
                                 <div className="text-center py-8 text-gray-400 text-sm">
-                                    尚無圖層。<br />請添加文字或圖片以開始設計。
-                                </div>
+                                    撠?惜??br />隢溶??摮???隞仿?憪身閮?                                </div>
                             ) : (
                                 layers.map(layer => (
                                     <SortableLayerItem
@@ -6773,7 +6738,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                             <h3 className="font-bold text-gray-800 flex items-center gap-2">
                                 <Shapes className="w-5 h-5" />
-                                選擇相框
+                                ?豢??豢?
                             </h3>
                             <button onClick={() => setShowFrameSelectionModal(false)} className="p-1 hover:bg-gray-100 rounded-full text-gray-500">
                                 <X className="w-5 h-5" />
@@ -6784,10 +6749,10 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                         <div className="p-4 bg-gray-50 border-b border-gray-100 flex gap-2 overflow-x-auto scrollbar-hide">
                             <button
-                                onClick={() => setSelectedCategory('全部')}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium shadow-sm whitespace-nowrap transition-colors ${selectedCategory === '全部' ? 'bg-blue-50 border border-blue-200 text-blue-700' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                                onClick={() => setSelectedCategory('?券')}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium shadow-sm whitespace-nowrap transition-colors ${selectedCategory === '?券' ? 'bg-blue-50 border border-blue-200 text-blue-700' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
                             >
-                                全部
+                                ?券
                             </button>
                             {frameCategories.map(cat => (
                                 <button
@@ -6804,14 +6769,14 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                             {filteredFrames.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3">
                                     <Shapes className="w-12 h-12 text-gray-200" />
-                                    <p>尚無相框</p>
-                                    {selectedCategory !== '全部' && (
-                                        <button onClick={() => setSelectedCategory('全部')} className="text-blue-500 hover:underline text-sm">
-                                            查看全部
+                                    <p>撠?豢?</p>
+                                    {selectedCategory !== '?券' && (
+                                        <button onClick={() => setSelectedCategory('?券')} className="text-blue-500 hover:underline text-sm">
+                                            ?亦??券
                                         </button>
                                     )}
                                     <a href="/seller/frame/new" target="_blank" className="text-blue-500 hover:underline text-sm mt-2">
-                                        前往後台建立 (新分頁)
+                                        ??敺撱箇? (?啣???
                                     </a>
                                 </div>
                             ) : (
