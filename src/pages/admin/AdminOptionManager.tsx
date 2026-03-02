@@ -850,8 +850,9 @@ export default function AdminOptionManager() {
             } else {
                 await supabase.from('option_groups').update({ is_default: false }).eq('id', groupId);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Failed to update group default:', err);
+            alert('設定預設失敗 (需確認資料庫是否有 is_default 欄位): ' + err.message);
         }
     };
 
@@ -885,8 +886,9 @@ export default function AdminOptionManager() {
             } else {
                 await supabase.from('option_items').update({ is_default: false }).eq('id', itemId);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Failed to update item default:', err);
+            alert('設定子項預設失敗 (需確認資料庫是否有 is_default 欄位): ' + err.message);
         }
     };
 
