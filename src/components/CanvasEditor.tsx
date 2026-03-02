@@ -828,6 +828,7 @@ interface CanvasEditorProps {
     onSelectionChange?: (object: FabricObject | null) => void;
     disableDraft?: boolean;
     readOnly?: boolean;
+    disableFrameUpload?: boolean;
 }
 
 export interface CanvasEditorRef {
@@ -875,7 +876,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         permissions,
         onImageLayerChange,
         disableDraft = false,
-        readOnly = false
+        readOnly = false,
+        disableFrameUpload = false
     } = props;
 
     const [searchParams] = useSearchParams();
@@ -2989,7 +2991,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 'lockUniScaling', 'lockSkewingX', 'lockSkewingY', 'hasControls', 'hasBorders',
                 'hoverCursor', 'moveCursor', 'clipPath', 'visible', 'bgCornerRadius', 'padding', 'originX', 'originY',
                 'name', 'scaleX', 'scaleY', 'left', 'top', 'width', 'height', 'angle', 'fill', 'stroke', 'strokeWidth',
-                'data', 'hasClipPath', 'isCropLocked', 'frameMeta', '__baseScale'
+                'data', 'hasClipPath', 'isCropLocked', 'frameMeta', '__baseScale', 'clipPathPoints'
             ];
             const json = (canvas as any).toJSON(JSON_PROPERTIES);
             // Strip system objects before saving
@@ -3014,52 +3016,123 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             }
             return json;
         },
-        restoreFromJSON: async (json: any) => {
+        restoreFromJSON: async (input: any) => {
             const canvas = fabricCanvas.current;
-            if (!canvas || !json.objects) return;
-            try {
-                // Clear existing user objects
-                const objectsToRemove = canvas.getObjects().filter((obj: any) => {
-                    const sid = String(obj.data?.systemId || obj.id || '').trim();
-                    const kind = obj.data?.kind;
-                    const role = obj.data?.role;
-                    return !(
-                        obj.data?.isSystem === true ||
-                        sid.startsWith('system_') ||
-                        ['system_base_image', 'system_mask_image', 'system_template_group'].includes(sid) ||
-                        ['product_base', 'product_overlay', 'guide'].includes(kind) ||
-                        role === 'product_base' ||
-                        role === 'product_overlay' ||
-                        obj.isBaseLayer === true ||
-                        obj.isMaskLayer === true
-                    );
-                });
-                objectsToRemove.forEach(obj => canvas.remove(obj));
+            if (!canvas) return;
 
-                if (json.backgroundColor) {
-                    canvas.backgroundColor = json.backgroundColor;
-                }
-
+            // 1. Parse string input if needed
+            let json = input;
+            if (typeof input === 'string') {
                 try {
-                    const objs = await util.enlivenObjects(json.objects);
-                    if (Array.isArray(objs)) {
-                        objs.forEach(obj => canvas.add(obj as any));
-                    }
-                } catch (enlivenErr) {
-                    console.error("Failed to enliven objects:", enlivenErr);
+                    json = JSON.parse(input);
+                } catch (e) {
+                    console.error('[CanvasEditor] Failed to parse JSON string:', e);
+                    return;
                 }
-
-                // Enforce proper ordering
-                const oldBase = baseLayerRef.current;
-                const oldMask = maskLayerRef.current;
-                if (oldBase) canvas.sendObjectToBack(oldBase);
-                if (oldMask) canvas.bringObjectToFront(oldMask);
-
-                canvas.requestRenderAll();
-                updateLayers();
-            } catch (e) {
-                console.error('[CanvasEditor] restoreFromJSON failed:', e);
             }
+
+            if (!json || !json.objects) {
+                console.warn('[CanvasEditor] restoreFromJSON: No objects found in input');
+                return;
+            }
+
+            console.log('[CanvasEditor] Restoring from JSON (Merge Mode)...', { objectsCount: json.objects.length });
+
+            await withHistoryTransaction(async () => {
+                try {
+                    // 2. Clear existing user objects (keep base/mask)
+                    const objectsToRemove = canvas.getObjects().filter((obj: any) => {
+                        const sid = String(obj.data?.systemId || obj.id || '').trim();
+                        const kind = obj.data?.kind;
+                        const role = obj.data?.role;
+                        return !(
+                            obj.data?.isSystem === true ||
+                            sid.startsWith('system_') ||
+                            ['system_base_image', 'system_mask_image', 'system_template_group'].includes(sid) ||
+                            ['product_base', 'product_overlay', 'guide'].includes(kind) ||
+                            role === 'product_base' ||
+                            role === 'product_overlay' ||
+                            obj.isBaseLayer === true ||
+                            obj.isMaskLayer === true
+                        );
+                    });
+                    objectsToRemove.forEach(obj => canvas.remove(obj));
+
+                    if (json.backgroundColor) {
+                        canvas.backgroundColor = json.backgroundColor;
+                    }
+
+                    // 3. Enliven & Add Objects
+                    let enlivenedObjects: FabricObject[] = [];
+                    try {
+                        const objs = await util.enlivenObjects(json.objects);
+                        enlivenedObjects = Array.isArray(objs) ? (objs as FabricObject[]) : [];
+                    } catch (enlivenErr) {
+                        console.error("[CanvasEditor] Failed to enliven objects:", enlivenErr);
+                    }
+
+                    if (enlivenedObjects.length === 0) {
+                        console.warn('[CanvasEditor] No objects enlivened');
+                        return;
+                    }
+
+                    // 4. Boundary Alignment (Apply case clipPath)
+                    const systemBaseObj = canvas.getObjects().find(obj => (obj as any).isBaseLayer) as FabricImage;
+                    let boundary: Rect | null = null;
+                    if (systemBaseObj) {
+                        const finalWidth = (systemBaseObj.width! * systemBaseObj.scaleX!) || 3000;
+                        const finalHeight = (systemBaseObj.height! * systemBaseObj.scaleY!) || 3000;
+                        const finalLeft = systemBaseObj.left ?? (canvas.width! / 2);
+                        const finalTop = systemBaseObj.top ?? (canvas.height! / 2);
+
+                        boundary = new Rect({
+                            left: finalLeft,
+                            top: finalTop,
+                            originX: systemBaseObj.originX || 'center',
+                            originY: systemBaseObj.originY || 'center',
+                            width: finalWidth,
+                            height: finalHeight,
+                            scaleX: 1,
+                            scaleY: 1,
+                            angle: systemBaseObj.angle || 0,
+                            rx: (systemBaseObj as any).rx || CASE_RADIUS || 0,
+                            ry: (systemBaseObj as any).ry || CASE_RADIUS || 0,
+                            absolutePositioned: true,
+                        });
+                    }
+
+                    enlivenedObjects.forEach(obj => {
+                        ensureObjectId(obj, 'tpl');
+
+                        // Apply boundary clipPath if available
+                        if (boundary) {
+                            const preserveInner = (obj as any).hasClipPath === true || (obj as any).frameId;
+                            if (preserveInner && obj.clipPath) {
+                                (obj.clipPath as any).clipPath = boundary;
+                                (obj.clipPath as any).dirty = true;
+                                obj.dirty = true;
+                            } else {
+                                obj.set({ clipPath: boundary, dirty: true });
+                            }
+                        }
+
+                        canvas.add(obj);
+                        obj.setCoords();
+                    });
+
+                    // 5. Enforce proper ordering
+                    const oldBase = baseLayerRef.current;
+                    const oldMask = maskLayerRef.current;
+                    if (oldBase) canvas.sendObjectToBack(oldBase);
+                    if (oldMask) canvas.bringObjectToFront(oldMask);
+
+                    canvas.requestRenderAll();
+                    console.log(`[CanvasEditor] ${enlivenedObjects.length} objects restored successfully.`);
+                } catch (e) {
+                    console.error('[CanvasEditor] restoreFromJSON transaction failed:', e);
+                }
+            });
+            updateLayers();
         },
         clearDraft: () => {
             const key = getDraftKey();
@@ -3124,7 +3197,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 'lockUniScaling', 'lockSkewingX', 'lockSkewingY', 'hasControls', 'hasBorders',
                 'hoverCursor', 'moveCursor', 'clipPath', 'visible', 'bgCornerRadius', 'padding', 'originX', 'originY',
                 'scaleX', 'scaleY', 'left', 'top', 'width', 'height', 'angle', 'fill', 'stroke', 'strokeWidth',
-                'data', 'hasClipPath', 'isCropLocked', 'frameMeta', '__baseScale'
+                'data', 'hasClipPath', 'isCropLocked', 'frameMeta', '__baseScale', 'clipPathPoints'
             ]);
             return JSON.stringify(json);
         },
@@ -4047,6 +4120,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 baseLayerRef.current = baseImg;
                 canvas.add(baseImg);
                 canvas.sendObjectToBack(baseImg);
+            } else {
+                addFallbackBase(canvas, REAL_WIDTH / 2, REAL_HEIGHT / 2);
             }
 
             if (maskImg) {
@@ -4054,6 +4129,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 maskLayerRef.current = maskImg;
                 canvas.add(maskImg);
                 canvas.bringObjectToFront(maskImg);
+            } else {
+                addFallbackMask(canvas, REAL_WIDTH / 2, REAL_HEIGHT / 2);
             }
 
             if (isAborted()) { safeDisposeLocal(undefined, [baseImg, maskImg].filter(Boolean) as FabricObject[]); return; }
@@ -4109,15 +4186,116 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         }
     }, [REAL_WIDTH, REAL_HEIGHT, currentProduct, previewConfig]);
 
-    // 1. Canvas Initialization Effect (Runs on mount or product change)
+    const loadDraftUserObjects = useCallback(async (canvas: Canvas, draftKey: string, seq: number) => {
+        if (isRestoring.current) return;
+        if (seq !== enterSeqRef.current) return;
+
+        console.log('[DRAFT] load start', { seq, ts: Date.now(), draftKey });
+        try {
+            const draft = await getDraft(draftKey);
+            const currentPid = searchParams.get('productId') || currentProduct?.id;
+
+            if (!draft || draft.context.productId !== currentPid) {
+                console.log('[DRAFT] skip (no draft or pid mismatch)', { seq, hasDraft: !!draft, currentPid, draftPid: draft?.context?.productId });
+                return;
+            }
+
+            isRestoringDraft.current = true;
+
+            if (draft.canvasJson && Array.isArray(draft.canvasJson.objects)) {
+                const baseFinal = templateFinalSrcRef.current?.baseFinal || '';
+                const maskFinal = templateFinalSrcRef.current?.maskFinal || '';
+
+                const stripV = (u: string) => {
+                    const url = String(u || '').trim();
+                    if (!url) return url;
+                    const low = url.toLowerCase();
+                    if (low.startsWith('data:') || low.startsWith('blob:')) return url;
+                    try {
+                        const parsed = new URL(url, window.location.origin);
+                        parsed.searchParams.delete('v');
+                        return parsed.toString();
+                    } catch {
+                        return url.replace(/([?&])v=[^&]*(&?)/, (m, p1, p2) => (p1 === '?' && p2 ? '?' : p1 === '?' ? '' : p2 ? p1 : ''));
+                    }
+                };
+
+                const isTemplateSrc = (src: any) => {
+                    const s = String(src || '').trim();
+                    if (!s) return false;
+                    const s0 = stripV(s);
+                    const b0 = stripV(baseFinal);
+                    const m0 = stripV(maskFinal);
+                    if (b0 && s0 === b0) return true;
+                    if (m0 && s0 === m0) return true;
+                    if (s.includes('/storage/v1/object/public/models/')) return true;
+                    return false;
+                };
+
+                const isSystemDraftJsonObject = (o: any) => {
+                    if (!o) return true;
+                    const sid = String(o.data?.systemId || o.id || '').trim();
+                    const kind = o.data?.kind;
+                    const role = o.data?.role;
+                    if (o.excludeFromExport === true) return true;
+                    if (o.data?.isSystem === true) return true;
+                    if (sid.startsWith('system_')) return true;
+                    if (['system_base_image', 'system_mask_image', 'system_template_group'].includes(sid)) return true;
+                    if (['product_base', 'product_overlay', 'guide'].includes(kind)) return true;
+                    if (role === TEMPLATE_ROLE || role === 'product_base' || role === 'product_overlay') return true;
+                    if (o.isBaseLayer === true || o.isMaskLayer === true) return true;
+                    if (o.type === 'image' && isTemplateSrc(o.src)) return true;
+                    return false;
+                };
+
+                const rawObjects = draft.canvasJson.objects;
+                const filteredRawObjects = rawObjects.filter((o: any) => !isSystemDraftJsonObject(o));
+                console.log('[DRAFT] filter', { seq, before: rawObjects.length, after: filteredRawObjects.length, dropped: rawObjects.length - filteredRawObjects.length });
+
+                removeAllUserObjects(canvas);
+
+                const objects = await util.enlivenObjects(filteredRawObjects);
+                let added = 0;
+                objects.forEach((obj: any) => {
+                    if (isSystemRuntimeObject(obj)) return;
+
+                    ensureObjectId(obj);
+                    canvas.add(obj);
+                    added += 1;
+                });
+
+                if (draft.extraState) {
+                    if (draft.extraState.zoom) canvas.setZoom(draft.extraState.zoom);
+                    if (draft.extraState.pan) {
+                        const vpt = canvas.viewportTransform;
+                        if (vpt) {
+                            vpt[4] = draft.extraState.pan.x;
+                            vpt[5] = draft.extraState.pan.y;
+                            canvas.setViewportTransform(vpt);
+                        }
+                    }
+                }
+
+                if (activeBaseImageRef.current) canvas.sendObjectToBack(activeBaseImageRef.current);
+                if (activeMaskImageRef.current) canvas.bringObjectToFront(activeMaskImageRef.current);
+
+                console.log('[DRAFT] load end', { seq, ts: Date.now(), added });
+            } else {
+                console.log('[DRAFT] load end (no objects)', { seq, ts: Date.now() });
+            }
+        } catch (e) {
+            console.error('[DRAFT] load failed', e);
+            try { await removeDraft(draftKey); } catch { }
+        } finally {
+            isRestoringDraft.current = false;
+        }
+    }, [searchParams, currentProduct]);
+
+    // 1. Canvas Instantiation Effect (Runs strictly ONCE)
     useEffect(() => {
         if (!canvasEl.current) return;
-        initOnceRef.current = false; // Reset guard for new initialization
-
-        // Dispose existing if any (for product change)
-        if (fabricCanvas.current) {
-            fabricCanvas.current.dispose();
-        }
+        if (initOnceRef.current) return;
+        initOnceRef.current = true;
 
         // Initialize with container size initially
         const canvas = new Canvas(canvasEl.current, {
@@ -4710,203 +4888,24 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             }
         };
 
-        const loadDraftUserObjects = async (draftKey: string, seq: number) => {
-            if (!isMounted || isRestoring.current) return;
-            if (seq !== enterSeqRef.current) return;
+        // Move initLayers out of here, we will handle it in a separate effect
+        // Just flag that the canvas is ready
+        setTimeout(() => {
+            // Force an initial resize
+            fitCanvasToContainer();
+            // Restore locks
+            restoreLocks(canvas);
+        }, 50);
 
-            console.log('[DRAFT] load start', { seq, ts: Date.now(), draftKey });
-            try {
-                const draft = await getDraft(draftKey);
-                const currentPid = searchParams.get('productId') || currentProduct?.id;
-
-                if (!draft || draft.context.productId !== currentPid) {
-                    console.log('[DRAFT] skip (no draft or pid mismatch)', { seq, hasDraft: !!draft, currentPid, draftPid: draft?.context?.productId });
-                    return;
-                }
-
-                isRestoringDraft.current = true;
-
-                if (draft.canvasJson && Array.isArray(draft.canvasJson.objects)) {
-                    const baseFinal = templateFinalSrcRef.current?.baseFinal || '';
-                    const maskFinal = templateFinalSrcRef.current?.maskFinal || '';
-
-                    const stripV = (u: string) => {
-                        const url = String(u || '').trim();
-                        if (!url) return url;
-                        const low = url.toLowerCase();
-                        if (low.startsWith('data:') || low.startsWith('blob:')) return url;
-                        try {
-                            const parsed = new URL(url, window.location.origin);
-                            parsed.searchParams.delete('v');
-                            return parsed.toString();
-                        } catch {
-                            return url.replace(/([?&])v=[^&]*(&?)/, (m, p1, p2) => (p1 === '?' && p2 ? '?' : p1 === '?' ? '' : p2 ? p1 : ''));
-                        }
-                    };
-
-                    const isTemplateSrc = (src: any) => {
-                        const s = String(src || '').trim();
-                        if (!s) return false;
-                        const s0 = stripV(s);
-                        const b0 = stripV(baseFinal);
-                        const m0 = stripV(maskFinal);
-                        if (b0 && s0 === b0) return true;
-                        if (m0 && s0 === m0) return true;
-                        if (s.includes('/storage/v1/object/public/models/')) return true;
-                        return false;
-                    };
-
-                    const isSystemDraftJsonObject = (o: any) => {
-                        if (!o) return true;
-                        const sid = String(o.data?.systemId || o.id || '').trim();
-                        const kind = o.data?.kind;
-                        const role = o.data?.role;
-                        if (o.excludeFromExport === true) return true;
-                        if (o.data?.isSystem === true) return true;
-                        if (sid.startsWith('system_')) return true;
-                        if (['system_base_image', 'system_mask_image', 'system_template_group'].includes(sid)) return true;
-                        if (['product_base', 'product_overlay', 'guide'].includes(kind)) return true;
-                        if (role === TEMPLATE_ROLE || role === 'product_base' || role === 'product_overlay') return true;
-                        if (o.isBaseLayer === true || o.isMaskLayer === true) return true;
-                        if (o.type === 'image' && isTemplateSrc(o.src)) return true;
-                        return false;
-                    };
-
-                    const rawObjects = draft.canvasJson.objects;
-                    const filteredRawObjects = rawObjects.filter((o: any) => !isSystemDraftJsonObject(o));
-                    console.log('[DRAFT] filter', { seq, before: rawObjects.length, after: filteredRawObjects.length, dropped: rawObjects.length - filteredRawObjects.length });
-
-                    removeAllUserObjects(canvas);
-
-                    const objects = await util.enlivenObjects(filteredRawObjects);
-                    let added = 0;
-                    objects.forEach((obj: any) => {
-                        if (isSystemRuntimeObject(obj)) return;
-
-                        ensureObjectId(obj);
-                        canvas.add(obj);
-                        added += 1;
-                    });
-
-                    if (draft.extraState) {
-                        if (draft.extraState.zoom) canvas.setZoom(draft.extraState.zoom);
-                        if (draft.extraState.pan) {
-                            const vpt = canvas.viewportTransform;
-                            if (vpt) {
-                                vpt[4] = draft.extraState.pan.x;
-                                vpt[5] = draft.extraState.pan.y;
-                                canvas.setViewportTransform(vpt);
-                            }
-                        }
-                    }
-
-                    if (activeBaseImageRef.current) canvas.sendObjectToBack(activeBaseImageRef.current);
-                    if (activeMaskImageRef.current) canvas.bringObjectToFront(activeMaskImageRef.current);
-
-                    console.log('[DRAFT] load end', { seq, ts: Date.now(), added });
-                } else {
-                    console.log('[DRAFT] load end (no objects)', { seq, ts: Date.now() });
-                }
-            } catch (e) {
-                console.error('[DRAFT] load failed', e);
-                try { await removeDraft(draftKey); } catch { }
-            } finally {
-                isRestoringDraft.current = false;
-            }
-        };
-
-        const initLayers = async () => {
-            if (!isMounted || isRestoring.current) return;
-            if (initOnceRef.current) return;
-            initOnceRef.current = true;
-
-            // Start initialization - lock history
-            isHistoryProcessing.current = true;
-
-            try {
-                const seq = ++enterSeqRef.current;
-                console.log('[ENTER] start', { seq, ts: Date.now() });
-
-                if (enterInFlightRef.current) {
-                    console.warn('[ENTER] in flight, superseding', { seq });
-                }
-                enterInFlightRef.current = true;
-
-                // (1) Template first
-                if (baseImage || maskImage) {
-                    const productForTemplate = currentProduct || { id: 'unknown', updated_at: Date.now() };
-                    await applyTemplateForProduct({
-                        ...productForTemplate,
-                        base_image: baseImage,
-                        mask_image: maskImage
-                    });
-                } else {
-                    // Don't create fallback rectangles during initialization!
-                    // Fallbacks should only be created when actual image loading fails (in catch block)
-                    // Just wait for product data to load, then apply template in next sequence
-                    console.log('[ENTER] No base or mask URLs yet, skipping template application');
-                    // if (!baseImage) addFallbackBase(canvas, CENTER_X, CENTER_Y);
-                    // if (!maskImage) addFallbackMask(canvas, CENTER_X, CENTER_Y);
-                }
-
-                if (seq !== enterSeqRef.current) return;
-                console.log('[ENTER] tpl done', { seq, ts: Date.now(), counts: getTemplateCounts(canvas) });
-
-                // (2) Draft after template is stable
-                // 重要修正：如果是從本機開發或剛換商品進來，
-                // 如果畫布上「已經有非系統物件」(例如使用者剛剛排好的設計)，
-                // 則【跳過讀取草稿】。避免換商品後，草稿去覆蓋掉目前正在進行的設計。
-                const currentNonSystemObjects = canvas.getObjects().filter((obj: any) => !isSystemRuntimeObject(obj));
-                if (currentNonSystemObjects.length > 0) {
-                    console.log('[ENTER] Canvas already has user objects, skipping draft load to preserve layout', { count: currentNonSystemObjects.length });
-                } else {
-                    const draftKey = getDraftKey();
-                    if (draftKey) {
-                        await loadDraftUserObjects(draftKey, seq);
-                    } else {
-                        console.log('[DRAFT] skip (draftKey null)', { seq, ts: Date.now() });
-                    }
-                }
-
-                if (seq !== enterSeqRef.current) return;
-                const finalDump = dumpCanvas(canvas, 'after_enter_final');
-                const nonSystemList = (finalDump?.dump || []).filter((x: any) => {
-                    const sid = x.systemId || x.id;
-                    const kind = x.kind;
-                    const isSystem = ['system_base_image', 'system_mask_image', 'system_template_group'].includes(sid) ||
-                        ['product_base', 'product_overlay'].includes(kind);
-                    return !isSystem;
-                });
-                console.log('[ENTER] after_enter_final nonSystem', { seq, count: nonSystemList.length, sample: nonSystemList.slice(0, 10) });
-
-                canvas.requestRenderAll();
-                restoreLocks(canvas);
-
-                // Reset History - Lock Initial State
-                // Use same toJSON props as saveHistory for consistency
-                const initialJson = JSON.stringify((canvas as any).toJSON([
-                    'id', 'selectable', 'evented', 'locked', 'excludeFromExport',
-                    'isUserBackground', 'isBaseLayer', 'isMaskLayer', 'isFrameLayer', 'frameId', 'perPixelTargetFind',
-                    'lockMovementX', 'lockMovementY', 'lockRotation', 'lockScalingX', 'lockScalingY',
-                    'lockUniScaling', 'lockSkewingX', 'lockSkewingY', 'hasControls', 'hasBorders',
-                    'hoverCursor', 'moveCursor', 'clipPath', 'visible', 'bgCornerRadius', 'padding', 'originX', 'originY'
-                ]));
-                syncHistoryState([initialJson], 0);
-            } catch (error) {
-                console.error("Layer initialization failed:", error);
-            } finally {
-                // Unlock history regardless of success/failure
-                isHistoryProcessing.current = false;
-                enterInFlightRef.current = false;
-            }
-
-            // Note: uploadedImage is handled by a separate useEffect to avoid duplication
-            // if (uploadedImage) {
-            //    addImageToCanvas(canvas, uploadedImage, CENTER_X, CENTER_Y);
-            // }
-        };
-
-        initLayers();
+        // Reset History - Lock Initial State
+        const initialJson = JSON.stringify((canvas as any).toJSON([
+            'id', 'selectable', 'evented', 'locked', 'excludeFromExport',
+            'isUserBackground', 'isBaseLayer', 'isMaskLayer', 'isFrameLayer', 'frameId', 'perPixelTargetFind',
+            'lockMovementX', 'lockMovementY', 'lockRotation', 'lockScalingX', 'lockScalingY',
+            'lockUniScaling', 'lockSkewingX', 'lockSkewingY', 'hasControls', 'hasBorders',
+            'hoverCursor', 'moveCursor', 'clipPath', 'visible', 'bgCornerRadius', 'padding', 'originX', 'originY', 'clipPathPoints'
+        ]));
+        syncHistoryState([initialJson], 0);
 
         return () => {
             console.log("[NAV] CanvasEditor cleanup/unmount");
@@ -4923,7 +4922,50 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             }
             if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         };
-    }, [applyTemplateForProduct, REAL_WIDTH, REAL_HEIGHT, CASE_RADIUS, baseImage, maskImage, offset.x, offset.y]); // REMOVED containerDimensions to prevent re-init on resize
+    }, []); // Run ONLY once on mount
+
+    // 1.5 Sync Template and Draft independently
+    useEffect(() => {
+        if (!fabricCanvas.current || !initOnceRef.current) return;
+        const canvas = fabricCanvas.current;
+
+        const syncLayers = async () => {
+            isHistoryProcessing.current = true;
+            try {
+                const seq = ++enterSeqRef.current;
+
+                // (1) Template first
+                if (baseImage || maskImage || currentProduct?.id === 'admin_design_builder') {
+                    const productForTemplate = currentProduct || { id: 'unknown', updated_at: Date.now() };
+                    await applyTemplateForProduct({
+                        ...productForTemplate,
+                        base_image: baseImage,
+                        mask_image: maskImage
+                    });
+                }
+
+                if (seq !== enterSeqRef.current) return;
+
+                // (2) Draft after template is stable
+                const currentNonSystemObjects = canvas.getObjects().filter((obj: any) => !isSystemRuntimeObject(obj));
+                if (currentNonSystemObjects.length > 0) {
+                    console.log('[ENTER] Canvas already has user objects, skipping draft load to preserve layout');
+                } else if (!disableDraft) {
+                    const draftKey = getDraftKey();
+                    if (draftKey) {
+                        await loadDraftUserObjects(canvas, draftKey, seq);
+                    }
+                }
+
+                canvas.requestRenderAll();
+            } finally {
+                isHistoryProcessing.current = false;
+            }
+        };
+
+        syncLayers();
+
+    }, [currentProduct, baseImage, maskImage, applyTemplateForProduct]);
 
     // 2. Resize Effect (Handles responsive layout without destroying canvas)
     useEffect(() => {
@@ -5277,10 +5319,10 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             isBaseLayer: true,
             data: { systemId: 'system_base_image', role: TEMPLATE_ROLE, system: true, isSystem: true, kind: 'product_base' },
             shadow: new Shadow({
-                color: 'rgba(0,0,0,0.2)',
-                blur: 20,
-                offsetX: 10,
-                offsetY: 10,
+                color: 'rgba(0,0,0,0.3)',
+                blur: 40,
+                offsetX: 0,
+                offsetY: 4,
             }),
         });
         baseLayerRef.current = baseLayer;
@@ -5306,7 +5348,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             height: 100,
             rx: 20,
             ry: 20,
-            fill: '#4b5563',
+            fill: 'transparent', // [FIX] Removed black corner color as requested
             selectable: false,
             evented: false,
             excludeFromExport: true,
@@ -5317,6 +5359,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         });
         maskLayerRef.current = cameraBump;
         canvas.add(cameraBump);
+        canvas.bringObjectToFront(cameraBump);
     };
 
     const addImageToCanvas = async (canvas: Canvas, imageUrl: string, cx: number, cy: number, extraData: any = {}) => {
@@ -5967,7 +6010,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                             </>
                         )}
 
-                        {(selectedObject as any).isFrameLayer && (
+                        {(selectedObject as any).isFrameLayer && !disableFrameUpload && (
                             (() => {
                                 const isFrameEmpty = !fabricCanvas.current?.getObjects().some(obj => (obj as any).frameId === (selectedObject as any).id);
                                 if (!isFrameEmpty) return null;

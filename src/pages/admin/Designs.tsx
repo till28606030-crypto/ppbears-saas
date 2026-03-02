@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { get, update } from 'idb-keyval';
 import AdminDesignBuilder from '../../components/admin/AdminDesignBuilder';
 import { supabase } from '../../lib/supabase';
-import { listDesignTemplates, createDesignTemplate, DesignTemplate } from '../../lib/designTemplates';
-import { Upload, Trash2, Search, FileImage, Layers, Loader2, Edit2, X, Plus, GripVertical, Save, Copy, ExternalLink, Database, Palette } from 'lucide-react';
+import { listDesignTemplates, createDesignTemplate, deleteDesignTemplate, DesignTemplate } from '../../lib/designTemplates';
+import { Upload, Trash2, Search, FileImage, Layers, Loader2, Edit2, X, Plus, GripVertical, Save, Copy, ExternalLink, Database, Palette, AlertTriangle } from 'lucide-react';
 // @ts-ignore
 import { readPsd } from 'ag-psd';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
@@ -66,6 +66,7 @@ create table if not exists public.design_templates (
   file_path text not null,
 
   file_type text null,
+  canvas_data jsonb null, -- [NEW] For online builder designs
   created_at timestamptz not null default now(), 
   updated_at timestamptz not null default now() 
 ); 
@@ -91,17 +92,17 @@ create policy "Auth Update Previews" on storage.objects for update using ( bucke
 create policy "Auth Delete Previews" on storage.objects for delete using ( bucket_id = 'design-previews' and auth.role() = 'authenticated' );
 `;
 
-export const FIX_RLS_SQL = `-- FIX_RLS_SQL_V2
+export const FIX_RLS_SQL = `-- FIX_RLS_SQL_V3 (Final Fix for Save Error)
 begin;
 
--- 0) 確保 RLS 有開（沒開就算你寫 policy 也可能怪怪的）
+-- 0) 確保 RLS 有開
 alter table if exists public.design_templates enable row level security;
 alter table if exists storage.objects enable row level security;
 
--- 1) 確保 anon/authenticated 有 table 權限（很多人只寫 policy 忘了 GRANT）
+-- 1) 確保 authenticated 有完整權限
+grant all on table public.design_templates to authenticated;
 grant usage on schema public to anon, authenticated;
 grant select on public.design_templates to anon, authenticated;
-grant insert, update, delete on public.design_templates to authenticated;
 
 -- 2) design_templates：前台 anon 可讀 is_active=true
 drop policy if exists "Public can view active designs" on public.design_templates;
@@ -110,23 +111,23 @@ on public.design_templates for select
 to anon, authenticated
 using (is_active = true);
 
--- 3) design_templates：後台登入者可管理（MVP 先放寬 authenticated）
+-- 3) design_templates：後台登入者可管理 (解決 new row violates RLS 錯誤)
 drop policy if exists "Authenticated can manage designs" on public.design_templates;
+drop policy if exists "Admins can do everything" on public.design_templates;
 create policy "Authenticated can manage designs"
 on public.design_templates for all
 to authenticated
 using (true)
 with check (true);
 
--- 4) Storage bucket 設為 public（走 public url 才不會卡 signed url）
+-- 4) Storage bucket 設為 public
 update storage.buckets
 set public = true
 where id in ('design-assets','design-previews');
 
--- 5) Storage 權限與 policies（保險起見補齊）
+-- 5) Storage 權限與 policies
 grant usage on schema storage to anon, authenticated;
-grant select on storage.objects to anon, authenticated;
-grant insert, update, delete on storage.objects to authenticated;
+grant all on all tables in schema storage to authenticated;
 
 drop policy if exists "Public read design buckets" on storage.objects;
 create policy "Public read design buckets"
@@ -168,6 +169,8 @@ export default function AdminDesigns() {
 
     // Editor Modal
     const [isCanvasEditorOpen, setIsCanvasEditorOpen] = useState(false);
+    const [showSizeDialog, setShowSizeDialog] = useState(false);
+    const [canvasSizeMM, setCanvasSizeMM] = useState({ width: 77, height: 162 });
 
     // Edit Modal
     const [editingDesign, setEditingDesign] = useState<DesignTemplate | null>(null);
@@ -194,7 +197,8 @@ export default function AdminDesigns() {
             const { data } = await listDesignTemplates({
                 category: selectedCategory,
                 search: searchTerm,
-                limit: 100
+                limit: 100,
+                showInactive: true
             });
             setDesigns(data);
         } catch (error: any) {
@@ -326,19 +330,11 @@ export default function AdminDesigns() {
                 category: selectedCategory === '全部' ? '未分類' : selectedCategory,
                 tags: ['線上排版'],
                 isFeatured: false,
-                fileType: 'canvas'
+                fileType: 'canvas',
+                canvas_data: canvasData, // [FIX] Now supported in createDesignTemplate
+                width_mm: canvasSizeMM.width,
+                height_mm: canvasSizeMM.height
             }, dummyFile, previewFile);
-
-            // Update the design to include canvas_data
-            const { error: updateError } = await supabase
-                .from('design_templates')
-                .update({ canvas_data: canvasData })
-                .eq('id', newDesign.id);
-
-            if (updateError) {
-                console.error("Failed to save canvas JSON:", updateError);
-                alert("排版資料儲存失敗，但已建立設計檔。");
-            }
 
             await fetchData(); // Refresh list
             alert('設計檔建立成功！');
@@ -351,16 +347,16 @@ export default function AdminDesigns() {
     };
 
     const handleDeleteDesign = async (id: string) => {
-        if (!confirm('確定要刪除此設計嗎？')) return;
+        if (!confirm('確定要永久刪除此設計模板嗎？此動作無法復原。')) return;
 
         try {
-            const { error } = await supabase.from('design_templates').delete().eq('id', id);
-            if (error) throw error;
-            // Also need to delete storage files, but for now just DB record
+            console.log('Deleting design:', id);
+            await deleteDesignTemplate(id);
             setDesigns(prev => prev.filter(d => d.id !== id));
-        } catch (error) {
+            // Optional: Notify success
+        } catch (error: any) {
             console.error("Delete failed:", error);
-            alert("刪除失敗");
+            alert(`刪除失敗: ${error.message || '未知錯誤'}`);
         }
     };
 
@@ -379,7 +375,9 @@ export default function AdminDesigns() {
                     category: editingDesign.category,
                     tags: editingDesign.tags,
                     is_featured: editingDesign.isFeatured,
-                    is_active: editingDesign.isActive
+                    is_active: editingDesign.isActive,
+                    width_mm: editingDesign.width_mm,
+                    height_mm: editingDesign.height_mm
                 })
                 .eq('id', editingDesign.id);
 
@@ -394,28 +392,9 @@ export default function AdminDesigns() {
     };
 
     const handleCopyLink = (design: DesignTemplate) => {
-        // Public link feature was for old designs.json/store_designs with slug.
-        // New system might not have slug yet (schema doesn't have it).
-        // User schema provided in prompt doesn't have 'slug'.
-        // So public link might not be supported or needs ID-based link.
-        // Prompt says: "Supports 'Public Link' ... (/t/:slug)" in MEMORY, 
-        // but NEW schema in prompt Step B does NOT have slug.
-        // However, Step C mentions "URL generation: previewUrl...".
-        // Step D says "Card displays: previewUrl...".
-        // It does NOT explicitly ask for Slug support in the new schema.
-        // I will comment out slug/link functionality for now or use ID.
-        // If I need to support /t/:slug, I should have added slug column.
-        // But user provided the schema in Step B explicitly, and it lacks 'slug'.
-        // So I will assume we don't need the public link copy feature for now, or just copy the file URL.
-        // Wait, User Memory says "Public Template Link Implementation ... (/t/:slug)".
-        // If I remove slug, I break that feature.
-        // But the user gave me a schema to apply.
-        // I should probably stick to the user's explicit schema instructions for this task.
-        // I will disable the "Copy Link" button or make it copy the direct image link.
-        if (design.fileUrl) {
-            navigator.clipboard.writeText(design.fileUrl);
-            alert("原始檔連結已複製");
-        }
+        const link = `${window.location.origin}/t/${design.id}`;
+        navigator.clipboard.writeText(link);
+        alert("專屬模板連結已複製到剪貼簿！\n\n網址: " + link);
     };
 
     return (
@@ -538,7 +517,7 @@ export default function AdminDesigns() {
 
                             {/* Option 2: Online Builder */}
                             <button
-                                onClick={() => setIsCanvasEditorOpen(true)}
+                                onClick={() => setShowSizeDialog(true)}
                                 className="flex flex-col items-center justify-center w-full h-48 border-2 border-blue-200 rounded-lg cursor-pointer bg-blue-50 hover:bg-blue-100 hover:border-blue-300 transition-colors group"
                             >
                                 <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
@@ -578,17 +557,22 @@ export default function AdminDesigns() {
                                             )}
                                         </div>
 
-                                        {/* Actions Overlay */}
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 z-20">
                                             <button
-                                                onClick={() => openEditModal(design)}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    openEditModal(design);
+                                                }}
                                                 className="p-1.5 bg-white text-gray-700 rounded-full hover:bg-blue-50 hover:text-blue-600 transition-colors shadow-sm"
                                                 title="編輯資訊"
                                             >
                                                 <Edit2 className="w-3.5 h-3.5" />
                                             </button>
                                             <button
-                                                onClick={() => handleDeleteDesign(design.id)}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDeleteDesign(design.id);
+                                                }}
                                                 className="p-1.5 bg-white text-gray-700 rounded-full hover:bg-red-50 hover:text-red-600 transition-colors shadow-sm"
                                                 title="刪除設計"
                                             >
@@ -605,16 +589,25 @@ export default function AdminDesigns() {
 
                                         <div className="text-xs text-gray-400 mb-2 flex items-center gap-1">
                                             <span className="uppercase">{design.fileType}</span>
+                                            {design.width_mm && design.height_mm && (
+                                                <>
+                                                    <span className="text-gray-300">•</span>
+                                                    <span>{design.width_mm} x {design.height_mm} mm</span>
+                                                </>
+                                            )}
                                         </div>
 
                                         {/* Copy Link Section */}
                                         <div className="mt-auto pt-2 border-t border-gray-100 flex items-center gap-1">
                                             <button
-                                                onClick={() => handleCopyLink(design)}
-                                                className="p-1 hover:bg-gray-100 text-gray-500 hover:text-gray-700 rounded transition-colors ml-auto"
-                                                title="複製檔案連結"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleCopyLink(design);
+                                                }}
+                                                className="p-1 hover:bg-gray-100 text-gray-500 hover:text-gray-700 rounded transition-colors ml-auto flex items-center gap-1 text-xs"
+                                                title="複製專線連結"
                                             >
-                                                <Copy className="w-3 h-3" />
+                                                <Copy className="w-3 h-3" /> 複製連結
                                             </button>
                                             <a
                                                 href={design.fileUrl}
@@ -692,6 +685,27 @@ export default function AdminDesigns() {
                                 >
                                     <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editingDesign.isFeatured ? 'translate-x-6' : 'translate-x-1'}`} />
                                 </button>
+                            </div>
+
+                            <div className="flex gap-4">
+                                <div className="flex-1">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">畫布寬度 (mm)</label>
+                                    <input
+                                        type="number"
+                                        value={editingDesign.width_mm || ''}
+                                        onChange={(e) => setEditingDesign({ ...editingDesign, width_mm: Number(e.target.value) || null })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">畫布高度 (mm)</label>
+                                    <input
+                                        type="number"
+                                        value={editingDesign.height_mm || ''}
+                                        onChange={(e) => setEditingDesign({ ...editingDesign, height_mm: Number(e.target.value) || null })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    />
+                                </div>
                             </div>
 
                             <div>
@@ -796,14 +810,71 @@ export default function AdminDesigns() {
                 </div>
             )}
 
-            {/* Canvas Editor Modal (Placeholder for next step) */}
+            {/* Size Prompt Dialog */}
+            {showSizeDialog && (
+                <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95">
+                        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                            <h3 className="font-bold text-gray-800">設定設計畫布尺寸</h3>
+                            <button onClick={() => setShowSizeDialog(false)} className="text-gray-400 hover:text-gray-600">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-gray-600">請輸入此透明畫布的實際尺寸 (公釐)，建議依照最常見的商品尺寸設定。</p>
+                            <div className="flex gap-4">
+                                <div className="flex-1">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">寬度 (mm)</label>
+                                    <input
+                                        type="number"
+                                        value={canvasSizeMM.width}
+                                        onChange={(e) => setCanvasSizeMM({ ...canvasSizeMM, width: Number(e.target.value) || 0 })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                        min="1"
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">高度 (mm)</label>
+                                    <input
+                                        type="number"
+                                        value={canvasSizeMM.height}
+                                        onChange={(e) => setCanvasSizeMM({ ...canvasSizeMM, height: Number(e.target.value) || 0 })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                        min="1"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3">
+                            <button
+                                onClick={() => setShowSizeDialog(false)}
+                                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowSizeDialog(false);
+                                    setIsCanvasEditorOpen(true);
+                                }}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                            >
+                                開始設計
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Canvas Editor Modal */}
             {isCanvasEditorOpen && (
                 <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in zoom-in-95 duration-200">
-
                     <div className="flex-1 bg-gray-50 relative overflow-hidden">
                         <AdminDesignBuilder
                             onClose={() => setIsCanvasEditorOpen(false)}
                             onSave={handleBuilderSave}
+                            canvasWidthMM={canvasSizeMM.width}
+                            canvasHeightMM={canvasSizeMM.height}
                         />
                     </div>
                 </div>

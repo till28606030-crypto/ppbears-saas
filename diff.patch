@@ -1,0 +1,207 @@
+﻿diff --git a/src/components/CanvasEditor.tsx b/src/components/CanvasEditor.tsx
+index 9c353fe..d9a84ab 100644
+--- a/src/components/CanvasEditor.tsx
++++ b/src/components/CanvasEditor.tsx
+@@ -828,6 +828,7 @@ interface CanvasEditorProps {
+     onSelectionChange?: (object: FabricObject | null) => void;
+     disableDraft?: boolean;
+     readOnly?: boolean;
++    disableFrameUpload?: boolean;
+ }
+ 
+ export interface CanvasEditorRef {
+@@ -875,7 +876,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
+         permissions,
+         onImageLayerChange,
+         disableDraft = false,
+-        readOnly = false
++        readOnly = false,
++        disableFrameUpload = false
+     } = props;
+ 
+     const [searchParams] = useSearchParams();
+@@ -4109,15 +4111,11 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
+         }
+     }, [REAL_WIDTH, REAL_HEIGHT, currentProduct, previewConfig]);
+ 
+-    // 1. Canvas Initialization Effect (Runs on mount or product change)
++    // 1. Canvas Instantiation Effect (Runs strictly ONCE)
+     useEffect(() => {
+         if (!canvasEl.current) return;
+-        initOnceRef.current = false; // Reset guard for new initialization
+-
+-        // Dispose existing if any (for product change)
+-        if (fabricCanvas.current) {
+-            fabricCanvas.current.dispose();
+-        }
++        if (initOnceRef.current) return;
++        initOnceRef.current = true;
+ 
+         // Initialize with container size initially
+         const canvas = new Canvas(canvasEl.current, {
+@@ -4815,22 +4813,51 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
+             }
+         };
+ 
+-        const initLayers = async () => {
+-            if (!isMounted || isRestoring.current) return;
+-            if (initOnceRef.current) return;
+-            initOnceRef.current = true;
++        // Move initLayers out of here, we will handle it in a separate effect
++        // Just flag that the canvas is ready
++        setTimeout(() => {
++            // Force an initial resize
++            fitCanvasToContainer();
++            // Restore locks
++            restoreLocks(canvas);
++        }, 50);
+ 
+-            // Start initialization - lock history
+-            isHistoryProcessing.current = true;
++        // Reset History - Lock Initial State
++        const initialJson = JSON.stringify((canvas as any).toJSON([
++            'id', 'selectable', 'evented', 'locked', 'excludeFromExport',
++            'isUserBackground', 'isBaseLayer', 'isMaskLayer', 'isFrameLayer', 'frameId', 'perPixelTargetFind',
++            'lockMovementX', 'lockMovementY', 'lockRotation', 'lockScalingX', 'lockScalingY',
++            'lockUniScaling', 'lockSkewingX', 'lockSkewingY', 'hasControls', 'hasBorders',
++            'hoverCursor', 'moveCursor', 'clipPath', 'visible', 'bgCornerRadius', 'padding', 'originX', 'originY'
++        ]));
++        syncHistoryState([initialJson], 0);
++
++        return () => {
++            console.log("[NAV] CanvasEditor cleanup/unmount");
++            isMounted = false;
+ 
++            // [NAV] T3: Reset refs on unmount to prevent stale state in new canvas
++            appliedTemplateKeyRef.current = null;
++            templateApplyInFlightRef.current = false;
++            templateLoadSeqRef.current++; // Invalidate any in-flight loads
++
++            if (fabricCanvas.current) {
++                fabricCanvas.current.dispose();
++                fabricCanvas.current = null;
++            }
++            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
++        };
++    }, []); // Run ONLY once on mount
++
++    // 1.5 Sync Template and Draft independently
++    useEffect(() => {
++        if (!fabricCanvas.current || !initOnceRef.current) return;
++        const canvas = fabricCanvas.current;
++
++        const syncLayers = async () => {
++            isHistoryProcessing.current = true;
+             try {
+                 const seq = ++enterSeqRef.current;
+-                console.log('[ENTER] start', { seq, ts: Date.now() });
+-
+-                if (enterInFlightRef.current) {
+-                    console.warn('[ENTER] in flight, superseding', { seq });
+-                }
+-                enterInFlightRef.current = true;
+ 
+                 // (1) Template first
+                 if (baseImage || maskImage) {
+@@ -4840,90 +4867,31 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
+                         base_image: baseImage,
+                         mask_image: maskImage
+                     });
+-                } else {
+-                    // Don't create fallback rectangles during initialization!
+-                    // Fallbacks should only be created when actual image loading fails (in catch block)
+-                    // Just wait for product data to load, then apply template in next sequence
+-                    console.log('[ENTER] No base or mask URLs yet, skipping template application');
+-                    // if (!baseImage) addFallbackBase(canvas, CENTER_X, CENTER_Y);
+-                    // if (!maskImage) addFallbackMask(canvas, CENTER_X, CENTER_Y);
+                 }
+ 
+                 if (seq !== enterSeqRef.current) return;
+-                console.log('[ENTER] tpl done', { seq, ts: Date.now(), counts: getTemplateCounts(canvas) });
+ 
+                 // (2) Draft after template is stable
+-                // ??靽格迤嚗??敺璈??潭??????脖?嚗?-                // 憒??怠?銝歇蝬??頂蝯梁隞嗚?靘?雿輻????憟賜?閮剛?)嚗?-                // ?歲????蝔踴????敺??阮?餉????桀?甇??脰??身閮?                 const currentNonSystemObjects = canvas.getObjects().filter((obj: any) => !isSystemRuntimeObject(obj));
+                 if (currentNonSystemObjects.length > 0) {
+-                    console.log('[ENTER] Canvas already has user objects, skipping draft load to preserve layout', { count: currentNonSystemObjects.length });
+-                } else {
++                    console.log('[ENTER] Canvas already has user objects, skipping draft load to preserve layout');
++                } else if (!disableDraft) {
+                     const draftKey = getDraftKey();
+                     if (draftKey) {
++                        // eslint-disable-next-line @typescript-eslint/no-use-before-define
+                         await loadDraftUserObjects(draftKey, seq);
+-                    } else {
+-                        console.log('[DRAFT] skip (draftKey null)', { seq, ts: Date.now() });
+                     }
+                 }
+ 
+-                if (seq !== enterSeqRef.current) return;
+-                const finalDump = dumpCanvas(canvas, 'after_enter_final');
+-                const nonSystemList = (finalDump?.dump || []).filter((x: any) => {
+-                    const sid = x.systemId || x.id;
+-                    const kind = x.kind;
+-                    const isSystem = ['system_base_image', 'system_mask_image', 'system_template_group'].includes(sid) ||
+-                        ['product_base', 'product_overlay'].includes(kind);
+-                    return !isSystem;
+-                });
+-                console.log('[ENTER] after_enter_final nonSystem', { seq, count: nonSystemList.length, sample: nonSystemList.slice(0, 10) });
+-
+                 canvas.requestRenderAll();
+-                restoreLocks(canvas);
+-
+-                // Reset History - Lock Initial State
+-                // Use same toJSON props as saveHistory for consistency
+-                const initialJson = JSON.stringify((canvas as any).toJSON([
+-                    'id', 'selectable', 'evented', 'locked', 'excludeFromExport',
+-                    'isUserBackground', 'isBaseLayer', 'isMaskLayer', 'isFrameLayer', 'frameId', 'perPixelTargetFind',
+-                    'lockMovementX', 'lockMovementY', 'lockRotation', 'lockScalingX', 'lockScalingY',
+-                    'lockUniScaling', 'lockSkewingX', 'lockSkewingY', 'hasControls', 'hasBorders',
+-                    'hoverCursor', 'moveCursor', 'clipPath', 'visible', 'bgCornerRadius', 'padding', 'originX', 'originY'
+-                ]));
+-                syncHistoryState([initialJson], 0);
+-            } catch (error) {
+-                console.error("Layer initialization failed:", error);
+             } finally {
+-                // Unlock history regardless of success/failure
+                 isHistoryProcessing.current = false;
+-                enterInFlightRef.current = false;
+             }
+-
+-            // Note: uploadedImage is handled by a separate useEffect to avoid duplication
+-            // if (uploadedImage) {
+-            //    addImageToCanvas(canvas, uploadedImage, CENTER_X, CENTER_Y);
+-            // }
+         };
+ 
+-        initLayers();
++        syncLayers();
+ 
+-        return () => {
+-            console.log("[NAV] CanvasEditor cleanup/unmount");
+-            isMounted = false;
+-
+-            // [NAV] T3: Reset refs on unmount to prevent stale state in new canvas
+-            appliedTemplateKeyRef.current = null;
+-            templateApplyInFlightRef.current = false;
+-            templateLoadSeqRef.current++; // Invalidate any in-flight loads
+-
+-            if (fabricCanvas.current) {
+-                fabricCanvas.current.dispose();
+-                fabricCanvas.current = null;
+-            }
+-            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+-        };
+-    }, [applyTemplateForProduct, REAL_WIDTH, REAL_HEIGHT, CASE_RADIUS, baseImage, maskImage, offset.x, offset.y]); // REMOVED containerDimensions to prevent re-init on resize
++    }, [currentProduct, baseImage, maskImage, applyTemplateForProduct]);
+ 
+     // 2. Resize Effect (Handles responsive layout without destroying canvas)
+     useEffect(() => {
+@@ -5967,7 +5935,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
+                             </>
+                         )}
+ 
+-                        {(selectedObject as any).isFrameLayer && (
++                        {(selectedObject as any).isFrameLayer && !disableFrameUpload && (
+                             (() => {
+                                 const isFrameEmpty = !fabricCanvas.current?.getObjects().some(obj => (obj as any).frameId === (selectedObject as any).id);
+                                 if (!isFrameEmpty) return null;

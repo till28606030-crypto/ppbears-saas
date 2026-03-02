@@ -15,10 +15,10 @@ export default function PublicTemplate() {
             try {
                 // 1. Fetch Design
                 const { data: design, error: fetchError } = await supabase
-                    .from('designs')
-                    .select('id, slug, is_published, default_context')
-                    .eq('slug', slug)
-                    .eq('is_published', true)
+                    .from('design_templates')
+                    .select('id, is_active')
+                    .eq('id', slug)
+                    .eq('is_active', true)
                     .single();
 
                 if (fetchError || !design) {
@@ -28,18 +28,11 @@ export default function PublicTemplate() {
 
                 // 2. Construct Redirect URL
                 const params = new URLSearchParams();
-                params.set('template_slug', slug);
+                params.set('template_id', slug);
+                params.set('require_product_selection', 'true');
 
-                // 3. Apply Default Context
-                if (design.default_context) {
-                    const ctx = design.default_context as Record<string, any>;
-                    Object.entries(ctx).forEach(([key, value]) => {
-                        if (value) params.set(key, String(value));
-                    });
-                }
-
-                // 4. Redirect to Designer
-                navigate(`/?${params.toString()}`, { replace: true });
+                // 4. Redirect to Shop (to ask for product selection)
+                navigate(`/shop?${params.toString()}`, { replace: true });
 
             } catch (err) {
                 console.error("Template redirect error:", err);
@@ -59,7 +52,7 @@ export default function PublicTemplate() {
                     </div>
                     <h1 className="text-xl font-bold text-gray-900">無法載入模板</h1>
                     <p className="text-gray-500">{error}</p>
-                    <button 
+                    <button
                         onClick={() => navigate('/')}
                         className="px-6 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
                     >

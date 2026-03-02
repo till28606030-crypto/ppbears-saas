@@ -184,8 +184,16 @@ const SellerShop: React.FC = () => {
 
     const handleProductClick = (item: ShopItem) => {
         console.log(`Navigating to editor for ${item.name} (${item.id})`);
-        navigate(`/?productId=${item.id}`);
+
+        const params = new URLSearchParams(searchParams);
+        params.delete('category');
+        params.delete('brand');
+        params.set('productId', item.id);
+
+        navigate(`/?${params.toString()}`);
     };
+
+    const templateId = searchParams.get('template_id');
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -242,6 +250,12 @@ const SellerShop: React.FC = () => {
                     </div>
                 </div>
             </header>
+
+            {templateId && (
+                <div className="bg-blue-600 text-white text-center py-3 px-4 shadow-sm relative text-sm font-medium flex justify-center items-center">
+                    請先選擇上方商品分類及型號，選擇後將自動套用您所點擊的設計模板
+                </div>
+            )}
 
             <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 flex gap-8">
 

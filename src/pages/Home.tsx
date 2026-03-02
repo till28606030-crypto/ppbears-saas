@@ -499,8 +499,6 @@ export default function Home() {
                     const heightPx = toPx(specs.height_mm ? specs.height_mm / 10 : specs.height, 16.20);
                     const radiusPx = specs.cornerRadius !== undefined ? specs.cornerRadius : 0.5; // Default 0.5cm? No, keep logic consistent
                     // Note: original code used 50 as fallback for radiusPx (which is raw pixel?), but here we use specs.cornerRadius (cm)
-                    // Let's assume specs.cornerRadius is in CM, need to convert to PX?
-                    // Previous code: const radiusPx = product.cornerRadius !== undefined ? product.cornerRadius : 50; 
                     // If product.cornerRadius was 0.5 (cm), treating it as px (0.5px) is wrong.
                     // Let's standardise: always convert CM to PX.
                     const radiusPxConverted = Math.round((specs.cornerRadius || 0.5) * dpi / 2.54);
@@ -534,22 +532,53 @@ export default function Home() {
     useEffect(() => {
         const loadTemplate = async () => {
             const templateSlug = searchParams.get('template_slug');
+            const templateId = searchParams.get('template_id');
 
-            if (!templateSlug) return;
+            if (!templateSlug && !templateId) return;
 
             // Wait for product to be fully loaded and canvas configured
             if (!currentProduct || !productConfig) return;
 
             try {
-                // console.log(`Loading template: ${templateSlug}`);
-                const { data: design, error } = await supabase
-                    .from('designs')
-                    .select('*')
-                    .eq('slug', templateSlug)
-                    .eq('is_published', true)
-                    .single();
+                let design: any = null;
 
-                if (error || !design) {
+                if (templateSlug) {
+                    const { data, error } = await supabase
+                        .from('designs')
+                        .select('*')
+                        .eq('slug', templateSlug)
+                        .eq('is_published', true)
+                        .single();
+                    if (error) throw error;
+                    design = data;
+                } else if (templateId) {
+                    const { data, error } = await supabase
+                        .from('design_templates')
+                        .select('*')
+                        .eq('id', templateId)
+                        .eq('is_active', true)
+                        .single();
+                    if (error) throw error;
+
+                    if (data) {
+                        const previewUrl = data.preview_path
+                            ? supabase.storage.from(data.preview_bucket).getPublicUrl(data.preview_path).data.publicUrl
+                            : null;
+
+                        const fileUrl = data.file_path
+                            ? supabase.storage.from(data.file_bucket).getPublicUrl(data.file_path).data.publicUrl
+                            : '';
+
+                        design = {
+                            ...data,
+                            previewUrl,
+                            fileUrl,
+                            fileType: data.file_type
+                        };
+                    }
+                }
+
+                if (!design) {
                     console.error("Template not found or not published");
                     alert("此模板不存在或尚未發布"); // User requested explicit error
                     return;
@@ -701,6 +730,29 @@ export default function Home() {
     };
 
     const handleAddDesignLayers = async (design: any) => {
+        console.log("[TPL] handleAddDesignLayers called with design:", {
+            id: design.id,
+            name: design.name,
+            fileType: design.fileType || design.file_type,
+            hasCanvasData: !!(design.canvas_data || design.canvasData),
+            hasLayers: !!design.layers,
+            fileUrl: design.fileUrl
+        });
+
+        // 0. Fabric JSON Support (from Admin Builder)
+        const fabricData = design.canvas_data || design.canvasData;
+        if (fabricData) {
+            console.log("[TPL] Detected Fabric JSON Data, calling restoreFromJSON...");
+            if (canvasRef.current?.restoreFromJSON) {
+                await canvasRef.current.restoreFromJSON(fabricData);
+                console.log("[TPL] restoreFromJSON completed.");
+            } else {
+                console.error("[TPL] canvasRef.current.restoreFromJSON is not available!");
+            }
+            if (window.innerWidth < 768) setActivePanel('none');
+            return;
+        }
+
         // Scale and position based on current canvas/product size
         const psdWidth = design.width || 0;
         const psdHeight = design.height || 0;
@@ -779,6 +831,13 @@ export default function Home() {
 
         // 2. New File-based System (PSD/Image)
         if (design.fileUrl) {
+            // Safety: If it's a canvas design but we fall through here (logic above failed), 
+            // don't try to load it as an image if it's likely a JSON dummy file.
+            if (design.fileType === 'canvas' || design.file_type === 'canvas') {
+                console.warn("Canvas design lacks JSON data, skipping fileUrl loading.");
+                return;
+            }
+
             try {
                 const fileExt = design.fileType?.toLowerCase() || design.fileUrl.split('.').pop()?.toLowerCase();
                 const isPsd = fileExt === 'psd' || design.name?.toLowerCase().endsWith('.psd');

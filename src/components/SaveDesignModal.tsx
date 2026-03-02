@@ -1631,8 +1631,26 @@ export default function SaveDesignModal({
                                                                 className={`relative p-4 rounded-xl border-2 text-left transition-all group hover:shadow-md ${selectedOptions[groupKey] === item.id ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-gray-300'}`}
                                                             >
                                                                 <div className="flex gap-4">
-                                                                    <div className="w-20 h-20 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
-                                                                        {item.imageUrl ? <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" /> : <div className="w-full h-full" style={{ backgroundColor: item.colorHex || '#ddd' }} />}
+                                                                    <div
+                                                                        className="relative w-20 h-20 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center group/img cursor-pointer"
+                                                                        onClick={(e) => {
+                                                                            if (item.imageUrl) {
+                                                                                e.preventDefault();
+                                                                                e.stopPropagation();
+                                                                                openLightbox([item.imageUrl], 0);
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        {item.imageUrl ? (
+                                                                            <>
+                                                                                <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover transition-transform group-hover/img:scale-105" />
+                                                                                <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors flex items-center justify-center">
+                                                                                    <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover/img:opacity-100 drop-shadow-md" />
+                                                                                </div>
+                                                                            </>
+                                                                        ) : (
+                                                                            <div className="w-full h-full" style={{ backgroundColor: item.colorHex || '#ddd' }} />
+                                                                        )}
                                                                     </div>
                                                                     <div className="flex-1">
                                                                         <div className="flex justify-between items-start">
@@ -1866,11 +1884,31 @@ export default function SaveDesignModal({
                                                                                         {selectedOptions[groupKey] === item.id && <Check className="w-4 h-4 text-white" />}
                                                                                     </div>
 
-                                                                                    <div className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                                                                    <div
+                                                                                        className="relative w-16 h-16 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center group/img cursor-pointer"
+                                                                                        onClick={(e) => {
+                                                                                            const imgToZoom = item.imageUrl || group.thumbnail;
+                                                                                            if (imgToZoom) {
+                                                                                                e.preventDefault();
+                                                                                                e.stopPropagation();
+                                                                                                openLightbox([imgToZoom], 0);
+                                                                                            }
+                                                                                        }}
+                                                                                    >
                                                                                         {item.imageUrl ? (
-                                                                                            <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                                                                                            <>
+                                                                                                <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover transition-transform group-hover/img:scale-105" />
+                                                                                                <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors flex items-center justify-center">
+                                                                                                    <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover/img:opacity-100 drop-shadow-md" />
+                                                                                                </div>
+                                                                                            </>
                                                                                         ) : group.thumbnail ? (
-                                                                                            <img src={group.thumbnail} alt={group.name} className="w-full h-full object-cover" />
+                                                                                            <>
+                                                                                                <img src={group.thumbnail} alt={group.name} className="w-full h-full object-cover transition-transform group-hover/img:scale-105" />
+                                                                                                <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors flex items-center justify-center">
+                                                                                                    <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover/img:opacity-100 drop-shadow-md" />
+                                                                                                </div>
+                                                                                            </>
                                                                                         ) : (
                                                                                             <div className="w-full h-full" />
                                                                                         )}

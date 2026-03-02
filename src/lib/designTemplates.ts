@@ -10,6 +10,9 @@ export type DesignTemplate = {
   previewUrl: string | null;
   fileUrl: string;
   fileType: string | null;
+  canvasData?: any;
+  width_mm?: number | null;
+  height_mm?: number | null;
   createdAt: string;
 };
 
@@ -20,13 +23,17 @@ export async function listDesignTemplates(params: {
   search?: string;
   limit?: number;
   offset?: number;
+  showInactive?: boolean;
 }): Promise<{ data: DesignTemplate[]; total: number }> {
-  const { category = '全部', search = '', limit = 50, offset = 0 } = params;
+  const { category = '全部', search = '', limit = 50, offset = 0, showInactive = false } = params;
 
   let query = supabase
     .from('design_templates')
-    .select('id,name,category,tags,is_featured,is_active,preview_bucket,preview_path,file_bucket,file_path,file_type,created_at', { count: 'exact' })
-    .eq('is_active', true);
+    .select('id,name,category,tags,is_featured,is_active,preview_bucket,preview_path,file_bucket,file_path,file_type,canvas_data,width_mm,height_mm,created_at', { count: 'exact' });
+
+  if (!showInactive) {
+    query = query.eq('is_active', true);
+  }
 
   // Category Filter
   if (category === '全部') {
@@ -61,8 +68,8 @@ export async function listDesignTemplates(params: {
 
   if (error) {
     if (error.message?.includes('AbortError') || error.message?.includes('signal is aborted')) {
-        // Return empty result to avoid crashing UI during navigation
-        return { data: [], total: 0 };
+      // Return empty result to avoid crashing UI during navigation
+      return { data: [], total: 0 };
     }
     console.error('Error fetching design templates:', error);
     throw error;
@@ -87,6 +94,9 @@ export async function listDesignTemplates(params: {
       previewUrl,
       fileUrl,
       fileType: item.file_type,
+      canvasData: item.canvas_data,
+      width_mm: item.width_mm,
+      height_mm: item.height_mm,
       createdAt: item.created_at,
     };
   });
@@ -101,6 +111,9 @@ export async function createDesignTemplate(
     tags: string[];
     isFeatured: boolean;
     fileType: string;
+    canvas_data?: any;
+    width_mm?: number | null;
+    height_mm?: number | null;
   },
   file: File,
   preview?: File
@@ -121,18 +134,18 @@ export async function createDesignTemplate(
   if (preview) {
     const previewExt = preview.name.split('.').pop()?.toLowerCase() || 'png';
     const previewName = `preview-${Date.now()}-${Math.random().toString(36).substring(7)}.${previewExt}`;
-    
+
     const { error: previewUploadError } = await supabase.storage
       .from('design-previews')
       .upload(previewName, preview);
-    
+
     if (previewUploadError) throw previewUploadError;
     previewPath = previewName;
   } else {
     // Validation: if file is psd or ai, preview is required.
     const type = payload.fileType.toLowerCase();
     if (['psd', 'ai'].includes(type) || payload.name.toLowerCase().endsWith('.psd') || payload.name.toLowerCase().endsWith('.ai')) {
-       throw new Error('PSD/AI 原始檔必須上傳預覽圖 (Preview Image is required for PSD/AI)');
+      throw new Error('PSD/AI 原始檔必須上傳預覽圖 (Preview Image is required for PSD/AI)');
     }
   }
 
@@ -149,13 +162,26 @@ export async function createDesignTemplate(
       file_path: filePath,
       preview_bucket: 'design-previews',
       preview_path: previewPath,
-      file_type: payload.fileType
+      file_type: payload.fileType,
+      canvas_data: payload.canvas_data || null,
+      width_mm: payload.width_mm || null,
+      height_mm: payload.height_mm || null
     })
     .select()
     .single();
 
   if (error) throw error;
   return data;
+}
+
+export async function deleteDesignTemplate(id: string) {
+  const { error } = await supabase
+    .from('design_templates')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+  return true;
 }
 
 export async function ensureDesignTemplatesReadable(): Promise<{
@@ -180,10 +206,10 @@ export async function ensureDesignTemplatesReadable(): Promise<{
       return {
         ok: false,
         error: {
-            code: error.code,
-            message: error.message,
-            details: error.details,
-            hint: error.hint
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
         },
         projectRef
       };
@@ -198,10 +224,10 @@ export async function ensureDesignTemplatesReadable(): Promise<{
     return {
       ok: false,
       error: {
-          code: 'CLIENT_ERROR',
-          message: err.message,
-          details: JSON.stringify(err),
-          hint: 'Check network or client config'
+        code: 'CLIENT_ERROR',
+        message: err.message,
+        details: JSON.stringify(err),
+        hint: 'Check network or client config'
       },
       projectRef
     };

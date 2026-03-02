@@ -1,0 +1,262 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { supabase } from '../../lib/supabase';
+import { listAssets } from '../../lib/assets';
+import { listFrames, Frame } from '../../lib/frameService';
+import CanvasEditor, { CanvasEditorRef } from '../../components/CanvasEditor';
+import { AssetItem, Category } from '@/types';
+import { Palette, X, Layers, Image as ImageIcon, Sparkles, Loader2, Save } from 'lucide-react';
+import { update } from 'idb-keyval';
+
+interface AdminDesignBuilderProps {
+    onClose: () => void;
+    onSave: (canvasData: any, previewUrl: string) => Promise<void>;
+    canvasWidthMM: number;
+    canvasHeightMM: number;
+}
+
+export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, canvasHeightMM }: AdminDesignBuilderProps) {
+    const canvasRef = useRef<CanvasEditorRef>(null);
+
+    const [productConfig, setProductConfig] = useState({
+        width: Math.round(canvasWidthMM * 300 / 25.4),
+        height: Math.round(canvasHeightMM * 300 / 25.4),
+        borderRadius: 0,
+        baseImage: '',
+        maskImage: '',
+        offset: { x: 0, y: 0 }
+    });
+
+    const currentProductProp = useMemo(() => {
+        // We MUST provide a base_image to force CanvasEditor to initialize a workspace.
+        // If we want a transparent BG, we can provide a 1x1 transparent PNG or rely on CanvasEditor
+        // handling an empty string. But CanvasEditor requires product.base_image to load image dimensions.
+        // Actually, if we pass custom width and height via productConfig, the editor might ignore base_image
+        // OR we can pass a dummy base_image, and it will draw it but it's empty.
+        // Let's ensure base_image is not totally breaking it.
+        return {
+            id: 'admin_design_builder',
+            base_image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', // 1x1 transparent png
+            mask_image: '',
+        }
+    }, []);
+
+    const [activePanel, setActivePanel] = useState<'stickers' | 'backgrounds' | 'frames' | 'layers'>('stickers');
+
+    const [stickers, setStickers] = useState<AssetItem[]>([]);
+    const [backgrounds, setBackgrounds] = useState<AssetItem[]>([]);
+    const [frames, setFrames] = useState<Frame[]>([]);
+    const [loadingAssets, setLoadingAssets] = useState(false);
+
+    const [isSaving, setIsSaving] = useState(false);
+
+
+
+    useEffect(() => {
+        const loadAssets = async () => {
+            setLoadingAssets(true);
+            try {
+                if (activePanel === 'stickers' || activePanel === 'backgrounds') {
+                    const type = activePanel === 'stickers' ? 'sticker' : 'background';
+                    const { data } = await listAssets({ type, category: '全部', limit: 100 });
+                    if (type === 'sticker') setStickers(data);
+                    else setBackgrounds(data);
+                } else if (activePanel === 'frames') {
+                    const { data } = await listFrames();
+                    setFrames(data);
+                }
+            } catch (e) {
+                console.error("Failed to load assets", e);
+            } finally {
+                setLoadingAssets(false);
+            }
+        };
+
+        loadAssets();
+    }, [activePanel]);
+
+
+    const handleSave = async () => {
+        if (!canvasRef.current) return;
+        setIsSaving(true);
+        try {
+            // Get JSON
+            const canvasData = await canvasRef.current.exportAsJSON();
+            // Get Preview
+            const previewDataUrl = await canvasRef.current.exportAsDataURL({ withMask: true });
+
+            await onSave(canvasData, previewDataUrl);
+            onClose();
+        } catch (error) {
+            console.error("Save failed:", error);
+            alert("儲存失敗，請重試");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    return (
+        <div className="flex flex-col h-full bg-gray-50">
+            {/* Header */}
+            <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0 z-10">
+                <div className="flex items-center gap-3">
+                    <Palette className="w-5 h-5 text-blue-600" />
+                    <h2 className="text-lg font-bold text-gray-800">建立設計款模板</h2>
+                    <span className="text-xs text-gray-500 ml-2 bg-gray-100 px-2 py-1 rounded">在此排版好的圖樣，客戶可直接套用到不同型號的手機殼</span>
+                </div>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={onClose}
+                        className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium transition-colors"
+                        disabled={isSaving}
+                    >
+                        取消
+                    </button>
+                    <button
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+                    >
+                        {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        儲存並產生連結
+                    </button>
+                </div>
+            </header>
+
+            {/* Main Workspace */}
+            <div className="flex flex-1 overflow-hidden relative">
+
+                {/* Left Sidebar - Asset Tools */}
+                <div className="w-80 bg-white border-r border-gray-200 flex flex-col shrink-0 z-10">
+                    <div className="flex border-b border-gray-100">
+                        <button
+                            onClick={() => setActivePanel('stickers')}
+                            className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex flex-col items-center gap-1 ${activePanel === 'stickers' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                        >
+                            <Sparkles className="w-4 h-4" /> 貼紙
+                        </button>
+                        <button
+                            onClick={() => setActivePanel('frames')}
+                            className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex flex-col items-center gap-1 ${activePanel === 'frames' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                        >
+                            <ImageIcon className="w-4 h-4" /> 相框
+                        </button>
+                        <button
+                            onClick={() => setActivePanel('backgrounds')}
+                            className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex flex-col items-center gap-1 ${activePanel === 'backgrounds' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                        >
+                            <Layers className="w-4 h-4" /> 背景
+                        </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                        {loadingAssets ? (
+                            <div className="flex items-center justify-center h-32">
+                                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                            </div>
+                        ) : activePanel === 'stickers' ? (
+                            <div className="grid grid-cols-3 gap-2">
+                                {stickers.map((s) => (
+                                    <button
+                                        key={s.id}
+                                        onClick={() => canvasRef.current?.addSticker(s.url)}
+                                        className="aspect-square bg-gray-50 rounded-lg p-2 border border-gray-100 hover:border-blue-400 hover:shadow-sm transition-all flex items-center justify-center group"
+                                    >
+                                        <img src={s.url} alt={s.name} className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform" crossOrigin="anonymous" />
+                                    </button>
+                                ))}
+                                {stickers.length === 0 && <p className="col-span-3 text-center text-sm text-gray-400 py-8">沒有找到素材</p>}
+                            </div>
+                        ) : activePanel === 'frames' ? (
+                            <div className="grid grid-cols-2 gap-3">
+                                {frames.map((f) => (
+                                    <button
+                                        key={f.id}
+                                        onClick={() => canvasRef.current?.addFrame({
+                                            id: f.id,
+                                            name: f.name,
+                                            imageUrl: f.url,
+                                            clipPathPoints: f.clipPathPoints,
+                                            width: f.width,
+                                            height: f.height,
+                                            category: f.category
+                                        })}
+                                        className="aspect-[3/4] bg-gray-50 rounded-lg p-2 border border-gray-100 hover:border-blue-400 hover:shadow-sm transition-all flex flex-col items-center justify-center group"
+                                    >
+                                        <div className="flex-1 w-full flex items-center justify-center mb-1">
+                                            <img src={f.url} alt={f.name} className="max-w-full max-h-full object-contain drop-shadow-sm group-hover:scale-105 transition-transform" crossOrigin="anonymous" />
+                                        </div>
+                                        <span className="text-[10px] text-gray-500 truncate w-full text-center">{f.name}</span>
+                                    </button>
+                                ))}
+                                {frames.length === 0 && <p className="col-span-2 text-center text-sm text-gray-400 py-8">沒有找到相框</p>}
+                            </div>
+                        ) : activePanel === 'backgrounds' ? (
+                            <div className="grid grid-cols-2 gap-3">
+                                <button
+                                    onClick={() => canvasRef.current?.setCanvasBgImage("")}
+                                    className="aspect-[9/16] bg-white rounded-lg border-2 border-dashed border-gray-300 hover:border-red-400 hover:text-red-500 text-gray-400 transition-all flex flex-col items-center justify-center"
+                                >
+                                    <X className="w-6 h-6 mb-1" />
+                                    <span className="text-xs font-medium">移除背景</span>
+                                </button>
+                                {backgrounds.map((bg) => (
+                                    <button
+                                        key={bg.id}
+                                        onClick={() => canvasRef.current?.setCanvasBgImage(bg.url)}
+                                        className="aspect-[9/16] rounded-lg border border-gray-200 hover:border-blue-500 hover:shadow-md transition-all overflow-hidden relative group"
+                                    >
+                                        <img src={bg.url} alt={bg.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" crossOrigin="anonymous" />
+                                    </button>
+                                ))}
+                            </div>
+                        ) : null}
+                    </div>
+
+
+                </div>
+
+                {/* Canvas Area */}
+                <div className="flex-1 relative flex items-center justify-center bg-gray-100" style={{ backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+                    <div className="relative w-full h-full flex items-center justify-center p-8">
+                        {/* We use productConfig to force a specific aspect ratio or size in CanvasEditor */}
+                        <CanvasEditor
+                            ref={canvasRef}
+                            currentProduct={currentProductProp}
+                            previewConfig={{
+                                ...productConfig,
+                                // Enforce the user-specified dimensions
+                                width: Math.round(canvasWidthMM * 300 / 25.4),
+                                height: Math.round(canvasHeightMM * 300 / 25.4)
+                            }}
+                            uploadedImage={null}
+                            readOnly={false}
+                            disableDraft={true}
+                            disableFrameUpload={true}
+                        />
+                    </div>
+                </div>
+
+                {/* Right Sidebar - Layers & Inspector */}
+                <div className="w-72 bg-white border-l border-gray-200 shrink-0 z-10 flex flex-col shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)]">
+                    <div className="p-4 border-b border-gray-100 flex items-center gap-2 bg-gray-50">
+                        <Layers className="w-4 h-4 text-gray-500" />
+                        <h3 className="text-sm font-medium text-gray-700">圖層與工具</h3>
+                    </div>
+                    <div className="p-4 flex-1 overflow-y-auto">
+                        {/* The Canvas Editor has built-in context menus and toolbars now, 
+                              but normally we would expose a layer panel here.
+                              For MVP Admin builder, we rely on the internal Fabric controls.
+                          */}
+                        <p className="text-xs text-gray-500 mb-4 bg-blue-50 p-3 rounded text-blue-800 leading-relaxed border border-blue-100">
+                            🔔 <strong>設計技巧：</strong><br />
+                            於左側點擊即可新增素材。<br />
+                            可以直接在畫布上拖曳、旋轉、縮放。<br />
+                            可隨時由左下方切換「預覽商品底圖」，確認套用到不同殼型時的展示效果。所有的貼紙、相框等素材都會原封不動地保留！
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    );
+}
