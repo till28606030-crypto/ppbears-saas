@@ -55,36 +55,58 @@ export default function MediaSelectorModal({
     }, [isOpen, activeTab]);
 
     const handleUploadNew = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const selectedFiles = Array.from(e.target.files || []);
+        if (selectedFiles.length === 0) return;
+
+        // If not in multiple mode, only process the first file
+        const filesToProcess = isMultiple ? selectedFiles : [selectedFiles[0]];
 
         setIsUploading(true);
         try {
-            const ext = file.name.split('.').pop()?.toLowerCase();
-            const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+            const uploadPromises = filesToProcess.map(async (file) => {
+                const ext = file.name.split('.').pop()?.toLowerCase();
+                const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
 
-            const { error: uploadError } = await supabase.storage
-                .from(activeTab)
-                .upload(fileName, file);
+                const { error: uploadError } = await supabase.storage
+                    .from(activeTab)
+                    .upload(fileName, file);
 
-            if (uploadError) {
-                if (uploadError.name === 'AbortError' || uploadError.message?.includes('signal is aborted')) {
-                    console.warn('Supabase upload aborted ignoring.');
+                if (uploadError) {
+                    if (uploadError.name === 'AbortError' || uploadError.message?.includes('signal is aborted')) {
+                        console.warn('Supabase upload aborted ignoring.');
+                    } else {
+                        throw uploadError;
+                    }
+                }
+
+                const { data: publicUrlData } = supabase.storage.from(activeTab).getPublicUrl(fileName);
+                return publicUrlData.publicUrl;
+            });
+
+            const uploadedUrls = await Promise.all(uploadPromises);
+            const validUrls = uploadedUrls.filter(Boolean) as string[];
+
+            if (validUrls.length > 0) {
+                // Refresh the gallery
+                await fetchFiles();
+
+                if (isMultiple) {
+                    // Auto-select the newly uploaded files and keep modal open
+                    setSelectedUrls(prev => [...prev, ...validUrls]);
                 } else {
-                    throw uploadError;
+                    // Single mode: auto-select the first one and close (handled by parent usually)
+                    onSelect(validUrls[0]);
                 }
             }
-
-            // Fetch the public URL after upload
-            const { data: publicUrlData } = supabase.storage.from(activeTab).getPublicUrl(fileName);
-
-            // Auto select the newly uploaded file
-            onSelect(publicUrlData.publicUrl);
         } catch (error) {
             console.error('Upload failed:', error);
-            alert('上傳失敗');
+            alert('部分或全部上傳失敗');
         } finally {
             setIsUploading(false);
+            // Reset input
+            if (e.target) {
+                e.target.value = '';
+            }
         }
     };
 
@@ -167,7 +189,7 @@ export default function MediaSelectorModal({
                         <label className={`cursor-pointer whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-black text-white rounded-lg font-medium text-sm hover:bg-gray-800 transition-colors ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
                             {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                             {isUploading ? '上傳中...' : '新圖檔'}
-                            <input type="file" accept="image/*" className="hidden" onChange={handleUploadNew} disabled={isUploading} />
+                            <input type="file" accept="image/*" className="hidden" multiple={isMultiple} onChange={handleUploadNew} disabled={isUploading} />
                         </label>
                     </div>
                 </div>
