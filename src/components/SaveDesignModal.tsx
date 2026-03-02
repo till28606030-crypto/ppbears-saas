@@ -68,6 +68,7 @@ export interface OptionGroup {
     thumbnail?: string;
     subAttributes?: SubAttribute[];
     uiConfig?: OptionGroupUIConfig;
+    isDefault?: boolean;
 }
 
 export interface OptionItem {
@@ -77,6 +78,7 @@ export interface OptionItem {
     priceModifier: number;
     colorHex?: string;
     imageUrl?: string;
+    isDefault?: boolean;
 }
 
 export interface ProductAvailability {
@@ -523,6 +525,54 @@ export default function SaveDesignModal({
 
                     setItems(allItems);
                     setAvailability(Array.isArray(a) ? a : []);
+
+                    // --- 預設選項處理 ---
+                    const initialSelections: Record<string, string> = {};
+
+                    // 1. 處理子項 (OptionItem) 的預設值
+                    allItems.forEach(item => {
+                        if (item.isDefault) {
+                            const parentGroup = filteredGroups.find(g => g.id === item.parentId);
+                            if (parentGroup) {
+                                const groupKey = getGroupKey(parentGroup);
+                                // 僅在尚未有任何選中值時設定（避免多個 child 衝突，雖然後台邏輯會避免）
+                                if (!initialSelections[groupKey]) {
+                                    initialSelections[groupKey] = item.id;
+                                    console.log(`[Default] Pre-selected item ${item.name} for group ${parentGroup.name}`);
+                                }
+                            }
+                        }
+                    });
+
+                    // 2. 處理大類 (OptionGroup) 的預設值 (Step 1)
+                    const step1Groups = filteredGroups.filter(g => getStep(g) === 1);
+                    const defaultStep1Group = step1Groups.find(g => g.isDefault);
+
+                    if (defaultStep1Group) {
+                        console.log(`[Default] Found default group for Step 1: ${defaultStep1Group.name}`);
+                        setSelectedCaseGroupId(defaultStep1Group.id);
+                        setActiveCaseGroupId(defaultStep1Group.id);
+
+                        // 如果該大類是 list 型態且尚未選中任何子項，嘗試選中其第一個子項
+                        const ui = getUI(defaultStep1Group);
+                        const dt = normalizeDisplayType(ui.displayType || ui.display_type);
+                        const gKey = getGroupKey(defaultStep1Group);
+
+                        if (dt === 'list' && !initialSelections[gKey]) {
+                            const groupItems = allItems.filter(i => i.parentId === defaultStep1Group.id);
+                            if (groupItems.length > 0) {
+                                initialSelections[gKey] = groupItems[0].id;
+                            }
+                        }
+                    } else if (step1Groups.length === 1) {
+                        // 如果只有一個群組，自動選中它
+                        setSelectedCaseGroupId(step1Groups[0].id);
+                        setActiveCaseGroupId(step1Groups[0].id);
+                    }
+
+                    if (Object.keys(initialSelections).length > 0) {
+                        setSelectedOptions(initialSelections);
+                    }
                 } catch (err) {
                     console.error("Failed to load options data", err);
                     setError("無法載入選項資料");
@@ -583,10 +633,19 @@ export default function SaveDesignModal({
                     if (displayType === 'list') {
                         const groupKey = getGroupKey(group);
                         if (!next[groupKey]) {
-                            const validItems = getFilteredItems(group.id);
-                            if (validItems.length > 0) {
-                                next[groupKey] = validItems[0].id;
+                            // Check if there is an explicit default item first
+                            const groupItems = items.filter(i => i.parentId === group.id);
+                            const defaultItem = groupItems.find(i => i.isDefault);
+
+                            if (defaultItem) {
+                                next[groupKey] = defaultItem.id;
                                 hasChanges = true;
+                            } else {
+                                const validItems = getFilteredItems(group.id);
+                                if (validItems.length > 0) {
+                                    next[groupKey] = validItems[0].id;
+                                    hasChanges = true;
+                                }
                             }
                         }
                     }

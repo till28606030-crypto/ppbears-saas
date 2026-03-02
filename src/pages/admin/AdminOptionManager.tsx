@@ -622,12 +622,32 @@ export default function AdminOptionManager() {
             return;
         }
 
-        // Update Local State
-        if (editingGroupData.id) {
-            setGroups(prev => prev.map(g => g.id === groupToSave.id ? groupToSave : g));
+        // Update Local State & Database Exclusivity
+        if (groupToSave.isDefault) {
+            const currentStep = groupToSave.uiConfig?.step || 1;
+            const otherGroupsInStep = groups.filter(g => (g.uiConfig?.step || 1) === currentStep && g.id !== groupToSave.id);
+
+            // Clear others in DB
+            for (const g of otherGroupsInStep) {
+                if (g.isDefault) {
+                    await supabase.from('option_groups').update({ is_default: false }).eq('id', g.id);
+                }
+            }
+
+            // Update local state by clearing others
+            setGroups(prev => prev.map(g => {
+                if (g.id === groupToSave.id) return groupToSave;
+                if ((g.uiConfig?.step || 1) === currentStep) return { ...g, isDefault: false };
+                return g;
+            }));
         } else {
-            setGroups(prev => [...prev, groupToSave]);
+            if (editingGroupData.id) {
+                setGroups(prev => prev.map(g => g.id === groupToSave.id ? groupToSave : g));
+            } else {
+                setGroups(prev => [...prev, groupToSave]);
+            }
         }
+
         setIsEditingGroup(false);
         setEditingGroupData({});
     };
@@ -752,11 +772,32 @@ export default function AdminOptionManager() {
             return;
         }
 
-        if (editingItemData.id) {
-            setItems(prev => prev.map(i => i.id === itemToSave.id ? itemToSave : i));
+        // Update Local State & Database Exclusivity
+        if (itemToSave.isDefault) {
+            const parentId = itemToSave.parentId;
+            const otherItemsInParent = items.filter(i => i.parentId === parentId && i.id !== itemToSave.id);
+
+            // Clear others in DB
+            for (const i of otherItemsInParent) {
+                if (i.isDefault) {
+                    await supabase.from('option_items').update({ is_default: false }).eq('id', i.id);
+                }
+            }
+
+            // Update local state
+            setItems(prev => prev.map(i => {
+                if (i.id === itemToSave.id) return itemToSave;
+                if (i.parentId === parentId) return { ...i, isDefault: false };
+                return i;
+            }));
         } else {
-            setItems(prev => [...prev, itemToSave]);
+            if (editingItemData.id) {
+                setItems(prev => prev.map(i => i.id === itemToSave.id ? itemToSave : i));
+            } else {
+                setItems(prev => [...prev, itemToSave]);
+            }
         }
+
         setIsEditingItem(false);
         setEditingItemData({});
     };
@@ -775,6 +816,77 @@ export default function AdminOptionManager() {
             alert('刪除發生錯誤');
         } finally {
             setDeletingItemId(null);
+        }
+    };
+
+    const handleSetGroupDefault = async (groupId: string, isDefault: boolean) => {
+        const group = groups.find(g => g.id === groupId);
+        if (!group) return;
+
+        const currentStep = group.uiConfig?.step || 1;
+
+        // If setting to true, un-default others in the same step
+        let updatedGroups = groups.map(g => {
+            if (isDefault && (g.uiConfig?.step || 1) === currentStep && g.id !== groupId) {
+                return { ...g, isDefault: false };
+            }
+            if (g.id === groupId) {
+                return { ...g, isDefault: isDefault };
+            }
+            return g;
+        });
+
+        setGroups(updatedGroups);
+
+        // Save to DB
+        try {
+            if (isDefault) {
+                // Bulk update to clear others in same step (simplistic way)
+                for (const g of updatedGroups) {
+                    if ((g.uiConfig?.step || 1) === currentStep) {
+                        await supabase.from('option_groups').update({ is_default: g.isDefault }).eq('id', g.id);
+                    }
+                }
+            } else {
+                await supabase.from('option_groups').update({ is_default: false }).eq('id', groupId);
+            }
+        } catch (err) {
+            console.error('Failed to update group default:', err);
+        }
+    };
+
+    const handleSetItemDefault = async (itemId: string, isDefault: boolean) => {
+        const item = items.find(i => i.id === itemId);
+        if (!item) return;
+
+        const parentId = item.parentId;
+
+        // If setting to true, un-default others in same parent
+        let updatedItems = items.map(i => {
+            if (isDefault && i.parentId === parentId && i.id !== itemId) {
+                return { ...i, isDefault: false };
+            }
+            if (i.id === itemId) {
+                return { ...i, isDefault: isDefault };
+            }
+            return i;
+        });
+
+        setItems(updatedItems);
+
+        // Save to DB
+        try {
+            if (isDefault) {
+                for (const i of updatedItems) {
+                    if (i.parentId === parentId) {
+                        await supabase.from('option_items').update({ is_default: i.isDefault }).eq('id', i.id);
+                    }
+                }
+            } else {
+                await supabase.from('option_items').update({ is_default: false }).eq('id', itemId);
+            }
+        } catch (err) {
+            console.error('Failed to update item default:', err);
         }
     };
 
@@ -991,8 +1103,15 @@ export default function AdminOptionManager() {
                                 </div>
                             )}
                             <div className="min-w-0">
-                                <h3 className="font-bold text-gray-900 leading-tight truncate">{group.name}</h3>
-                                <div className="flex flex-wrap gap-1 mt-1">
+                                <h3 className="font-bold text-gray-900 leading-tight truncate flex items-center gap-1.5">
+                                    {group.name}
+                                    {group.isDefault && (
+                                        <span className="shrink-0 px-1.5 py-0.5 bg-yellow-100 text-yellow-700 text-[10px] rounded font-bold border border-yellow-200 flex items-center gap-0.5">
+                                            <Check className="w-2.5 h-2.5" /> 預設
+                                        </span>
+                                    )}
+                                </h3>
+                                <div className="flex flex-wrap gap-1 mt-1 items-center">
                                     {group.uiConfig?.displayType && (
                                         <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100 shrink-0">
                                             {group.uiConfig.displayType === 'cards' ? '大卡片' :
@@ -1005,7 +1124,16 @@ export default function AdminOptionManager() {
                                 </div>
                             </div>
                         </div>
-                        <div className="flex gap-1 shrink-0">
+                        <div className="flex gap-1 shrink-0 items-center">
+                            <label className="flex items-center gap-1 cursor-pointer mr-2 px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 rounded border border-gray-200 transition-colors" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                    type="checkbox"
+                                    checked={!!group.isDefault}
+                                    onChange={(e) => handleSetGroupDefault(group.id, e.target.checked)}
+                                    className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-[10px] text-gray-500 font-bold">預設</span>
+                            </label>
                             <button onClick={onEdit} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="編輯">
                                 <Settings className="w-4 h-4" />
                             </button>
@@ -1248,7 +1376,7 @@ export default function AdminOptionManager() {
                         {rightPanelTab === 'items' && (
                             <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto">
                                 {items.filter(i => i.parentId === selectedGroupId).map(item => (
-                                    <div key={item.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden group hover:shadow-md transition-shadow">
+                                    <div key={item.id} className={`bg-white rounded-xl border overflow-hidden group hover:shadow-md transition-shadow relative ${item.isDefault ? 'border-yellow-400 ring-1 ring-yellow-400' : 'border-gray-200'}`}>
                                         <div className="aspect-square bg-gray-100 relative">
                                             {item.imageUrl ? (
                                                 <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
@@ -1257,6 +1385,28 @@ export default function AdminOptionManager() {
                                                     {!item.colorHex && <ImageIcon className="w-8 h-8 text-gray-400" />}
                                                 </div>
                                             )}
+
+                                            {/* Default Toggle Overlay */}
+                                            <div className="absolute top-2 left-2 z-10">
+                                                <label className="flex items-center gap-1 cursor-pointer bg-white/90 backdrop-blur-sm px-1.5 py-0.5 rounded shadow-sm border border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={!!item.isDefault}
+                                                        onChange={(e) => handleSetItemDefault(item.id, e.target.checked)}
+                                                        className="w-3 h-3 rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
+                                                    />
+                                                    <span className="text-[10px] text-gray-600 font-bold">預設</span>
+                                                </label>
+                                            </div>
+
+                                            {item.isDefault && (
+                                                <div className="absolute top-2 left-2 z-0">
+                                                    <div className="bg-yellow-400 text-white p-1 rounded shadow-md">
+                                                        <Check className="w-3 h-3 font-bold" />
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <button
                                                     onClick={() => {
@@ -1281,7 +1431,10 @@ export default function AdminOptionManager() {
                                             </div>
                                         </div>
                                         <div className="p-3">
-                                            <div className="font-bold text-gray-900 truncate">{item.name}</div>
+                                            <div className="font-bold text-gray-900 truncate flex items-center gap-1">
+                                                {item.name}
+                                                {item.isDefault && <Check className="w-3 h-3 text-yellow-500" />}
+                                            </div>
                                             <div className="text-sm text-gray-500">+${item.priceModifier}</div>
                                         </div>
                                     </div>
@@ -1471,6 +1624,18 @@ export default function AdminOptionManager() {
                                 value={editingGroupData.priceModifier || 0}
                                 onChange={e => setEditingGroupData(prev => ({ ...prev, priceModifier: Number(e.target.value) }))}
                             />
+                        </div>
+
+                        <div>
+                            <label className="flex items-center gap-2 cursor-pointer mt-4">
+                                <input
+                                    type="checkbox"
+                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    checked={!!editingGroupData.isDefault}
+                                    onChange={(e) => setEditingGroupData(prev => ({ ...prev, isDefault: e.target.checked }))}
+                                />
+                                <span className="text-sm font-bold text-gray-700">設為預設項 (該步驟下優先選中)</span>
+                            </label>
                         </div>
 
                         <div>
@@ -1759,6 +1924,18 @@ export default function AdminOptionManager() {
                                 value={editingItemData.priceModifier || 0}
                                 onChange={e => setEditingItemData(prev => ({ ...prev, priceModifier: Number(e.target.value) }))}
                             />
+                        </div>
+
+                        <div>
+                            <label className="flex items-center gap-2 cursor-pointer py-1">
+                                <input
+                                    type="checkbox"
+                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    checked={!!editingItemData.isDefault}
+                                    onChange={(e) => setEditingItemData(prev => ({ ...prev, isDefault: e.target.checked }))}
+                                />
+                                <span className="text-sm font-bold text-gray-700">設為預設選中</span>
+                            </label>
                         </div>
 
                         <div>

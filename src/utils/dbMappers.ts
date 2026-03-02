@@ -8,6 +8,7 @@ export const toDbGroup = (group: OptionGroup) => ({
     thumbnail: group.thumbnail,
     sub_attributes: group.subAttributes || [], // Will need DB column
     ui_config: group.uiConfig,
+    is_default: group.isDefault || false,
     is_active: true
 });
 
@@ -18,7 +19,8 @@ export const fromDbGroup = (record: any): OptionGroup => ({
     priceModifier: record.price_modifier,
     thumbnail: record.thumbnail,
     subAttributes: record.sub_attributes || [],
-    uiConfig: record.ui_config || {}
+    uiConfig: record.ui_config || {},
+    isDefault: record.is_default || false
 });
 
 export const toDbItem = (item: OptionItem) => ({
@@ -28,6 +30,7 @@ export const toDbItem = (item: OptionItem) => ({
     price_modifier: item.priceModifier,
     color_hex: item.colorHex,
     image_url: item.imageUrl,
+    is_default: item.isDefault || false,
     is_active: true
 });
 
@@ -37,5 +40,6 @@ export const fromDbItem = (record: any): OptionItem => ({
     name: record.name,
     priceModifier: record.price_modifier,
     colorHex: record.color_hex,
-    imageUrl: record.image_url
+    imageUrl: record.image_url,
+    isDefault: record.is_default || false
 });

@@ -12,6 +12,7 @@ interface Design {
     options: Record<string, any>;
     canvas_json: object | null;
     preview_image: string | null;
+    print_image: string | null; // 透明背景的高清印刷稿
     spec_image_url: string | null; // 客戶上傳的 AI 辨識截圖
     created_at: string;
 }
@@ -32,7 +33,7 @@ export default function AdminOrders() {
         try {
             const { data, error: supabaseError } = await supabase
                 .from('custom_designs')
-                .select('id, design_id, product_id, product_name, phone_model, price, options, canvas_json, preview_image, spec_image_url, created_at')
+                .select('id, design_id, product_id, product_name, phone_model, price, options, canvas_json, preview_image, print_image, spec_image_url, created_at')
                 .order('created_at', { ascending: false });
 
             if (supabaseError) throw supabaseError;
@@ -99,15 +100,16 @@ export default function AdminOrders() {
         setDeleteTarget('bulk');
     };
 
-    const handleDownload = async (design: Design) => {
-        if (!design.preview_image) {
-            alert('此設計無預覽圖可下載');
+    const handleDownload = async (design: Design, type: 'PREVIEW' | 'PRINT' = 'PREVIEW') => {
+        const imageUrl = type === 'PRINT' ? design.print_image : design.preview_image;
+        if (!imageUrl) {
+            alert(type === 'PRINT' ? '此設計尚無印刷稿可下載' : '此設計無預覽圖可下載');
             return;
         }
 
         try {
             // Fetch the image as a blob
-            const response = await fetch(design.preview_image);
+            const response = await fetch(imageUrl);
             const blob = await response.blob();
 
             // Create a temporary object URL
@@ -116,7 +118,7 @@ export default function AdminOrders() {
             // Create a link and trigger download
             const link = document.createElement('a');
             link.href = url;
-            link.download = `design-${design.design_id}-PREVIEW.png`;
+            link.download = `design-${design.design_id}-${type}.png`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -126,7 +128,7 @@ export default function AdminOrders() {
         } catch (error) {
             console.error('Download failed:', error);
             // Fallback to direct navigation if blob download fails, but set target blank
-            window.open(design.preview_image, '_blank');
+            window.open(imageUrl, '_blank');
         }
     };
 
@@ -428,9 +430,19 @@ CREATE POLICY "public insert custom_designs"
                                                         開啟編輯
                                                     </a>
                                                 )}
+                                                {/* Download Print */}
+                                                <button
+                                                    onClick={() => handleDownload(design, 'PRINT')}
+                                                    disabled={!design.print_image}
+                                                    className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium transition-colors shadow-sm text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    title="下載透明背景高清印刷稿"
+                                                >
+                                                    <Download className="w-4 h-4" />
+                                                    下載印刷稿
+                                                </button>
                                                 {/* Download Preview */}
                                                 <button
-                                                    onClick={() => handleDownload(design)}
+                                                    onClick={() => handleDownload(design, 'PREVIEW')}
                                                     disabled={!design.preview_image}
                                                     className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors shadow-sm text-sm disabled:opacity-40 disabled:cursor-not-allowed"
                                                 >

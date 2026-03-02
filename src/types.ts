@@ -44,6 +44,7 @@ export interface OptionGroup {
     min?: number;
     max?: number;
     matchingTags?: string[];
+    isDefault?: boolean;
 }
 
 export interface OptionItem {
@@ -54,6 +55,7 @@ export interface OptionItem {
     colorHex?: string;
     imageUrl?: string;
     requiredTags?: string[];
+    isDefault?: boolean;
 }
 
 export interface ProductAvailability {

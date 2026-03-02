@@ -3111,7 +3111,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         return;
                     }
 
-                    // 4. Alignment Compensation (Fix 设计跑位)
+                    // 4. Alignment Compensation (Fix 設計跑位)
                     // If the draft includes template metadata, we compare it with the current template
                     // to see if we need to adjust position or scale.
                     let scaleFactor = 1;
@@ -3127,64 +3127,76 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         const savedScaleX = savedMeta.scaleX || currentScaleX;
                         scaleFactor = currentScaleX / savedScaleX;
 
-                        // Calculate position delta (relative to base layer center/origin)
-                        // Note: Origin check is important.
+                        // Calculate position delta (relative to current absolute space)
                         const currentLeft = currentBase.left || 0;
                         const currentTop = currentBase.top || 0;
                         const savedLeft = savedMeta.left || 0;
                         const savedTop = savedMeta.top || 0;
 
-                        // Total shift = current position - (saved position * scaleFactor) ?
-                        // Better: restored objects are in their original absolute space.
-                        // We need to shift them by the delta of base layer movement.
+                        // Important: savedLeft/Top were at savedScale.
+                        // When we restore objects, they are at savedScale.
+                        // If we scale them by scaleFactor, they move.
+                        // The expected final position of base center is currentLeft/Top.
+                        // Objects' relative position to base center should be preserved.
                         offsetX = currentLeft - (savedLeft * scaleFactor);
                         offsetY = currentTop - (savedTop * scaleFactor);
 
-                        console.log('[CanvasEditor] Alignment compensation applied:', { scaleFactor, offsetX, offsetY });
+                        console.log('[CanvasEditor] Alignment compensation detail:', {
+                            current: { scaleX: currentScaleX, left: currentLeft, top: currentTop },
+                            saved: { scaleX: savedScaleX, left: savedLeft, top: savedTop },
+                            calc: { scaleFactor, offsetX, offsetY }
+                        });
+                    } else if (currentBase && !savedMeta) {
+                        // Fallback for old designs: Center objects relative to current base
+                        // This assumes the original design was also centered.
+                        offsetX = currentBase.left || (canvas.width! / 2);
+                        offsetY = currentBase.top || (canvas.height! / 2);
+                        console.log('[CanvasEditor] No savedMeta, using basic base centering fallback:', { offsetX, offsetY });
                     }
 
                     // 4. Boundary Alignment (Apply case clipPath)
-                    const systemBaseObj = canvas.getObjects().find(obj => (obj as any).isBaseLayer) as FabricImage;
-                    let boundary: Rect | null = null;
-                    if (systemBaseObj) {
-                        const finalWidth = (systemBaseObj.width! * systemBaseObj.scaleX!) || 3000;
-                        const finalHeight = (systemBaseObj.height! * systemBaseObj.scaleY!) || 3000;
-                        const finalLeft = systemBaseObj.left ?? (canvas.width! / 2);
-                        const finalTop = systemBaseObj.top ?? (canvas.height! / 2);
-
-                        boundary = new Rect({
-                            left: finalLeft,
-                            top: finalTop,
-                            originX: systemBaseObj.originX || 'center',
-                            originY: systemBaseObj.originY || 'center',
-                            width: finalWidth,
-                            height: finalHeight,
-                            scaleX: 1,
-                            scaleY: 1,
-                            angle: systemBaseObj.angle || 0,
-                            rx: (systemBaseObj as any).rx || CASE_RADIUS || 0,
-                            ry: (systemBaseObj as any).ry || CASE_RADIUS || 0,
-                            absolutePositioned: true,
-                        });
-                    }
+                    const systemBaseObj = canvas.getObjects().find(obj => (o: any) => (o as any).isBaseLayer) as FabricImage;
+                    // ... (rest of boundary logic is below in enlivenedObjects loop)
 
                     enlivenedObjects.forEach(obj => {
                         ensureObjectId(obj, 'tpl');
 
-                        // Apply alignment compensation if needed
+                        // Apply alignment compensation
                         if (scaleFactor !== 1) {
                             obj.scaleX = (obj.scaleX || 1) * scaleFactor;
                             obj.scaleY = (obj.scaleY || 1) * scaleFactor;
+                            // If it's a group or has specific origin, translate its position
                             obj.left = (obj.left || 0) * scaleFactor;
                             obj.top = (obj.top || 0) * scaleFactor;
                         }
+
                         if (offsetX !== 0 || offsetY !== 0) {
+                            // If base was centered and we are centering, this moves them to the new center
                             obj.left = (obj.left || 0) + offsetX;
                             obj.top = (obj.top || 0) + offsetY;
                         }
 
-                        // 5. Boundary Alignment (Apply case clipPath)
-                        if (boundary) {
+                        // Re-calculate boundary for EACH object to ensure it matches current base
+                        const currentBaseForClip = canvas.getObjects().find(o => (o as any).isBaseLayer) as FabricImage;
+                        if (currentBaseForClip) {
+                            const bLeft = currentBaseForClip.left!;
+                            const bTop = currentBaseForClip.top!;
+                            const bW = currentBaseForClip.width! * currentBaseForClip.scaleX!;
+                            const bH = currentBaseForClip.height! * currentBaseForClip.scaleY!;
+
+                            const boundary = new Rect({
+                                left: bLeft,
+                                top: bTop,
+                                originX: 'center',
+                                originY: 'center',
+                                width: bW,
+                                height: bH,
+                                angle: currentBaseForClip.angle || 0,
+                                rx: (currentBaseForClip as any).rx || 0,
+                                ry: (currentBaseForClip as any).ry || 0,
+                                absolutePositioned: true,
+                            });
+
                             const preserveInner = (obj as any).hasClipPath === true || (obj as any).frameId;
                             if (preserveInner && obj.clipPath) {
                                 (obj.clipPath as any).clipPath = boundary;
