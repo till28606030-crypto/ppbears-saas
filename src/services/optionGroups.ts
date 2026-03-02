@@ -9,7 +9,9 @@ export async function loadOptionGroups(): Promise<OptionGroup[]> {
 
         // 1. Fetch from Supabase
         const { data: dbGroups, error: errG } = await supabase.from('option_groups').select('*');
-        const { data: dbItems, error: errI } = await supabase.from('option_items').select('*');
+        const { data: dbItems, error: errI } = await supabase.from('option_items')
+            .select('*')
+            .order('sort_order', { ascending: true });
 
         if (errG) throw errG;
         if (errI) throw errI;

@@ -174,7 +174,9 @@ export default function AdminOptionManager() {
             try {
                 // 1. Fetch from Supabase
                 const { data: dbGroups, error: errG } = await supabase.from('option_groups').select('*');
-                const { data: dbItems, error: errI } = await supabase.from('option_items').select('*');
+                const { data: dbItems, error: errI } = await supabase.from('option_items')
+                    .select('*')
+                    .order('sort_order', { ascending: true });
 
                 if (errG) {
                     if (!errG.message?.includes('AbortError')) console.error('Error loading groups:', errG);
@@ -1253,7 +1255,12 @@ export default function AdminOptionManager() {
         }));
 
         for (const updatedItem of updates) {
-            await supabase.from('option_items').update({ sort_order: updatedItem.sortOrder }).eq('id', updatedItem.id);
+            const { error } = await supabase.from('option_items').update({ sort_order: updatedItem.sortOrder }).eq('id', updatedItem.id);
+            if (error) {
+                console.error(`Failed to update sort order for ${updatedItem.id}:`, error);
+                alert('排序儲存失敗，請檢查資料庫連線或欄位設定');
+                break;
+            }
         }
     };
 
