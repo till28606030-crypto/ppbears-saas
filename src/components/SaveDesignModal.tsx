@@ -1906,8 +1906,8 @@ export default function SaveDesignModal({
                                                         };
 
                                                         const sortedCategoriesEntries = Array.from(categoryMap.entries()).sort((a, b) => {
-                                                            const orderA = a[1][0]?.uiConfig?.categorySortOrder ?? 999;
-                                                            const orderB = b[1][0]?.uiConfig?.categorySortOrder ?? 999;
+                                                            const orderA = a[1][0]?.uiConfig?.categorySortOrder ?? (a[1][0] as any)?.ui_config?.categorySortOrder ?? 999;
+                                                            const orderB = b[1][0]?.uiConfig?.categorySortOrder ?? (b[1][0] as any)?.ui_config?.categorySortOrder ?? 999;
                                                             if (orderA !== orderB) return orderA - orderB;
                                                             if (a[0] === '未分類') return 1;
                                                             if (b[0] === '未分類') return -1;

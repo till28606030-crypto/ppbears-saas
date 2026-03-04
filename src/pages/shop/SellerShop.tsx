@@ -105,7 +105,11 @@ const SellerShop: React.FC = () => {
                 }
 
                 // 1. Load Products from Supabase
-                const { data: dbProducts, error } = await supabase.from('products').select('*').eq('is_active', true);
+                const { data: dbProducts, error } = await supabase
+                    .from('products')
+                    .select('*')
+                    .eq('is_active', true)
+                    .order('sort_order', { ascending: true });
 
                 if (error) {
                     console.error('Failed to load products (SellerShop):', error);

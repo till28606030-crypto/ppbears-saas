@@ -39,11 +39,19 @@ export const useOptionItems = () => {
                 const { data: groupsData, error: groupsError } = await supabase
                     .from('option_groups')
                     .select('*')
-                    .eq('is_active', true)
-                    .order('id');
+                    .eq('is_active', true);
 
                 if (groupsError) throw groupsError;
-                setOptionGroups(groupsData || []);
+
+                // Sort by step and then sortOrder
+                const sortedGroups = (groupsData || []).sort((a, b) => {
+                    const stepA = a.ui_config?.stepIndex || a.ui_config?.step || 1;
+                    const stepB = b.ui_config?.stepIndex || b.ui_config?.step || 1;
+                    if (stepA !== stepB) return stepA - stepB;
+                    return (a.ui_config?.sortOrder || 0) - (b.ui_config?.sortOrder || 0);
+                });
+
+                setOptionGroups(sortedGroups);
 
                 // Fetch option items
                 const { data: itemsData, error: itemsError } = await supabase

@@ -52,6 +52,7 @@ export interface ProductRow {
   permissions: ProductPermissions;
   client_permissions?: ClientPermissions;
   is_active: boolean;
+  sort_order?: number;
   updated_at: string;
   created_at: string;
 }
