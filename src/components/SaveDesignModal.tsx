@@ -1752,22 +1752,22 @@ export default function SaveDesignModal({
                                                                 type="button"
                                                                 key={item.id}
                                                                 onClick={() => handleSelectOption(groupKey, item.id)}
-                                                                className={`relative p-5 rounded-2xl border-[3px] text-left transition-all group hover:shadow-xl ${selectedOptions[groupKey] === item.id
+                                                                className={`relative p-3 md:p-5 rounded-2xl border-[3px] text-left transition-all group hover:shadow-xl ${selectedOptions[groupKey] === item.id
                                                                     ? 'border-black bg-blue-50/60 shadow-lg scale-[1.01] z-10'
                                                                     : 'border-gray-100 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
                                                             >
                                                                 {/* Standard Radio Indicator for Horizontal Cards */}
-                                                                <div className="absolute top-6 right-6 flex items-center justify-center">
-                                                                    <div className={`w-8 h-8 rounded-full border-[3px] flex items-center justify-center transition-all duration-300 ${selectedOptions[groupKey] === item.id
+                                                                <div className="absolute top-2 right-2 md:top-6 md:right-6 flex items-center justify-center z-20">
+                                                                    <div className={`w-6 h-6 md:w-8 md:h-8 rounded-full border-[3px] flex items-center justify-center transition-all duration-300 ${selectedOptions[groupKey] === item.id
                                                                         ? 'border-black bg-black shadow-xl scale-110 ring-4 ring-black/10'
                                                                         : 'border-gray-300 bg-white group-hover:border-gray-400'
                                                                         }`}>
-                                                                        {selectedOptions[groupKey] === item.id && <Check className="w-6 h-6 text-white stroke-[4px] animate-in zoom-in duration-300" />}
+                                                                        {selectedOptions[groupKey] === item.id && <Check className="w-4 h-4 md:w-6 md:h-6 text-white stroke-[4px] animate-in zoom-in duration-300" />}
                                                                     </div>
                                                                 </div>
-                                                                <div className="flex gap-4">
+                                                                <div className="flex flex-col md:flex-row gap-2 md:gap-4 h-full">
                                                                     <div
-                                                                        className="relative w-20 h-20 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center group/img cursor-pointer"
+                                                                        className="relative w-full md:w-20 aspect-square md:h-20 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center group/img cursor-pointer"
                                                                         onClick={(e) => {
                                                                             if (item.imageUrl) {
                                                                                 e.preventDefault();
@@ -1780,19 +1780,20 @@ export default function SaveDesignModal({
                                                                             <>
                                                                                 <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover transition-transform group-hover/img:scale-105" />
                                                                                 <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors flex items-center justify-center">
-                                                                                    <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover/img:opacity-100 drop-shadow-md" />
+                                                                                    <ZoomIn className="w-5 h-5 md:w-6 md:h-6 text-white opacity-0 group-hover/img:opacity-100 drop-shadow-md" />
                                                                                 </div>
                                                                             </>
                                                                         ) : (
                                                                             <div className="w-full h-full" style={{ backgroundColor: item.colorHex || '#ddd' }} />
                                                                         )}
                                                                     </div>
-                                                                    <div className="flex-1">
+                                                                    <div className="flex-1 flex flex-col justify-between md:justify-start min-w-0">
                                                                         <div className="flex justify-between items-start">
-                                                                            <h3 className="font-bold text-gray-900">{item.name}</h3>
-                                                                            {/* Removed redundant indicator here as it's now absolute positioned at top-right */}
+                                                                            <h3 className="font-bold text-gray-900 text-xs md:text-base line-clamp-2 md:line-clamp-none leading-tight">{item.name}</h3>
                                                                         </div>
-                                                                        <div className="mt-3 font-medium text-blue-600">{item.priceModifier > 0 ? `NT$ ${item.priceModifier}` : ''}</div>
+                                                                        <div className="mt-1 md:mt-3 font-medium text-blue-600 text-[10px] md:text-sm">
+                                                                            {item.priceModifier > 0 ? `NT$ ${item.priceModifier}` : ''}
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                             </button>

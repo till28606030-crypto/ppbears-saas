@@ -936,9 +936,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const [activeAdjust, setActiveAdjust] = useState<'brightness' | 'contrast' | null>(null); // Track active adjustment mode
     const [brightness, setBrightness] = useState(0); // Brightness value: -1 (dark) to 1 (bright)
     const [contrast, setContrast] = useState(0); // Contrast value: -1 to 1
-    const [isEraserMode, setIsEraserMode] = useState(false); // Eraser toggle state
-    const [eraserSize, setEraserSize] = useState(20); // Eraser brush width
-    const [showEraserPopover, setShowEraserPopover] = useState(false); // Show eraser size slider
     const [showClearConfirm, setShowClearConfirm] = useState(false); // Clear confirm dialog
 
     useEffect(() => {
@@ -965,8 +962,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     // Sync brightness state when selected image changes
     useEffect(() => {
         setActiveAdjust(null); // Close any active adjustment popover
-        setIsEraserMode(false); // Disable eraser mode when switch object
-        setShowEraserPopover(false);
         if (selectedObject && selectedObject.type === 'image') {
             const img = selectedObject as FabricImage;
             const bFilter: any = (img.filters || []).find((f: any) => f.type === 'Brightness');
@@ -5967,111 +5962,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         canvas.requestRenderAll();
     };
 
-    // --- Eraser Logic ---
-    const toggleEraserMode = () => {
-        const canvas = fabricCanvas.current;
-        if (!canvas || !selectedObject || selectedObject.type !== 'image') return;
-
-        const newMode = !isEraserMode;
-        setIsEraserMode(newMode);
-        canvas.isDrawingMode = newMode;
-
-        if (newMode) {
-            setActiveAdjust(null);
-            setShowEraserPopover(true);
-            const brush = new PencilBrush(canvas);
-            brush.width = eraserSize;
-            brush.color = 'rgba(255, 255, 255, 0.5)'; // Semi-transparent white brush
-            canvas.freeDrawingBrush = brush;
-        } else {
-            setShowEraserPopover(false);
-        }
-    };
-
-    useEffect(() => {
-        const canvas = fabricCanvas.current;
-        if (!canvas) return;
-
-        const onPathCreated = (opt: any) => {
-            if (!isEraserMode || !selectedObject || selectedObject.type !== 'image') return;
-
-            const path = opt.path;
-            canvas.remove(path); // Remove from canvas immediately
-
-            const img = selectedObject as FabricImage;
-
-            // Ensure we have a Group-based clipPath for multiple erasures
-            let clipGroup: Group;
-            if (img.clipPath && img.clipPath.type === 'group') {
-                clipGroup = img.clipPath as Group;
-            } else {
-                // Wrap current image's shape in a group or start a new group
-                const baseRect = new Rect({
-                    width: img.width,
-                    height: img.height,
-                    left: -img.width / 2,
-                    top: -img.height / 2,
-                    fill: 'white',
-                    absolutePositioned: false
-                });
-
-                clipGroup = new Group([baseRect], {
-                    absolutePositioned: false,
-                    originX: 'center',
-                    originY: 'center'
-                });
-                img.set({ clipPath: clipGroup });
-            }
-
-            // Transform path to be relative to image center
-            const matrix = img.calcTransformMatrix();
-            const invMatrix = util.invertTransform(matrix);
-
-            // Path cloning and transforming is complex in Fabric 7
-            // We recreate the path with transformed points
-            const points = path.path.map((p: any) => {
-                const cmd = p[0];
-                if (cmd === 'M' || cmd === 'L') {
-                    const pt = new Point(p[1], p[2]).transform(invMatrix);
-                    return [cmd, pt.x, pt.y];
-                } else if (cmd === 'Q') {
-                    const cp1 = new Point(p[1], p[2]).transform(invMatrix);
-                    const p1 = new Point(p[3], p[4]).transform(invMatrix);
-                    return [cmd, cp1.x, cp1.y, p1.x, p1.y];
-                }
-                return p;
-            });
-
-            const relativePath = new Path(points, {
-                fill: null,
-                stroke: 'black',
-                strokeWidth: path.strokeWidth,
-                strokeLineCap: path.strokeLineCap,
-                strokeLineJoin: path.strokeLineJoin,
-                globalCompositeOperation: 'destination-out',
-                absolutePositioned: false,
-                originX: 'center',
-                originY: 'center'
-            });
-
-            clipGroup.add(relativePath);
-            img.set({ dirty: true });
-            canvas.requestRenderAll();
-            saveHistory();
-        };
-
-        canvas.on('path:created', onPathCreated);
-        return () => {
-            canvas.off('path:created', onPathCreated);
-        };
-    }, [isEraserMode, selectedObject, eraserSize]);
-
-    useEffect(() => {
-        if (fabricCanvas.current?.freeDrawingBrush) {
-            fabricCanvas.current.freeDrawingBrush.width = eraserSize;
-        }
-    }, [eraserSize]);
-
     const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.stopPropagation();
@@ -6202,7 +6092,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                             className="group relative flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-red-600 active:scale-95 transition-all min-w-[2.5rem]"
                             title="清空全部"
                         >
-                            <Eraser className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" />
                             <span className="text-[9px] font-bold tracking-wider text-gray-500 group-hover:text-red-600">清空</span>
                         </button>
                     </div>
@@ -6213,12 +6103,12 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     <div className={`fixed md:absolute md:top-16 right-1 md:right-auto md:left-1/2 md:-translate-x-1/2 z-[130] pointer-events-auto bg-white/95 backdrop-blur-md rounded-lg shadow-xl border border-gray-200/50 flex flex-col md:flex-row items-center p-1.5 gap-1 animate-in fade-in duration-200 transition-all duration-300
                         ${showMobilePropertyBar ? 'top-[35%]' : 'top-1/2'} -translate-y-1/2 md:translate-y-0
                     `}>
-                        <button onClick={() => { deleteSelected(); setActiveAdjust(null); setIsEraserMode(false); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-red-500 hover:bg-red-50 rounded-lg min-w-[2.25rem] transition-colors">
+                        <button onClick={() => { deleteSelected(); setActiveAdjust(null); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-red-500 hover:bg-red-50 rounded-lg min-w-[2.25rem] transition-colors">
                             <Trash2 className="w-4 h-4" />
                             <span className="text-[9px] font-bold">刪除</span>
                         </button>
                         <div className="w-6 h-px md:w-px md:h-6 bg-gray-200 flex-shrink-0 my-0.5 md:my-0 md:mx-0.5"></div>
-                        <button onClick={() => { duplicateObject(); setActiveAdjust(null); setIsEraserMode(false); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.25rem] transition-colors">
+                        <button onClick={() => { duplicateObject(); setActiveAdjust(null); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.25rem] transition-colors">
                             <Copy className="w-4 h-4" />
                             <span className="text-[9px] font-bold">複製</span>
                         </button>
@@ -6253,12 +6143,12 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                             <>
                                 <div className="w-6 h-px md:w-px md:h-6 bg-gray-200 flex-shrink-0 my-0.5 md:my-0 md:mx-0.5"></div>
 
-                                <button onClick={() => { toggleFillCanvas(); setActiveAdjust(null); setIsEraserMode(false); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.25rem] transition-colors">
+                                <button onClick={() => { toggleFillCanvas(); setActiveAdjust(null); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.25rem] transition-colors">
                                     {(selectedObject as any).isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
                                     <span className="text-[9px] font-bold">{(selectedObject as any).isMaximized ? "還原" : "滿版"}</span>
                                 </button>
 
-                                <button onClick={() => { flipObject(); setActiveAdjust(null); setIsEraserMode(false); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.25rem] transition-colors">
+                                <button onClick={() => { flipObject(); setActiveAdjust(null); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.25rem] transition-colors">
                                     <FlipHorizontal className="w-4 h-4" />
                                     <span className="text-[9px] font-bold">鏡像</span>
                                 </button>
@@ -6270,7 +6160,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     fabricCanvas.current?.requestRenderAll();
                                     saveHistory();
                                     setActiveAdjust(null);
-                                    setIsEraserMode(false);
                                 }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.25rem] transition-colors">
                                     <RefreshCw className="w-4 h-4" />
                                     <span className="text-[9px] font-bold">旋轉</span>
@@ -6282,7 +6171,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             setActiveAdjust(activeAdjust === 'brightness' ? null : 'brightness');
-                                            setIsEraserMode(false);
                                         }}
                                         className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[2.25rem] transition-colors ${activeAdjust === 'brightness' ? 'text-amber-600 bg-amber-50' : 'text-gray-600 hover:bg-gray-50'}`}
                                     >
@@ -6330,7 +6218,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             setActiveAdjust(activeAdjust === 'contrast' ? null : 'contrast');
-                                            setIsEraserMode(false);
                                         }}
                                         className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[2.25rem] transition-colors ${activeAdjust === 'contrast' ? 'text-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
                                     >
@@ -6372,49 +6259,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     )}
                                 </div>
 
-                                {/* Eraser Button */}
-                                <div className="relative">
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            toggleEraserMode();
-                                        }}
-                                        className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[2.25rem] transition-colors ${isEraserMode ? 'text-red-600 bg-red-50' : 'text-gray-600 hover:bg-gray-50'}`}
-                                    >
-                                        <Eraser className="w-4 h-4" />
-                                        <span className="text-[9px] font-bold">橡皮擦</span>
-                                    </button>
-                                    {showEraserPopover && isEraserMode && (
-                                        <div className="absolute top-0 right-full mr-2 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-50 w-12 animate-in fade-in slide-in-from-right-2 duration-200">
-                                            <div className="flex flex-col items-center gap-2">
-                                                <div className="h-32 flex items-center justify-center">
-                                                    <input
-                                                        type="range"
-                                                        min="1" max="100" step="1"
-                                                        value={eraserSize}
-                                                        onChange={(e) => setEraserSize(parseInt(e.target.value))}
-                                                        className="w-28 h-1 accent-red-500 cursor-pointer"
-                                                        style={{
-                                                            appearance: 'none',
-                                                            transform: 'rotate(-90deg)',
-                                                            background: '#f3f4f6',
-                                                            borderRadius: '4px'
-                                                        }}
-                                                    />
-                                                </div>
-                                                <div className="text-[10px] font-mono font-bold text-red-600 bg-red-50 px-1 py-0.5 rounded">
-                                                    {eraserSize}
-                                                </div>
-                                                <button
-                                                    onClick={() => setShowEraserPopover(false)}
-                                                    className="p-1 hover:bg-gray-100 rounded-full text-gray-400"
-                                                >
-                                                    <X className="w-3 h-3" />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
+
 
                                 <div className="w-6 h-px md:w-px md:h-6 bg-gray-200 flex-shrink-0 my-0.5 md:my-0 md:mx-0.5"></div>
 
