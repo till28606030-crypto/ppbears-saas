@@ -15,6 +15,8 @@ import {
     Polygon,
     ActiveSelection,
     Point,
+    PencilBrush,
+    Group,
     filters as fabricFilters
 } from 'fabric';
 
@@ -931,8 +933,12 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const [showCropMenu, setShowCropMenu] = useState(false); // Mobile crop sub-menu state
     const [showMobileTextInput, setShowMobileTextInput] = useState(false); // Mobile text input modal
     const [showMobilePropertyBar, setShowMobilePropertyBar] = useState(true); // Mobile property bar visibility
-    const [showBrightnessSlider, setShowBrightnessSlider] = useState(false); // Show brightness slider popover
+    const [activeAdjust, setActiveAdjust] = useState<'brightness' | 'contrast' | null>(null); // Track active adjustment mode
     const [brightness, setBrightness] = useState(0); // Brightness value: -1 (dark) to 1 (bright)
+    const [contrast, setContrast] = useState(0); // Contrast value: -1 to 1
+    const [isEraserMode, setIsEraserMode] = useState(false); // Eraser toggle state
+    const [eraserSize, setEraserSize] = useState(20); // Eraser brush width
+    const [showEraserPopover, setShowEraserPopover] = useState(false); // Show eraser size slider
     const [showClearConfirm, setShowClearConfirm] = useState(false); // Clear confirm dialog
 
     useEffect(() => {
@@ -958,13 +964,18 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
     // Sync brightness state when selected image changes
     useEffect(() => {
-        setShowBrightnessSlider(false); // Close the slider popover
+        setActiveAdjust(null); // Close any active adjustment popover
+        setIsEraserMode(false); // Disable eraser mode when switch object
+        setShowEraserPopover(false);
         if (selectedObject && selectedObject.type === 'image') {
             const img = selectedObject as FabricImage;
-            const existingFilter: any = (img.filters || []).find((f: any) => f.type === 'Brightness');
-            setBrightness(existingFilter?.brightness ?? 0);
+            const bFilter: any = (img.filters || []).find((f: any) => f.type === 'Brightness');
+            const cFilter: any = (img.filters || []).find((f: any) => f.type === 'Contrast');
+            setBrightness(bFilter?.brightness ?? 0);
+            setContrast(cFilter?.contrast ?? 0);
         } else {
             setBrightness(0);
+            setContrast(0);
         }
     }, [selectedObject]);
 
@@ -5930,17 +5941,136 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         const obj = selectedObject;
         if (!canvas || !obj || obj.type !== 'image') return;
         const img = obj as FabricImage;
-        // Find existing brightness filter or create new one
-        const existingFilterIdx = (img.filters || []).findIndex((f: any) => f.type === 'Brightness');
-        const brightnessFilter = new fabricFilters.Brightness({ brightness: value });
-        if (existingFilterIdx >= 0) {
-            img.filters[existingFilterIdx] = brightnessFilter;
-        } else {
-            img.filters = [...(img.filters || []), brightnessFilter];
-        }
+        const filters = img.filters || [];
+        const idx = filters.findIndex((f: any) => f.type === 'Brightness');
+        const filter = new fabricFilters.Brightness({ brightness: value });
+        if (idx >= 0) filters[idx] = filter;
+        else filters.push(filter);
+        img.filters = [...filters];
         img.applyFilters();
         canvas.requestRenderAll();
     };
+
+    // Apply contrast filter to selected image
+    const applyContrast = (value: number) => {
+        const canvas = fabricCanvas.current;
+        const obj = selectedObject;
+        if (!canvas || !obj || obj.type !== 'image') return;
+        const img = obj as FabricImage;
+        const filters = img.filters || [];
+        const idx = filters.findIndex((f: any) => f.type === 'Contrast');
+        const filter = new fabricFilters.Contrast({ contrast: value });
+        if (idx >= 0) filters[idx] = filter;
+        else filters.push(filter);
+        img.filters = [...filters];
+        img.applyFilters();
+        canvas.requestRenderAll();
+    };
+
+    // --- Eraser Logic ---
+    const toggleEraserMode = () => {
+        const canvas = fabricCanvas.current;
+        if (!canvas || !selectedObject || selectedObject.type !== 'image') return;
+
+        const newMode = !isEraserMode;
+        setIsEraserMode(newMode);
+        canvas.isDrawingMode = newMode;
+
+        if (newMode) {
+            setActiveAdjust(null);
+            setShowEraserPopover(true);
+            const brush = new PencilBrush(canvas);
+            brush.width = eraserSize;
+            brush.color = 'rgba(255, 255, 255, 0.5)'; // Semi-transparent white brush
+            canvas.freeDrawingBrush = brush;
+        } else {
+            setShowEraserPopover(false);
+        }
+    };
+
+    useEffect(() => {
+        const canvas = fabricCanvas.current;
+        if (!canvas) return;
+
+        const onPathCreated = (opt: any) => {
+            if (!isEraserMode || !selectedObject || selectedObject.type !== 'image') return;
+
+            const path = opt.path;
+            canvas.remove(path); // Remove from canvas immediately
+
+            const img = selectedObject as FabricImage;
+
+            // Ensure we have a Group-based clipPath for multiple erasures
+            let clipGroup: Group;
+            if (img.clipPath && img.clipPath.type === 'group') {
+                clipGroup = img.clipPath as Group;
+            } else {
+                // Wrap current image's shape in a group or start a new group
+                const baseRect = new Rect({
+                    width: img.width,
+                    height: img.height,
+                    left: -img.width / 2,
+                    top: -img.height / 2,
+                    fill: 'white',
+                    absolutePositioned: false
+                });
+
+                clipGroup = new Group([baseRect], {
+                    absolutePositioned: false,
+                    originX: 'center',
+                    originY: 'center'
+                });
+                img.set({ clipPath: clipGroup });
+            }
+
+            // Transform path to be relative to image center
+            const matrix = img.calcTransformMatrix();
+            const invMatrix = util.invertTransform(matrix);
+
+            // Path cloning and transforming is complex in Fabric 7
+            // We recreate the path with transformed points
+            const points = path.path.map((p: any) => {
+                const cmd = p[0];
+                if (cmd === 'M' || cmd === 'L') {
+                    const pt = new Point(p[1], p[2]).transform(invMatrix);
+                    return [cmd, pt.x, pt.y];
+                } else if (cmd === 'Q') {
+                    const cp1 = new Point(p[1], p[2]).transform(invMatrix);
+                    const p1 = new Point(p[3], p[4]).transform(invMatrix);
+                    return [cmd, cp1.x, cp1.y, p1.x, p1.y];
+                }
+                return p;
+            });
+
+            const relativePath = new Path(points, {
+                fill: null,
+                stroke: 'black',
+                strokeWidth: path.strokeWidth,
+                strokeLineCap: path.strokeLineCap,
+                strokeLineJoin: path.strokeLineJoin,
+                globalCompositeOperation: 'destination-out',
+                absolutePositioned: false,
+                originX: 'center',
+                originY: 'center'
+            });
+
+            clipGroup.add(relativePath);
+            img.set({ dirty: true });
+            canvas.requestRenderAll();
+            saveHistory();
+        };
+
+        canvas.on('path:created', onPathCreated);
+        return () => {
+            canvas.off('path:created', onPathCreated);
+        };
+    }, [isEraserMode, selectedObject, eraserSize]);
+
+    useEffect(() => {
+        if (fabricCanvas.current?.freeDrawingBrush) {
+            fabricCanvas.current.freeDrawingBrush.width = eraserSize;
+        }
+    }, [eraserSize]);
 
     const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
@@ -6078,23 +6208,25 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     </div>
                 </div>
 
-                {/* 2. Dynamic Floating Quick Actions (The "Pill") - Moved to bottom on mobile to avoid blocking template */}
+                {/* 2. Dynamic Floating Quick Actions (The "Pill") - Positioned relative to property bar on mobile */}
                 {selectedObject && !showMobileTextInput && (
-                    <div className="fixed md:absolute md:top-16 top-auto bottom-[82px] md:bottom-auto left-1/2 -translate-x-1/2 z-[130] pointer-events-auto bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-gray-200/50 flex flex-row items-center p-1.5 gap-1 animate-in slide-in-from-top-2 md:slide-in-from-top-2 slide-in-from-bottom-2 fade-in duration-200">
-                        <button onClick={deleteSelected} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-red-500 hover:bg-red-50 rounded-lg min-w-[2.5rem] transition-colors">
+                    <div className={`fixed md:absolute md:top-16 right-1 md:right-auto md:left-1/2 md:-translate-x-1/2 z-[130] pointer-events-auto bg-white/95 backdrop-blur-md rounded-lg shadow-xl border border-gray-200/50 flex flex-col md:flex-row items-center p-1.5 gap-1 animate-in fade-in duration-200 transition-all duration-300
+                        ${showMobilePropertyBar ? 'top-[35%]' : 'top-1/2'} -translate-y-1/2 md:translate-y-0
+                    `}>
+                        <button onClick={() => { deleteSelected(); setActiveAdjust(null); setIsEraserMode(false); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-red-500 hover:bg-red-50 rounded-lg min-w-[2.25rem] transition-colors">
                             <Trash2 className="w-4 h-4" />
                             <span className="text-[9px] font-bold">刪除</span>
                         </button>
-                        <div className="w-px h-6 bg-gray-200"></div>
-                        <button onClick={duplicateObject} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
+                        <div className="w-6 h-px md:w-px md:h-6 bg-gray-200 flex-shrink-0 my-0.5 md:my-0 md:mx-0.5"></div>
+                        <button onClick={() => { duplicateObject(); setActiveAdjust(null); setIsEraserMode(false); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.25rem] transition-colors">
                             <Copy className="w-4 h-4" />
                             <span className="text-[9px] font-bold">複製</span>
                         </button>
 
                         {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
                             <>
-                                <div className="w-px h-6 bg-gray-200"></div>
-                                <button onClick={() => { setActiveMobileSubMenu('edit'); setShowMobileTextInput(false); setShowMobilePropertyBar(true); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-blue-600 hover:bg-blue-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                <div className="w-6 h-px md:w-px md:h-6 bg-gray-200 flex-shrink-0 my-0.5 md:my-0 md:mx-0.5"></div>
+                                <button onClick={() => { setActiveMobileSubMenu('edit'); setShowMobileTextInput(false); setShowMobilePropertyBar(true); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-blue-600 hover:bg-blue-50 rounded-lg min-w-[2.25rem] transition-colors">
                                     <Pencil className="w-4 h-4" />
                                     <span className="text-[9px] font-bold">編輯</span>
                                 </button>
@@ -6107,8 +6239,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 if (!isFrameEmpty) return null;
                                 return (
                                     <>
-                                        <div className="w-px h-6 bg-gray-200"></div>
-                                        <button onClick={mobileActions?.onUpload} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-blue-600 hover:bg-blue-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                        <div className="w-6 h-px md:w-px md:h-6 bg-gray-200 flex-shrink-0 my-0.5 md:my-0 md:mx-0.5"></div>
+                                        <button onClick={mobileActions?.onUpload} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-blue-600 hover:bg-blue-50 rounded-lg min-w-[2.25rem] transition-colors">
                                             <ImagePlus className="w-4 h-4" />
                                             <span className="text-[9px] font-bold">加照片</span>
                                         </button>
@@ -6119,14 +6251,14 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                         {selectedObject.type === 'image' && !(selectedObject as any).isFrameLayer && (
                             <>
-                                <div className="w-px h-6 bg-gray-200"></div>
+                                <div className="w-6 h-px md:w-px md:h-6 bg-gray-200 flex-shrink-0 my-0.5 md:my-0 md:mx-0.5"></div>
 
-                                <button onClick={toggleFillCanvas} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                <button onClick={() => { toggleFillCanvas(); setActiveAdjust(null); setIsEraserMode(false); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.25rem] transition-colors">
                                     {(selectedObject as any).isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
                                     <span className="text-[9px] font-bold">{(selectedObject as any).isMaximized ? "還原" : "滿版"}</span>
                                 </button>
 
-                                <button onClick={flipObject} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                <button onClick={() => { flipObject(); setActiveAdjust(null); setIsEraserMode(false); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.25rem] transition-colors">
                                     <FlipHorizontal className="w-4 h-4" />
                                     <span className="text-[9px] font-bold">鏡像</span>
                                 </button>
@@ -6137,52 +6269,158 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     obj.rotate((obj.angle || 0) + 90);
                                     fabricCanvas.current?.requestRenderAll();
                                     saveHistory();
-                                }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.5rem] transition-colors">
+                                    setActiveAdjust(null);
+                                    setIsEraserMode(false);
+                                }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-lg min-w-[2.25rem] transition-colors">
                                     <RefreshCw className="w-4 h-4" />
                                     <span className="text-[9px] font-bold">旋轉</span>
                                 </button>
 
-                                {/* Brightness Button with inline popover */}
+                                {/* Brightness Button */}
                                 <div className="relative">
-                                    <button onClick={() => setShowBrightnessSlider(v => !v)} className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[2.5rem] transition-colors ${showBrightnessSlider ? 'text-amber-600 bg-amber-50' : 'text-gray-600 hover:bg-gray-50'}`}>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveAdjust(activeAdjust === 'brightness' ? null : 'brightness');
+                                            setIsEraserMode(false);
+                                        }}
+                                        className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[2.25rem] transition-colors ${activeAdjust === 'brightness' ? 'text-amber-600 bg-amber-50' : 'text-gray-600 hover:bg-gray-50'}`}
+                                    >
                                         <Sun className="w-4 h-4" />
                                         <span className="text-[9px] font-bold">亮度</span>
                                     </button>
-                                    {showBrightnessSlider && (
-                                        <div className="absolute md:top-full top-auto bottom-full left-1/2 -translate-x-1/2 mt-2 md:mt-2 mb-4 md:mb-0 bg-white rounded-xl shadow-xl border border-gray-200 p-3 z-50 w-48 animate-in fade-in slide-in-from-top-2 md:slide-in-from-top-2 slide-in-from-bottom-2 duration-150">
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="text-xs font-bold text-gray-700">亮度</span>
-                                                <span className="text-xs font-mono text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">{Math.round(brightness * 100)}%</span>
+                                    {activeAdjust === 'brightness' && (
+                                        <div className="absolute top-0 right-full mr-2 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-50 w-12 animate-in fade-in slide-in-from-right-2 duration-200">
+                                            <div className="flex flex-col items-center gap-2">
+                                                <div className="h-32 flex items-center justify-center">
+                                                    <input
+                                                        type="range"
+                                                        min="-1" max="1" step="0.01"
+                                                        value={brightness}
+                                                        onChange={(e) => {
+                                                            const val = parseFloat(e.target.value);
+                                                            setBrightness(val);
+                                                            applyBrightness(val);
+                                                        }}
+                                                        onMouseUp={saveHistory}
+                                                        onTouchEnd={saveHistory}
+                                                        className="w-28 h-1 accent-amber-500 cursor-pointer"
+                                                        style={{
+                                                            appearance: 'none',
+                                                            transform: 'rotate(-90deg)',
+                                                            background: '#f3f4f6',
+                                                            borderRadius: '4px'
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div
+                                                    onClick={() => { setBrightness(0); applyBrightness(0); saveHistory(); }}
+                                                    className="text-[10px] font-mono font-bold text-amber-600 bg-amber-50 px-1 py-0.5 rounded cursor-pointer active:scale-90 transition-transform"
+                                                >
+                                                    {Math.round(brightness * 100)}
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                <Sun className="w-3 h-3 text-gray-400" />
-                                                <input
-                                                    type="range"
-                                                    min="-1" max="1" step="0.01"
-                                                    value={brightness}
-                                                    onTouchStart={(e) => e.stopPropagation()}
-                                                    onTouchMove={(e) => e.stopPropagation()}
-                                                    onChange={(e) => {
-                                                        const val = parseFloat(e.target.value);
-                                                        setBrightness(val);
-                                                        applyBrightness(val);
-                                                    }}
-                                                    onMouseUp={saveHistory}
-                                                    onTouchEnd={saveHistory}
-                                                    className="flex-1 accent-amber-500"
-                                                />
-                                                <Sun className="w-4 h-4 text-amber-400" />
-                                            </div>
-                                            <button onClick={() => { setBrightness(0); applyBrightness(0); saveHistory(); }} className="mt-2 w-full text-[10px] text-center text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded py-1">重置</button>
                                         </div>
                                     )}
                                 </div>
 
-                                <div className="w-px h-6 bg-gray-200"></div>
+                                {/* Contrast Button */}
+                                <div className="relative">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveAdjust(activeAdjust === 'contrast' ? null : 'contrast');
+                                            setIsEraserMode(false);
+                                        }}
+                                        className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[2.25rem] transition-colors ${activeAdjust === 'contrast' ? 'text-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
+                                    >
+                                        <SlidersHorizontal className="w-4 h-4" />
+                                        <span className="text-[9px] font-bold">對比</span>
+                                    </button>
+                                    {activeAdjust === 'contrast' && (
+                                        <div className="absolute top-0 right-full mr-2 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-50 w-12 animate-in fade-in slide-in-from-right-2 duration-200">
+                                            <div className="flex flex-col items-center gap-2">
+                                                <div className="h-32 flex items-center justify-center">
+                                                    <input
+                                                        type="range"
+                                                        min="-1" max="1" step="0.01"
+                                                        value={contrast}
+                                                        onChange={(e) => {
+                                                            const val = parseFloat(e.target.value);
+                                                            setContrast(val);
+                                                            applyContrast(val);
+                                                        }}
+                                                        onMouseUp={saveHistory}
+                                                        onTouchEnd={saveHistory}
+                                                        className="w-28 h-1 accent-blue-500 cursor-pointer"
+                                                        style={{
+                                                            appearance: 'none',
+                                                            transform: 'rotate(-90deg)',
+                                                            background: '#f3f4f6',
+                                                            borderRadius: '4px'
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div
+                                                    onClick={() => { setContrast(0); applyContrast(0); saveHistory(); }}
+                                                    className="text-[10px] font-mono font-bold text-blue-600 bg-blue-50 px-1 py-0.5 rounded cursor-pointer active:scale-90 transition-transform"
+                                                >
+                                                    {Math.round(contrast * 100)}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Eraser Button */}
+                                <div className="relative">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleEraserMode();
+                                        }}
+                                        className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[2.25rem] transition-colors ${isEraserMode ? 'text-red-600 bg-red-50' : 'text-gray-600 hover:bg-gray-50'}`}
+                                    >
+                                        <Eraser className="w-4 h-4" />
+                                        <span className="text-[9px] font-bold">橡皮擦</span>
+                                    </button>
+                                    {showEraserPopover && isEraserMode && (
+                                        <div className="absolute top-0 right-full mr-2 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-50 w-12 animate-in fade-in slide-in-from-right-2 duration-200">
+                                            <div className="flex flex-col items-center gap-2">
+                                                <div className="h-32 flex items-center justify-center">
+                                                    <input
+                                                        type="range"
+                                                        min="1" max="100" step="1"
+                                                        value={eraserSize}
+                                                        onChange={(e) => setEraserSize(parseInt(e.target.value))}
+                                                        className="w-28 h-1 accent-red-500 cursor-pointer"
+                                                        style={{
+                                                            appearance: 'none',
+                                                            transform: 'rotate(-90deg)',
+                                                            background: '#f3f4f6',
+                                                            borderRadius: '4px'
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="text-[10px] font-mono font-bold text-red-600 bg-red-50 px-1 py-0.5 rounded">
+                                                    {eraserSize}
+                                                </div>
+                                                <button
+                                                    onClick={() => setShowEraserPopover(false)}
+                                                    className="p-1 hover:bg-gray-100 rounded-full text-gray-400"
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="w-6 h-px md:w-px md:h-6 bg-gray-200 flex-shrink-0 my-0.5 md:my-0 md:mx-0.5"></div>
 
                                 {/* Only show Lock/Unlock if object has a clipPath (Crop/Frame) */}
                                 {selectedObject.clipPath && (
-                                    <button onClick={toggleCropMode} className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg hover:bg-gray-50 min-w-[2.5rem] transition-colors ${isCropping ? 'text-blue-600 bg-blue-50' : 'text-gray-600'}`}>
+                                    <button onClick={toggleCropMode} className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg hover:bg-gray-50 min-w-[2.25rem] transition-colors ${isCropping ? 'text-blue-600 bg-blue-50' : 'text-gray-600'}`}>
                                         {isCropping ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
                                         <span className="text-[9px] font-bold">{isCropping ? "解鎖" : "鎖定"}</span>
                                     </button>
@@ -6204,8 +6442,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             <div className={`
         md:hidden fixed left-0 right-0 z-[110] bg-white border-t border-gray-200 rounded-t-2xl shadow-[0_-5px_15px_rgba(0,0,0,0.1)]
         transition-transform duration-300 ease-in-out
-        ${selectedObject && !isMobileLayersOpen && !showCropMenu && showMobilePropertyBar && (selectedObject.type === 'i-text' || selectedObject.type === 'text') ? 'translate-y-0' : 'translate-y-[150%]'}
-        ${(selectedObject?.type === 'i-text' || selectedObject?.type === 'text') ? 'bottom-[64px] rounded-b-none border-b-0' : 'bottom-[72px]'} 
+        ${selectedObject && !isMobileLayersOpen && !showCropMenu && showMobilePropertyBar && (selectedObject.type === 'i-text' || selectedObject.type === 'text' || (selectedObject.type === 'image' && activeMobileSubMenu === 'align')) ? 'translate-y-0' : 'translate-y-[150%]'}
+        ${(selectedObject?.type === 'i-text' || selectedObject?.type === 'text' || (selectedObject?.type === 'image' && activeMobileSubMenu === 'align')) ? 'bottom-[64px] rounded-b-none border-b-0' : 'bottom-[72px]'} 
       `}>
                 {selectedObject && (
                     <>
@@ -6225,8 +6463,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         </div>
 
                         {/* Content Body */}
-                        <div className="bg-gray-50 max-h-[40vh] overflow-y-auto">
-                            <div className="p-4 min-h-[160px]">
+                        <div className="bg-gray-50 max-h-[35vh] overflow-y-auto">
+                            <div className="p-4 min-h-[120px]">
                                 {/* TAB: EDIT */}
                                 {activeMobileSubMenu === 'edit' && (
                                     <div className="flex flex-col gap-3">
@@ -6302,17 +6540,19 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 {/* TAB: ALIGN / STYLE */}
                                 {activeMobileSubMenu === 'align' && (
                                     <div className="space-y-4">
-                                        {/* Style (Bold/Italic) */}
-                                        <div className="flex justify-center gap-4">
-                                            <button onClick={() => updateSelectedObject('fontWeight', (selectedObject as any).fontWeight === 'bold' ? 'normal' : 'bold')} className={`flex flex-col items-center gap-1 p-3 rounded-xl border w-20 ${(selectedObject as any).fontWeight === 'bold' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'}`}>
-                                                <Bold className="w-6 h-6" />
-                                                <span className="text-[10px] font-medium">粗體</span>
-                                            </button>
-                                            <button onClick={() => updateSelectedObject('fontStyle', (selectedObject as any).fontStyle === 'italic' ? 'normal' : 'italic')} className={`flex flex-col items-center gap-1 p-3 rounded-xl border w-20 ${(selectedObject as any).fontStyle === 'italic' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'}`}>
-                                                <Italic className="w-6 h-6" />
-                                                <span className="text-[10px] font-medium">斜體</span>
-                                            </button>
-                                        </div>
+                                        {/* Style (Bold/Italic) - Only for text */}
+                                        {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
+                                            <div className="flex justify-center gap-4">
+                                                <button onClick={() => updateSelectedObject('fontWeight', (selectedObject as any).fontWeight === 'bold' ? 'normal' : 'bold')} className={`flex flex-col items-center gap-1 p-3 rounded-xl border w-20 ${(selectedObject as any).fontWeight === 'bold' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'}`}>
+                                                    <Bold className="w-6 h-6" />
+                                                    <span className="text-[10px] font-medium">粗體</span>
+                                                </button>
+                                                <button onClick={() => updateSelectedObject('fontStyle', (selectedObject as any).fontStyle === 'italic' ? 'normal' : 'italic')} className={`flex flex-col items-center gap-1 p-3 rounded-xl border w-20 ${(selectedObject as any).fontStyle === 'italic' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'}`}>
+                                                    <Italic className="w-6 h-6" />
+                                                    <span className="text-[10px] font-medium">斜體</span>
+                                                </button>
+                                            </div>
+                                        )}
 
                                         {/* Canvas Align */}
                                         <div>
@@ -6401,16 +6641,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                     </div>
                                                 </div>
 
-                                                <div className="flex gap-2">
-                                                    <button onClick={toggleFillCanvas} className="flex-1 flex items-center justify-center gap-2 p-3 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 active:scale-95 transition-all text-gray-700">
-                                                        {(selectedObject as any).isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-                                                        <span className="text-xs font-medium">{(selectedObject as any).isMaximized ? "還原大小" : "填滿畫布"}</span>
-                                                    </button>
-                                                    <button onClick={flipObject} className="flex-1 flex items-center justify-center gap-2 p-3 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 active:scale-95 transition-all text-gray-700">
-                                                        <FlipHorizontal className="w-4 h-4" />
-                                                        <span className="text-xs font-medium">水平翻轉</span>
-                                                    </button>
-                                                </div>
+                                                {/* Fill and Flip buttons removed from here to rely on the side floating menu */}
                                             </>
                                         )}
                                     </div>
@@ -6551,9 +6782,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
 
 
-                                <button onClick={centerObject} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-gray-500 active:text-blue-600">
-                                    <AlignCenter className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">置中</span>
+                                <button onClick={() => { setActiveMobileSubMenu('align'); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center gap-1 p-2 min-w-[4rem] ${activeMobileSubMenu === 'align' ? 'text-blue-600' : 'text-gray-400'}`}>
+                                    <AlignLeft className="w-6 h-6" />
+                                    <span className="text-[10px] font-medium">對齊</span>
                                 </button>
                             </div>
                         )}
