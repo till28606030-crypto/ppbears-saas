@@ -22,6 +22,7 @@ const ProductEditorV2: React.FC = () => {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [collapsedSteps, setCollapsedSteps] = useState<Record<number, boolean>>({});
+  const [activeCategoryByStep, setActiveCategoryByStep] = useState<Record<number, string | null>>({});
 
   const editor = useProductEditor();
   const {
@@ -434,39 +435,84 @@ const ProductEditorV2: React.FC = () => {
                               </button>
 
                               {!isCollapsed && (
-                                <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
-                                  {groups.map((group) => {
-                                    const linkedGroups = draft?.specs?.linked_option_groups || [];
-                                    const isChecked = linkedGroups.includes(group.id);
+                                <div className="p-4 flex flex-col gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                                  {(() => {
+                                    const groupsByCategory: Record<string, any[]> = {};
+                                    groups.forEach(g => {
+                                      const cat = g.ui_config?.category || '未分類';
+                                      if (!groupsByCategory[cat]) groupsByCategory[cat] = [];
+                                      groupsByCategory[cat].push(g);
+                                    });
 
-                                    return (
-                                      <label
-                                        key={group.id}
-                                        className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all ${isChecked ? 'bg-blue-50 border-blue-200 shadow-sm' : 'bg-white border-gray-200 hover:border-blue-300'}`}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={isChecked}
-                                          onChange={(e) => {
-                                            const currentLinked = draft?.specs?.linked_option_groups || [];
-                                            const newLinked = e.target.checked
-                                              ? [...currentLinked, group.id]
-                                              : currentLinked.filter(id => id !== group.id);
-                                            updateSpecs({ linked_option_groups: newLinked });
-                                          }}
-                                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 mt-1"
-                                        />
-                                        <div className="flex-1">
-                                          <div className="text-sm font-bold text-gray-800">{group.name}</div>
-                                          {group.price_modifier !== 0 && (
-                                            <div className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded w-fit mt-1">
-                                              加價: {group.price_modifier > 0 ? '+' : ''}{group.price_modifier} 元
+                                    // Sort categories: put '未分類' at the end, others alphabetically
+                                    const sortedCategories = Object.keys(groupsByCategory).sort((a, b) => {
+                                      if (a === '未分類') return 1;
+                                      if (b === '未分類') return -1;
+                                      return a.localeCompare(b);
+                                    });
+
+                                    return sortedCategories.map(cat => {
+                                      const catGroups = groupsByCategory[cat];
+                                      const isCatExpanded = activeCategoryByStep[stepNum] === cat;
+
+                                      return (
+                                        <div key={cat} className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                                          <button
+                                            onClick={() => {
+                                              setActiveCategoryByStep(prev => ({
+                                                ...prev,
+                                                [stepNum]: prev[stepNum] === cat ? null : cat
+                                              }));
+                                            }}
+                                            className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 transition-colors border-b border-gray-100"
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-bold text-gray-700">{cat}</span>
+                                              <span className="text-xs text-gray-400">({catGroups.length})</span>
+                                            </div>
+                                            <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isCatExpanded ? 'rotate-90' : ''}`} />
+                                          </button>
+
+                                          {isCatExpanded && (
+                                            <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-3 bg-white animate-in fade-in slide-in-from-top-1 duration-200">
+                                              {catGroups.map((group) => {
+                                                const linkedGroups = draft?.specs?.linked_option_groups || [];
+                                                const isChecked = linkedGroups.includes(group.id);
+
+                                                return (
+                                                  <label
+                                                    key={group.id}
+                                                    className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all ${isChecked ? 'bg-blue-50 border-blue-200 shadow-sm' : 'bg-white border-gray-200 hover:border-blue-300'}`}
+                                                  >
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={isChecked}
+                                                      onChange={(e) => {
+                                                        const currentLinked = draft?.specs?.linked_option_groups || [];
+                                                        const newLinked = e.target.checked
+                                                          ? [...currentLinked, group.id]
+                                                          : currentLinked.filter(id => id !== group.id);
+                                                        updateSpecs({ linked_option_groups: newLinked });
+                                                      }}
+                                                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 mt-1"
+                                                    />
+                                                    <div className="flex-1">
+                                                      <div className="text-sm font-bold text-gray-800">{group.name}</div>
+                                                      {group.price_modifier !== 0 && (
+                                                        <div className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded w-fit mt-1">
+                                                          加價: {group.price_modifier > 0 ? '+' : ''}{group.price_modifier} 元
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  </label>
+                                                );
+                                              })}
                                             </div>
                                           )}
                                         </div>
-                                      </label>
-                                    );
-                                  })}
+                                      );
+                                    });
+                                  })()}
                                 </div>
                               )}
                             </div>
