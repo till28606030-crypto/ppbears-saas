@@ -2055,7 +2055,9 @@ export default function Home() {
                 {/* Top Header */}
                 <header className="h-16 bg-white border-b border-gray-200 flex items-center px-4 md:px-6 justify-between shadow-sm z-10 shrink-0">
                     <div className="flex items-center gap-4">
-                        <h1 className="text-lg font-semibold text-gray-800 truncate">客製化手機殼</h1>
+                        <h1 className="text-lg font-semibold text-gray-800 truncate">
+                            {currentProduct?.name || '客製化手機殼'}
+                        </h1>
                         {/* Only show Admin Link in admin/seller routes */}
                         {isAdminRoute(location.pathname) && (
                             <button

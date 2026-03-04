@@ -896,17 +896,14 @@ export default function SaveDesignModal({
                 });
             };
 
-            // Step1：維持「必選」+ 同層互斥
+            // Step1：維持「必選」+ 全局互斥（同 Step1 中只能選一個殼種，不限分類）
             if (isStep1) {
-                const myCategory = (getUI(group)?.category || '').trim();
                 (stepGroups.get(1) || []).forEach(g => {
-                    const otherCategory = (getUI(g)?.category || '').trim();
-                    if (myCategory === otherCategory) {
-                        const k = getGroupKey(g);
-                        if (k !== groupKey) {
-                            delete next[k];
-                            clearSubAttributes(k);
-                        }
+                    const k = getGroupKey(g);
+                    if (k !== groupKey) {
+                        // 清除其他所有 Step1 群組的主要選項與子屬性
+                        delete next[k];
+                        clearSubAttributes(k);
                     }
                 });
                 next[groupKey] = itemId;
