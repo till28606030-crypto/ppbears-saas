@@ -34,8 +34,8 @@ const cleanHtmlContent = (htmlStr: string | undefined): string => {
 
     // 3. 通過 DOMPurify 進行安全過濾，放行更多佈局標籤與屬性
     return DOMPurify.sanitize(result, {
-        ADD_TAGS: ['section', 'article', 'nav', 'header', 'footer'],
-        ADD_ATTR: ['target', 'style', 'rel', 'class', 'href', 'id', 'align']
+        ADD_TAGS: ['section', 'article', 'nav', 'header', 'footer', 'div', 'span', 'i', 'b', 'strong', 'em'],
+        ADD_ATTR: ['target', 'style', 'rel', 'class', 'href', 'id', 'align', 'width', 'height', 'bgcolor']
     });
 };
 
@@ -1579,7 +1579,7 @@ export default function SaveDesignModal({
                                                                     {/* ===== 功能說明區 (獨立拉出以支援 HTML 版面展開) ===== */}
                                                                     {ui?.description && (
                                                                         <div
-                                                                            className="mb-6 text-sm text-gray-700 prose prose-sm max-w-none w-full text-left overflow-x-auto [&>p]:mb-1 [&_a]:no-underline"
+                                                                            className="mb-8 text-base text-gray-800 prose max-w-none w-full text-left overflow-x-auto [&_a]:no-underline"
                                                                             dangerouslySetInnerHTML={{
                                                                                 __html: cleanHtmlContent(ui.description)
                                                                             }}

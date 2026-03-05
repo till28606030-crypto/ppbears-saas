@@ -1835,13 +1835,13 @@ export default function AdminOptionManager() {
                                         />
                                     ) : (
                                         <textarea
-                                            className="w-full h-[208px] border border-gray-300 rounded-lg p-3 text-sm font-mono bg-gray-50 text-gray-800 leading-relaxed focus:bg-white focus:ring-2 focus:ring-purple-500 outline-none"
+                                            className="w-full h-[300px] border-2 border-gray-200 rounded-xl p-4 text-sm font-mono bg-slate-900 text-green-400 leading-relaxed focus:ring-4 focus:ring-blue-100 outline-none transition-all"
                                             value={editingGroupData.uiConfig?.description || ''}
                                             onChange={(e) => setEditingGroupData(prev => ({
                                                 ...prev,
                                                 uiConfig: { ...prev.uiConfig, description: e.target.value }
                                             }))}
-                                            placeholder="在此輸入或貼上 HTML 原始碼 (例如：<p style='color:red;'>文字</p>)..."
+                                            placeholder="在此輸入或貼上 HTML 原始碼 (例如：<a style='background:#111; color:#fff;'>按鈕</a>)..."
                                         />
                                     )}
                                 </div>
