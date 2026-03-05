@@ -1481,7 +1481,7 @@ export default function Home() {
                     <div className={`
                 absolute z-[120] bg-white shadow-xl flex flex-col overflow-hidden animate-in duration-200
                 md:left-0 md:top-0 md:bottom-0 md:w-64 md:border-r md:border-t-0 md:slide-in-from-left-5 md:rounded-none
-                fixed inset-x-0 bottom-0 top-auto h-[50vh] rounded-t-2xl border-t slide-in-from-bottom-5
+                fixed inset-x-0 bottom-0 top-auto ${activePanel === 'barcode' ? 'h-auto max-h-[50vh]' : 'h-[50vh]'} rounded-t-2xl border-t slide-in-from-bottom-5
             `}>
                         <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 sticky top-0 z-10 shrink-0">
                             <h3 className="font-bold text-gray-800 flex items-center gap-2">
