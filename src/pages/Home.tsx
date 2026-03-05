@@ -1177,13 +1177,19 @@ export default function Home() {
 
                 // API failed - Capture details
                 let errDetails = '';
+                let serverMessage = '';
                 try {
                     const errJson = await response.clone().json();
                     errDetails = JSON.stringify(errJson, null, 2);
+                    serverMessage = errJson.message || '';
                     console.error('[Cart] WP API error JSON:', errJson);
                 } catch (e) {
                     errDetails = await response.text().catch(() => 'Unknown error');
                     console.error('[Cart] WP API error text:', errDetails);
+                }
+
+                if (response.status === 400 && serverMessage) {
+                    throw new Error(`購物車加入拒絕: ${serverMessage}`);
                 }
                 throw new Error(`伺服器錯誤 (${response.status}): ${errDetails}`);
             } catch (apiErr: any) {
