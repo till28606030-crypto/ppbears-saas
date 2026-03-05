@@ -40,7 +40,11 @@ export async function recognizeProductFromImage(file: File): Promise<RecognizedP
 
     const base64Image = await fileToBase64(file);
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    // Development environment uses direct API call to avoid needing PHP development server.
+    // Production uses the PHP proxy script to bypass CORS issues on the live domain.
+    const apiUrl = import.meta.env.PROD ? '/design/proxy-openai.php' : 'https://api.openai.com/v1/chat/completions';
+
+    const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
