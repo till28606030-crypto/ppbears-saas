@@ -1821,10 +1821,14 @@ export default function AdminOptionManager() {
                                         <ReactQuill
                                             theme="snow"
                                             value={editingGroupData.uiConfig?.description || ''}
-                                            onChange={(value) => setEditingGroupData(prev => ({
-                                                ...prev,
-                                                uiConfig: { ...prev.uiConfig, description: value }
-                                            }))}
+                                            onChange={(value) => {
+                                                // Handle ReactQuill's empty states
+                                                const cleanValue = value === '<p><br></p>' || value === '<p></p>' || value.trim() === '' ? '' : value;
+                                                setEditingGroupData(prev => ({
+                                                    ...prev,
+                                                    uiConfig: { ...prev.uiConfig, description: cleanValue }
+                                                }));
+                                            }}
                                             modules={QUILL_MODULES}
                                             placeholder="例如: 透過 AI 技術提升照片解析度... (支援 HTML 與連結)"
                                             className="h-40 mb-12" // Add margin bottom for toolbar/content space

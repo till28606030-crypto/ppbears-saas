@@ -12,6 +12,10 @@ import DOMPurify from 'dompurify';
 const cleanHtmlContent = (htmlStr: string | undefined): string => {
     if (!htmlStr) return '';
 
+    // Handle ReactQuill empty states to prevent rendering empty padding blocks
+    const trimmed = htmlStr.replace(/<p><br><\/p>/g, '').replace(/<p><\/p>/g, '').trim();
+    if (!trimmed) return '';
+
     // 1. 精確優化：僅移除「夾在轉義代碼標籤內」的真實 HTML 標籤
     // 這裡尋找 &lt; 到 &gt; 之間的區塊，或從 &lt; 開始直到結尾的區塊
     // 並將該區塊內的 <br>, <p> 等移除，避免屬性被切斷
@@ -1555,14 +1559,6 @@ export default function SaveDesignModal({
                                                                     </div>
                                                                 ))}
                                                             </div>
-                                                            {ui?.description && (
-                                                                <div
-                                                                    className="mb-6 text-xs text-gray-500 prose prose-xs max-w-none w-full text-left overflow-x-auto [&>p]:mb-1 [&>a]:text-blue-500 [&>a]:underline [&_a]:no-underline"
-                                                                    dangerouslySetInnerHTML={{
-                                                                        __html: cleanHtmlContent(ui.description)
-                                                                    }}
-                                                                />
-                                                            )}
                                                         </>
                                                     );
                                                 })()}

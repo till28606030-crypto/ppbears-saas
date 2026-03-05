@@ -185,7 +185,10 @@ if (!isValid) {
                     // If it fails again, suppress it to prevent app crash
                     if (isAbortLike(retryErr)) {
                         console.warn('[patchedFetch] Request aborted or timed out after retry', retryErr);
-                        throw new Error('網路連線不穩或請求超時，請檢查網路狀態後再試。');
+                        // throw new Error('網路連線不穩或請求超時，請檢查網路狀態後再試。');
+                        // Use TypeError 'Failed to fetch' so Supabase gotrue-js treats it as a retriable network error
+                        // rather than an unknown generic/API error (which would trigger an immediate SIGNED_OUT).
+                        throw new TypeError('Failed to fetch: Network timeout or aborted');
                     }
                     throw retryErr;
                 }
