@@ -1037,8 +1037,8 @@ export default function Home() {
             console.log('[Cart] Price:', finalPrice);
             console.log('[Cart] Options:', finalOptions);
 
-            // 1. Convert Base64 to Blobs and Upload to Supabase Storage
-            console.log('[Cart] Uploading images to Supabase Storage...');
+            // 1. Convert Base64 to Blobs and prepare URLs
+            console.log('[Cart] Preparing images and URLs...');
 
             const base64ToBlob = (base64: string, mime: string) => {
                 const parts = base64.split(',');
@@ -1051,156 +1051,139 @@ export default function Home() {
                 return new Blob([ab], { type: mime });
             };
 
-            let previewUrl = previewImage;
-            let printUrl = printImage;
+            const previewBlob = base64ToBlob(previewImage, 'image/jpeg');
+            const printBlob = base64ToBlob(printImage, 'image/png');
 
-            try {
-                // Using manual conversion because `fetch(dataURI)` fails on mobile for large payloads
-                const previewBlob = base64ToBlob(previewImage, 'image/jpeg');
-                const printBlob = base64ToBlob(printImage, 'image/png');
+            // Predictable URLs (No need to wait for upload finish to know the final URL)
+            const previewUrl = supabase.storage.from('design-previews').getPublicUrl(`${designId}/preview.jpg`).data.publicUrl;
+            const printUrl = supabase.storage.from('design-previews').getPublicUrl(`${designId}/print.png`).data.publicUrl;
 
+            // 2. Run all tasks in parallel to minimize wait time
+            console.log('[Cart] Executing parallel tasks (Upload, DB, WP API)...');
+
+            // Task: Storage Upload
+            const uploadTask = (async () => {
                 const [previewUpload, printUpload] = await Promise.all([
                     supabase.storage.from('design-previews').upload(`${designId}/preview.jpg`, previewBlob, { upsert: true, contentType: 'image/jpeg' }),
                     supabase.storage.from('design-previews').upload(`${designId}/print.png`, printBlob, { upsert: true, contentType: 'image/png' })
                 ]);
-
                 if (previewUpload.error) console.error('[Cart] Preview upload failed:', previewUpload.error);
                 if (printUpload.error) console.error('[Cart] Print upload failed:', printUpload.error);
+                return { previewUpload, printUpload };
+            })();
 
-                if (!previewUpload.error) {
-                    previewUrl = supabase.storage.from('design-previews').getPublicUrl(`${designId}/preview.jpg`).data.publicUrl;
-                }
-                if (!printUpload.error) {
-                    printUrl = supabase.storage.from('design-previews').getPublicUrl(`${designId}/print.png`).data.publicUrl;
-                }
-            } catch (uploadErr) {
-                console.warn('[Cart] Image upload to storage failed, falling back to base64 for database:', uploadErr);
-            }
+            // Task: Database Save
+            const dbTask = (async () => {
+                const canvasJson = canvasRef.current?.getCanvasJSON?.() || null;
+                const { error } = await supabase
+                    .from('custom_designs')
+                    .upsert({
+                        design_id: designId,
+                        product_id: productId || null,
+                        product_name: currentProduct?.name || '客製化手機殼',
+                        phone_model: currentProduct?.name || 'Unknown',
+                        price: finalPrice,
+                        options: finalOptions,
+                        canvas_json: canvasJson,
+                        preview_image: previewUrl,
+                        print_image: printUrl,
+                        spec_image_url: specImageUrl,
+                    }, { onConflict: 'design_id' });
+                if (error) throw new Error(`無法保存設計: ${error.message}`);
+                console.log('[Cart] DB Save success');
+            })();
 
-            // Product ID: 123835 - 客製化手機殼
-            const WOOCOMMERCE_PRODUCT_ID = 123835;
-            const WOOCOMMERCE_URL = 'https://ppbears.com';
-
-            console.log('[Cart] Saving design to Supabase (upsert)...');
-
-            // Capture canvas state for admin re-edit
-            const canvasJson = canvasRef.current?.getCanvasJSON?.() || null;
-
-            // Use upsert: if design_id already exists, update it instead of failing
-            const { data: designData, error: designError } = await supabase
-                .from('custom_designs')
-                .upsert({
-                    design_id: designId,
-                    product_id: productId || null,
-                    product_name: currentProduct?.name || '客製化手機殼',
-                    phone_model: currentProduct?.name || 'Unknown',
-                    price: finalPrice,
-                    options: finalOptions,
-                    canvas_json: canvasJson,
-                    preview_image: previewUrl,
-                    print_image: printUrl,
-                    spec_image_url: specImageUrl,  // 客戶上傳的 AI 辨識規格截圖
-                }, { onConflict: 'design_id' })
-                .select()
-                .single();
-
-            if (designError) {
-                console.error('[Cart] Failed to save design:', designError);
-                throw new Error(`無法保存設計: ${designError.message}`);
-            }
-
-            console.log('[Cart] Design saved successfully:', designData);
-
-            // Save images to IndexedDB for reference
-            const { update } = await import('idb-keyval');
-            await update('pending_order_images', (images) => {
-                const currentImages = images || {};
-                currentImages[designId] = {
-                    previewImage,
-                    printImage,
-                    timestamp: new Date().toISOString()
-                };
-                return currentImages;
-            });
-
-            // Try new WP REST API first (each option stored as separate order meta line)
-            console.log('[Cart] Calling WP add-to-cart API...');
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-            try {
-                const payload = {
-                    product_id: WOOCOMMERCE_PRODUCT_ID,
-                    price: finalPrice,
-                    design_id: designId,
-                    product_name: currentProduct?.name || '客製化商品',
-                    options: finalOptions,
-                };
-                console.log('[Cart] Calling WP add-to-cart API with payload:', JSON.stringify(payload, null, 2));
-
-                const response = await fetch(`${WOOCOMMERCE_URL}/wp-json/ppbears/v1/add-to-cart`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                    credentials: 'include',
-                    signal: controller.signal
+            // Task: IndexedDB update (for local reference)
+            const idbTask = (async () => {
+                const { update: idbUpdate } = await import('idb-keyval');
+                await idbUpdate('pending_order_images', (images) => {
+                    const currentImages = images || {};
+                    currentImages[designId] = {
+                        previewImage,
+                        printImage,
+                        timestamp: new Date().toISOString()
+                    };
+                    return currentImages;
                 });
 
-                if (response.ok) {
+                const { get: idbGet, set: idbSet } = await import('idb-keyval');
+                const existingOrders = (await idbGet('mock_orders')) || [];
+                const newOrder = {
+                    id: `ORD-${Date.now()}`,
+                    designId: designId,
+                    productName: currentProduct?.name || '客製化手機殼',
+                    timestamp: new Date().toISOString(),
+                    previewImage: previewImage || '',
+                    printImage: printImage || '',
+                    price: finalPrice,
+                };
+                await idbSet('mock_orders', [newOrder, ...existingOrders]);
+                console.log('[Cart] IDB/Mock orders success');
+            })();
+
+            // Task: WooCommerce API Call
+            const wpTask = (async () => {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+                try {
+                    const payload = {
+                        product_id: 123835, // WOOCOMMERCE_PRODUCT_ID
+                        price: finalPrice,
+                        design_id: designId,
+                        product_name: currentProduct?.name || '客製化商品',
+                        options: finalOptions,
+                    };
+
+                    const response = await fetch('https://ppbears.com/wp-json/ppbears/v1/add-to-cart', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                        credentials: 'include',
+                        signal: controller.signal
+                    });
+
+                    if (!response.ok) {
+                        let errDetails = '';
+                        let serverMessage = '';
+                        try {
+                            const errJson = await response.clone().json();
+                            errDetails = JSON.stringify(errJson, null, 2);
+                            serverMessage = errJson.message || '';
+                        } catch (e) {
+                            errDetails = await response.text().catch(() => 'Unknown error');
+                        }
+
+                        if (response.status === 400 && serverMessage) {
+                            throw new Error(`購物車加入拒絕: ${serverMessage}`);
+                        }
+                        throw new Error(`伺服器錯誤 (${response.status})`);
+                    }
+
                     const result = await response.json();
-                    if (result.success && result.checkout_url) {
-                        console.log('[Cart] WP API success, redirecting to:', result.checkout_url);
-
-                        // Save order to IndexedDB mock_orders for admin order management panel
-                        const { get: idbGet, set: idbSet } = await import('idb-keyval');
-                        const existingOrders = (await idbGet('mock_orders')) || [];
-                        const newOrder = {
-                            id: `ORD-${Date.now()}`,
-                            designId: designId,
-                            productName: currentProduct?.name || '客製化手機殼',
-                            timestamp: new Date().toISOString(),
-                            previewImage: previewImage || '',
-                            printImage: printImage || '',
-                            price: finalPrice,
-                        };
-                        await idbSet('mock_orders', [newOrder, ...existingOrders]);
-                        console.log('[Cart] Order saved to mock_orders:', newOrder);
-
-                        setCheckoutUrl(result.checkout_url);
-                        setCartStatus('success');
-                        setShowCheckout(false);
-                        return;
-                    } else {
+                    if (!result.success || !result.checkout_url) {
                         throw new Error(result.message || '無法獲取結帳連結');
                     }
-                }
 
-                // API failed - Capture details
-                let errDetails = '';
-                let serverMessage = '';
-                try {
-                    const errJson = await response.clone().json();
-                    errDetails = JSON.stringify(errJson, null, 2);
-                    serverMessage = errJson.message || '';
-                    console.error('[Cart] WP API error JSON:', errJson);
-                } catch (e) {
-                    errDetails = await response.text().catch(() => 'Unknown error');
-                    console.error('[Cart] WP API error text:', errDetails);
+                    console.log('[Cart] WP API success');
+                    return result.checkout_url;
+                } finally {
+                    clearTimeout(timeoutId);
                 }
+            })();
 
-                if (response.status === 400 && serverMessage) {
-                    throw new Error(`購物車加入拒絕: ${serverMessage}`);
-                }
-                throw new Error(`伺服器錯誤 (${response.status}): ${errDetails}`);
-            } catch (apiErr: any) {
-                if (apiErr.name === 'AbortError') {
-                    throw new Error('加入購物車超時 (30秒)，請重新嘗試。');
-                } else {
-                    throw apiErr;
-                }
-            } finally {
-                clearTimeout(timeoutId);
-            }
+            // Wait for all critical tasks
+            const [, , , checkoutUrl] = await Promise.all([
+                uploadTask,
+                dbTask,
+                idbTask,
+                wpTask
+            ]);
+
+            setCheckoutUrl(checkoutUrl);
+            setCartStatus('success');
+            setShowCheckout(false);
+            console.log('[Cart] All tasks completed, redirecting to:', checkoutUrl);
 
         } catch (error: any) {
             console.error("[Cart] Order processing error:", error);

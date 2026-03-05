@@ -3310,7 +3310,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             const multiplier = 2 / currentZoom;
             return canvas.toDataURL({
                 format: 'jpeg',
-                quality: 0.6,
+                quality: 0.5,
                 multiplier: multiplier * 0.5,
                 enableRetinaScaling: false // Prevent huge output on mobile retina displays
             });
@@ -3332,11 +3332,11 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             canvas.renderAll();
 
             const currentZoom = canvas.getZoom();
+            // Restore to 3.0 for 300 DPI professional print quality
             const multiplier = 3 / currentZoom;
 
             const dataUrl = canvas.toDataURL({
                 format: 'png',
-                quality: 1,
                 multiplier: multiplier,
                 enableRetinaScaling: false // Prevent huge output on mobile retina displays causing memory crash
             });
