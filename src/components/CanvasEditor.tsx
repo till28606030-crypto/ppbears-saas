@@ -938,6 +938,31 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const [contrast, setContrast] = useState(0); // Contrast value: -1 to 1
     const [showClearConfirm, setShowClearConfirm] = useState(false); // Clear confirm dialog
 
+    // Close activeAdjust when clicking outside the floating tools container
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+            const target = e.target as HTMLElement;
+            if (activeAdjust && !target.closest('.floating-quick-actions-container')) {
+                // If they click outside the floating pill, close the adjustment popover
+                setActiveAdjust(null);
+            }
+        };
+
+        // Delay attaching to prevent immediate closing during the click that opened it
+        const timer = setTimeout(() => {
+            if (activeAdjust) {
+                document.addEventListener('mousedown', handleClickOutside);
+                document.addEventListener('touchstart', handleClickOutside);
+            }
+        }, 10);
+
+        return () => {
+            clearTimeout(timer);
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+        };
+    }, [activeAdjust]);
+
     useEffect(() => {
         onTemplateLoadingChange?.(isTemplateLoading);
     }, [isTemplateLoading, onTemplateLoadingChange]);
@@ -5634,6 +5659,13 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 canvas.add(cloned);
                 canvas.setActiveObject(cloned);
             }
+
+            // Ensure frames and masks stay on top of the newly duplicated layers
+            const objects = canvas.getObjects();
+            const frames = objects.filter(o => (o as any).isFrameLayer);
+            frames.forEach(frame => canvas.bringObjectToFront(frame));
+            if (maskLayerRef.current) canvas.bringObjectToFront(maskLayerRef.current);
+
             canvas.requestRenderAll();
         });
     };
@@ -6037,6 +6069,15 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 ref={containerRef}
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
+                onPointerDown={(e) => {
+                    // If the user clicks directly on the gray background (not the canvas or its contents), deselect everything.
+                    if (e.target === containerRef.current) {
+                        fabricCanvas.current?.discardActiveObject();
+                        fabricCanvas.current?.requestRenderAll();
+                        setSelectedObject(null);
+                        setActiveAdjust(null);
+                    }
+                }}
                 className="flex-1 flex flex-col md:flex-row items-center justify-start md:justify-center bg-[radial-gradient(circle_at_center,_#ffffff_0%,_#d1d5db_100%)] px-4 pb-32 pt-24 md:p-4 overflow-y-auto md:overflow-hidden relative order-first md:order-none"
             >
                 <div
@@ -6100,7 +6141,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                 {/* 2. Dynamic Floating Quick Actions (The "Pill") - Positioned relative to property bar on mobile */}
                 {selectedObject && !showMobileTextInput && (
-                    <div className={`fixed md:absolute md:top-16 right-1 md:right-auto md:left-1/2 md:-translate-x-1/2 z-[130] pointer-events-auto bg-white/95 backdrop-blur-md rounded-lg shadow-xl border border-gray-200/50 flex flex-col md:flex-row items-center p-1.5 gap-1 animate-in fade-in duration-200 transition-all duration-300
+                    <div className={`floating-quick-actions-container fixed md:absolute md:top-16 right-1 md:right-auto md:left-1/2 md:-translate-x-1/2 z-[130] pointer-events-auto bg-white/95 backdrop-blur-md rounded-lg shadow-xl border border-gray-200/50 flex flex-col md:flex-row items-center p-1.5 gap-1 animate-in fade-in duration-200 transition-all duration-300
                         ${showMobilePropertyBar ? 'top-[35%]' : 'top-1/2'} -translate-y-1/2 md:translate-y-0
                     `}>
                         <button onClick={() => { deleteSelected(); setActiveAdjust(null); }} className="flex flex-col items-center justify-center gap-0.5 px-2 py-1 text-red-500 hover:bg-red-50 rounded-lg min-w-[2.25rem] transition-colors">
@@ -6170,7 +6211,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            setActiveAdjust(activeAdjust === 'brightness' ? null : 'brightness');
+                                            setActiveAdjust(prev => prev === 'brightness' ? null : 'brightness');
                                         }}
                                         className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[2.25rem] transition-colors ${activeAdjust === 'brightness' ? 'text-amber-600 bg-amber-50' : 'text-gray-600 hover:bg-gray-50'}`}
                                     >
@@ -6178,9 +6219,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                         <span className="text-[9px] font-bold">亮度</span>
                                     </button>
                                     {activeAdjust === 'brightness' && (
-                                        <div className="absolute top-0 right-full mr-2 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-50 w-12 animate-in fade-in slide-in-from-right-2 duration-200">
-                                            <div className="flex flex-col items-center gap-2">
-                                                <div className="h-32 flex items-center justify-center">
+                                        <div className="absolute top-0 right-full mr-2 md:top-full md:mr-0 md:mt-2 md:left-1/2 md:-translate-x-1/2 md:right-auto bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-50 w-12 md:w-auto animate-in fade-in slide-in-from-right-2 md:slide-in-from-top-2 duration-200">
+                                            <div className="flex flex-col md:flex-row items-center gap-2 overflow-hidden w-full">
+                                                <div className="h-32 md:h-6 md:w-32 flex items-center justify-center overflow-hidden w-full shrink-0">
                                                     <input
                                                         type="range"
                                                         min="-1" max="1" step="0.01"
@@ -6192,10 +6233,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                         }}
                                                         onMouseUp={saveHistory}
                                                         onTouchEnd={saveHistory}
-                                                        className="w-28 h-1 accent-amber-500 cursor-pointer"
+                                                        className="w-28 md:w-full h-1 accent-amber-500 cursor-pointer transform -rotate-90 md:rotate-0"
                                                         style={{
                                                             appearance: 'none',
-                                                            transform: 'rotate(-90deg)',
                                                             background: '#f3f4f6',
                                                             borderRadius: '4px'
                                                         }}
@@ -6203,7 +6243,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                 </div>
                                                 <div
                                                     onClick={() => { setBrightness(0); applyBrightness(0); saveHistory(); }}
-                                                    className="text-[10px] font-mono font-bold text-amber-600 bg-amber-50 px-1 py-0.5 rounded cursor-pointer active:scale-90 transition-transform"
+                                                    className="text-[10px] font-mono font-bold text-amber-600 bg-amber-50 px-1 py-0.5 rounded cursor-pointer active:scale-90 transition-transform shrink-0"
+                                                    title="重設亮度"
                                                 >
                                                     {Math.round(brightness * 100)}
                                                 </div>
@@ -6217,7 +6258,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            setActiveAdjust(activeAdjust === 'contrast' ? null : 'contrast');
+                                            setActiveAdjust(prev => prev === 'contrast' ? null : 'contrast');
                                         }}
                                         className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[2.25rem] transition-colors ${activeAdjust === 'contrast' ? 'text-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
                                     >
@@ -6225,9 +6266,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                         <span className="text-[9px] font-bold">對比</span>
                                     </button>
                                     {activeAdjust === 'contrast' && (
-                                        <div className="absolute top-0 right-full mr-2 bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-50 w-12 animate-in fade-in slide-in-from-right-2 duration-200">
-                                            <div className="flex flex-col items-center gap-2">
-                                                <div className="h-32 flex items-center justify-center">
+                                        <div className="absolute top-0 right-full mr-2 md:top-full md:mr-0 md:mt-2 md:left-1/2 md:-translate-x-1/2 md:right-auto bg-white rounded-lg shadow-xl border border-gray-100 p-2 z-50 w-12 md:w-auto animate-in fade-in slide-in-from-right-2 md:slide-in-from-top-2 duration-200">
+                                            <div className="flex flex-col md:flex-row items-center gap-2 overflow-hidden w-full">
+                                                <div className="h-32 md:h-6 md:w-32 flex items-center justify-center overflow-hidden w-full shrink-0">
                                                     <input
                                                         type="range"
                                                         min="-1" max="1" step="0.01"
@@ -6239,10 +6280,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                         }}
                                                         onMouseUp={saveHistory}
                                                         onTouchEnd={saveHistory}
-                                                        className="w-28 h-1 accent-blue-500 cursor-pointer"
+                                                        className="w-28 md:w-full h-1 accent-blue-500 cursor-pointer transform -rotate-90 md:rotate-0"
                                                         style={{
                                                             appearance: 'none',
-                                                            transform: 'rotate(-90deg)',
                                                             background: '#f3f4f6',
                                                             borderRadius: '4px'
                                                         }}
@@ -6250,7 +6290,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                 </div>
                                                 <div
                                                     onClick={() => { setContrast(0); applyContrast(0); saveHistory(); }}
-                                                    className="text-[10px] font-mono font-bold text-blue-600 bg-blue-50 px-1 py-0.5 rounded cursor-pointer active:scale-90 transition-transform"
+                                                    className="text-[10px] font-mono font-bold text-blue-600 bg-blue-50 px-1 py-0.5 rounded cursor-pointer active:scale-90 transition-transform shrink-0"
+                                                    title="重設對比"
                                                 >
                                                     {Math.round(contrast * 100)}
                                                 </div>
