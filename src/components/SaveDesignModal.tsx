@@ -2583,6 +2583,12 @@ export default function SaveDesignModal({
                                                             if (uploadedSpecImageUrl) {
                                                                 customOptions['_spec_image_url'] = uploadedSpecImageUrl;
                                                             }
+
+                                                            // 補上 AI 辨識出的「殼種款式」（因為 AI 辨識群組本身沒有 ItemID 被選中，不會進入上面的迴圈）
+                                                            if (showAdvancedAfterUpload && recognizedProductInfo?.caseName) {
+                                                                customOptions['💡款式'] = recognizedProductInfo.caseName;
+                                                            }
+
                                                             try {
                                                                 setIsSubmitting(true);
                                                                 await onAddToCart(currentTotal, customOptions);
