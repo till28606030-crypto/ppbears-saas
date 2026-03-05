@@ -1207,13 +1207,22 @@ export default function Home() {
 
             // 如果遇到 500 錯誤（通常是 WooCommerce Session 暫存衝突）
             if (error.message.includes('500') || error.message.includes('伺服器錯誤')) {
+                const url = new URL(window.location.href);
+                const isRetry = url.searchParams.get('retry_checkout') === '1';
+
+                if (isRetry) {
+                    console.error('[Cart] 500 Error persisted after session reset.');
+                    alert(`結帳伺服器發生持續性錯誤 (500)。\n\n這可能是由於伺服器編碼不支援特殊字元或 Emoji 導致的。\n系統已嘗試修復但失敗，請截圖此畫面並聯繫客服。`);
+                    return;
+                }
+
                 console.warn('[Cart] 500 Error detected. Attempting to clear WooCommerce session cookie for recovery.');
 
                 // Try clearing local session cookies that might be causing conflicts
                 try {
                     document.cookie.split(";").forEach((c) => {
                         const cookieName = c.split("=")[0].trim();
-                        if (cookieName.startsWith("wp_woocommerce_session_") || cookieName === "woocommerce_items_in_cart") {
+                        if (cookieName.startsWith("wp_") || cookieName.startsWith("woocommerce_")) {
                             document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
                         }
                     });
@@ -1221,13 +1230,12 @@ export default function Home() {
                     console.error('[Cart] Failed to clear cookies:', cookieErr);
                 }
 
-                alert(`系統遭遇結帳暫存衝突 (伺服器錯誤 500)。\n為確保您的圖案安全，系統已嘗試清除衝突快取，並保留您的設計。\n\n【請放心，您的設計圖層已保存，重新整理後只需「重新選擇商品規格」即可正常結帳！】`);
+                alert(`系統偵測到結帳暫存衝突 (伺服器錯誤 500)。\n我們正在嘗試自動修復連線，請稍候...`);
 
-                // 強制跳出並重選（帶上 load_design_id 與 productId 保留客戶心血）
-                const url = new URL(window.location.href);
+                // 強制跳出並重選（帶上 load_design_id 與 retry_checkout）
                 const currentProductId = searchParams.get('productId') || currentProduct?.id;
-
                 url.searchParams.set('load_design_id', designId);
+                url.searchParams.set('retry_checkout', '1');
                 if (currentProductId) url.searchParams.set('productId', currentProductId);
 
                 // 使用 location.replace 避免回上一頁又陷入錯誤迴圈
@@ -1805,18 +1813,18 @@ export default function Home() {
                                 {activePanel === 'backgrounds' && (
                                     <div className="p-3 border-b border-gray-100 bg-white z-10">
                                         <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">純色背景</div>
-                                        <div className="flex flex-wrap gap-2">
+                                        <div className="flex overflow-x-auto gap-2 pb-2 scrollbar-none whitespace-nowrap">
                                             {/* Remove Background */}
                                             <button
                                                 onClick={handleRemoveBackground}
-                                                className="w-8 h-8 rounded-full border border-gray-200 hover:scale-110 transition-transform shadow-sm relative bg-white flex items-center justify-center text-red-500"
+                                                className="w-8 h-8 flex-shrink-0 rounded-full border border-gray-200 hover:scale-110 transition-transform shadow-sm relative bg-white flex items-center justify-center text-red-500"
                                                 title="移除背景"
                                             >
                                                 <Ban className="w-4 h-4" />
                                             </button>
 
                                             {/* Custom Color Picker */}
-                                            <label className="w-8 h-8 rounded-full border border-gray-300 cursor-pointer relative overflow-hidden flex items-center justify-center bg-gradient-to-br from-red-500 via-green-500 to-blue-500 hover:shadow-md transition-shadow" title="自訂顏色">
+                                            <label className="w-8 h-8 flex-shrink-0 rounded-full border border-gray-300 cursor-pointer relative overflow-hidden flex items-center justify-center bg-gradient-to-br from-red-500 via-green-500 to-blue-500 hover:shadow-md transition-shadow" title="自訂顏色">
                                                 <input
                                                     type="color"
                                                     className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
@@ -1832,7 +1840,7 @@ export default function Home() {
                                                 <button
                                                     key={color}
                                                     onClick={() => handleAddBackgroundColor(color)}
-                                                    className="w-8 h-8 rounded-full border border-gray-200 hover:scale-110 transition-transform shadow-sm relative"
+                                                    className="w-8 h-8 flex-shrink-0 rounded-full border border-gray-200 hover:scale-110 transition-transform shadow-sm relative"
                                                     style={{ backgroundColor: color }}
                                                     title={color}
                                                 >
