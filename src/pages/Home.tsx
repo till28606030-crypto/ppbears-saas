@@ -1724,7 +1724,7 @@ export default function Home() {
                         ) : (
                             <div className="flex flex-col flex-1 min-h-0 bg-white relative">
                                 {/* Search & Filter Header */}
-                                <div className="p-3 border-b border-gray-100 z-20 bg-white shadow-sm">
+                                <div className={`border-b border-gray-100 z-20 bg-white shadow-sm ${activePanel === 'frames' ? 'px-3 py-2' : 'p-3'}`}>
                                     {/* Search Input */}
                                     <div className="relative">
                                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
@@ -1742,8 +1742,8 @@ export default function Home() {
 
                                 {/* Basic Shapes for Frames Panel */}
                                 {activePanel === 'frames' && (
-                                    <div className="p-2 border-b border-gray-100 bg-white z-10">
-                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">基本形狀</div>
+                                    <div className="px-2 pt-0.5 pb-2 border-b border-gray-100 bg-white z-10">
+                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">基本形狀</div>
                                         <div className="grid grid-cols-4 gap-1">
                                             <button onClick={() => handleApplyCrop('rounded')} className={`flex flex-col items-center gap-0.5 group p-1.5 rounded-lg transition-all border ${selectedShape === 'rounded' ? 'bg-blue-50 border-blue-200' : 'border-transparent hover:bg-gray-50'}`}>
                                                 <div className={`w-6 h-6 border-2 rounded-lg transition-all ${selectedShape === 'rounded' ? 'border-blue-500 bg-blue-100' : 'border-gray-300 group-hover:border-blue-500 group-hover:bg-white'}`}></div>
