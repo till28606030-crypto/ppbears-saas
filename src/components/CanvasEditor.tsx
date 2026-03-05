@@ -647,7 +647,7 @@ const ColorPickerSection = ({ label, property, currentVal, onChange }: { label: 
                     </div>
                     <input type="text" value={tempHex.toUpperCase()} onChange={handleHexChange} className="w-20 text-xs p-1 outline-none font-mono" placeholder="#RRGGBB" maxLength={7} />
 
-                    {property === 'backgroundColor' && (
+                    {property === 'backgroundColor' || property === 'stroke' && (
                         <button
                             className={`w-8 h-8 flex items-center justify-center border-l border-gray-300 bg-white relative overflow-hidden hover:bg-gray-50 ${currentVal === 'transparent' ? 'ring-2 ring-blue-500 ring-inset' : ''}`}
                             onClick={() => onChange(property, 'transparent')}
@@ -6440,6 +6440,25 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                         <ColorPickerSection label="文字顏色" property="fill" currentVal={selectedObject.fill as string} onChange={updateSelectedObject} />
 
                                         <div className="pt-1 space-y-1">
+                                            <ColorPickerSection label="外框顏色" property="stroke" currentVal={(selectedObject.stroke as string) || 'transparent'} onChange={updateSelectedObject} />
+                                            <div className="flex items-center justify-between px-2 pt-1">
+                                                <span className="text-xs text-gray-500 font-medium">外框粗細</span>
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="range"
+                                                        min="0"
+                                                        max="20"
+                                                        step="0.5"
+                                                        value={(selectedObject as any).strokeWidth || 0}
+                                                        onChange={(e) => updateSelectedObject('strokeWidth', parseFloat(e.target.value))}
+                                                        className="w-24 accent-black"
+                                                    />
+                                                    <span className="text-xs text-gray-500 w-4 text-right">{Math.round((selectedObject as any).strokeWidth || 0)}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="w-full h-px bg-gray-100 my-2"></div>
+
                                             <ColorPickerSection label="背景顏色" property="backgroundColor" currentVal={(selectedObject.backgroundColor as string) || 'transparent'} onChange={updateSelectedObject} />
 
                                             {/* Corner Radius Slider */}
@@ -6956,12 +6975,37 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 {/* 3. Color Selection (Condensed) */}
                                 <div className="space-y-3">
                                     {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
-                                        <ColorPickerSection
-                                            label="文字顏色"
-                                            property="fill"
-                                            currentVal={(selectedObject.fill as string) || '#000000'}
-                                            onChange={updateSelectedObject}
-                                        />
+                                        <>
+                                            <ColorPickerSection
+                                                label="文字顏色"
+                                                property="fill"
+                                                currentVal={(selectedObject.fill as string) || '#000000'}
+                                                onChange={updateSelectedObject}
+                                            />
+                                            <div className="border-t border-gray-50 pt-3 space-y-2">
+                                                <ColorPickerSection
+                                                    label="文字外框"
+                                                    property="stroke"
+                                                    currentVal={(selectedObject.stroke as string) || 'transparent'}
+                                                    onChange={updateSelectedObject}
+                                                />
+                                                <div className="flex items-center justify-between px-2">
+                                                    <span className="text-[11px] text-gray-500 font-medium">外框粗細</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="range"
+                                                            min="0"
+                                                            max="20"
+                                                            step="0.5"
+                                                            value={(selectedObject as any).strokeWidth || 0}
+                                                            onChange={(e) => updateSelectedObject('strokeWidth', parseFloat(e.target.value))}
+                                                            className="w-16 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                                        />
+                                                        <span className="text-[10px] text-gray-400 w-3 text-right">{Math.round((selectedObject as any).strokeWidth || 0)}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </>
                                     )}
 
                                     {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
