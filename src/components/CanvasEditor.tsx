@@ -632,8 +632,8 @@ const ColorPickerSection = ({ label, property, currentVal, onChange }: { label: 
     };
 
     return (
-        <div className="flex flex-col gap-1 px-2 py-1">
-            <div className="text-xs text-gray-500 font-medium flex justify-between items-center">
+        <div className="flex flex-col gap-0.5 px-2 py-0.5">
+            <div className="text-[11px] text-gray-500 font-medium flex justify-between items-center">
                 {label}
                 <div className="flex items-center border border-gray-300 rounded overflow-hidden bg-white">
                     <div className="relative w-8 h-8 flex-shrink-0 border-r border-gray-200">
@@ -6436,11 +6436,10 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                                 {/* TAB: COLOR */}
                                 {activeMobileSubMenu === 'color' && (
-                                    <div className="space-y-4">
+                                    <div className="space-y-2 pb-2">
                                         <ColorPickerSection label="文字顏色" property="fill" currentVal={selectedObject.fill as string} onChange={updateSelectedObject} />
-                                        <div className="h-px bg-gray-200"></div>
 
-                                        <div className="space-y-2">
+                                        <div className="pt-1 space-y-1">
                                             <ColorPickerSection label="背景顏色" property="backgroundColor" currentVal={(selectedObject.backgroundColor as string) || 'transparent'} onChange={updateSelectedObject} />
 
                                             {/* Corner Radius Slider */}

@@ -1640,23 +1640,23 @@ export default function Home() {
                                 </div>
                             </div>
                         ) : activePanel === 'barcode' ? (
-                            <div className="p-6 space-y-4 flex-1 overflow-y-auto">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-gray-700">輸入載具號碼 (如 /ABC1234)</label>
+                            <div className="p-4 space-y-3 flex-1 overflow-y-auto">
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-medium text-gray-500">輸入載具號碼 (如 /ABC1234)</label>
                                     <input
                                         type="text"
                                         value={barcodeText}
                                         onChange={(e) => setBarcodeText(e.target.value.toUpperCase())}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono tracking-widest uppercase"
+                                        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono tracking-widest uppercase text-sm"
                                         placeholder="/ABC1234"
                                         maxLength={8}
                                     />
-                                    <p className="text-xs text-gray-500">台灣電子發票手機載具格式。</p>
+                                    <p className="text-[10px] text-gray-400">台灣電子發票手機載具格式。</p>
                                 </div>
                                 <button
                                     onClick={handleAddBarcode}
                                     disabled={!barcodeText || barcodeText.length < 2}
-                                    className="w-full py-2.5 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    className="w-full py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                 >
                                     <ScanBarcode className="w-4 h-4" />
                                     生成條碼
