@@ -4741,6 +4741,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     if (isText) {
                         // @ts-ignore
                         setTextValue(activeObj.text || '');
+                        setActiveMobileSubMenu('edit'); // Add this to reset menu state
                     } else if (isImage) {
                         // [PPBears] 每次選到圖片都強制套用（修復 Undo/Redo 後控制點復活）
                         enforceImageUniformScaling(activeObj as any);
@@ -6411,7 +6412,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                             <div className="p-4 min-h-[120px]">
                                 {/* TAB: EDIT */}
                                 {activeMobileSubMenu === 'edit' && (
-                                    <div className="flex flex-col gap-3">
+                                    <div className="flex flex-col gap-2">
                                         <input
                                             type="text"
                                             autoFocus
@@ -6427,10 +6428,57 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                     fabricCanvas.current?.requestRenderAll();
                                                 }
                                             }}
-                                            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-base outline-none focus:border-blue-500 bg-white shadow-sm"
-                                            placeholder="在此輸入文字..."
+                                            className="w-full border border-gray-300 rounded-lg px-4 py-2 text-base outline-none focus:border-blue-500 bg-white shadow-sm"
+                                            placeholder="請輸入文字"
                                         />
-                                        <p className="text-xs text-gray-400 text-center">在上方輸入以更新文字</p>
+
+                                        {/* Scale & Dimensions (Merged from Image pane) */}
+                                        <div className="flex justify-between items-center px-1">
+                                            <span className="text-xs text-gray-500 font-medium">尺寸 (寬 x 高)</span>
+                                            <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-600">
+                                                {Math.round(selectedObject.getScaledWidth())} x {Math.round(selectedObject.getScaledHeight())} px
+                                            </span>
+                                        </div>
+
+                                        <div className="space-y-1.5 bg-white p-2.5 rounded-xl border border-gray-200">
+                                            <div className="flex justify-between items-center mb-0.5">
+                                                <span className="text-xs font-bold text-gray-700">縮放比例</span>
+                                                <button
+                                                    onClick={() => {
+                                                        selectedObject.scale(1);
+                                                        selectedObject.setCoords();
+                                                        fabricCanvas.current?.requestRenderAll();
+                                                        saveHistory();
+                                                    }}
+                                                    className="text-[10px] text-blue-600 hover:bg-blue-50 px-2 py-0.5 rounded"
+                                                >
+                                                    重置 (100%)
+                                                </button>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Minimize2 className="w-3.5 h-3.5 text-gray-400" />
+                                                <input
+                                                    type="range"
+                                                    min="0.1"
+                                                    max="3.0"
+                                                    step="0.1"
+                                                    value={selectedObject.scaleX || 1}
+                                                    onChange={(e) => {
+                                                        const val = parseFloat(e.target.value);
+                                                        selectedObject.scale(val);
+                                                        selectedObject.setCoords();
+                                                        fabricCanvas.current?.requestRenderAll();
+                                                    }}
+                                                    onMouseUp={saveHistory}
+                                                    onTouchEnd={saveHistory}
+                                                    className="flex-1 accent-blue-600 h-1"
+                                                />
+                                                <Maximize className="w-3.5 h-3.5 text-gray-400" />
+                                            </div>
+                                            <div className="text-center text-[10px] text-gray-500 font-mono">
+                                                {Math.round((selectedObject.scaleX || 1) * 100)}%
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
 
@@ -6479,22 +6527,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                             <div className="w-full h-px bg-gray-100 my-2"></div>
 
                                             <ColorPickerSection label="背景顏色" property="backgroundColor" currentVal={(selectedObject.backgroundColor as string) || 'transparent'} onChange={updateSelectedObject} />
-
-                                            {/* Corner Radius Slider */}
-                                            <div className="flex items-center justify-between px-1 py-1 gap-1">
-                                                <span className="text-[11px] text-gray-500 font-bold whitespace-nowrap">圓角半徑</span>
-                                                <div className="flex items-center gap-3 w-[160px] flex-shrink-0 px-2 h-8 bg-gray-50/50 rounded-md border border-transparent">
-                                                    <input
-                                                        type="range"
-                                                        min="0"
-                                                        max="50"
-                                                        value={(selectedObject as any).bgCornerRadius || 0}
-                                                        onChange={(e) => updateSelectedObject('bgCornerRadius', parseInt(e.target.value))}
-                                                        className="flex-1 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-black"
-                                                    />
-                                                    <span className="text-[10px] font-mono text-gray-400 w-4 text-right">{(selectedObject as any).bgCornerRadius || 0}</span>
-                                                </div>
-                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -6611,29 +6643,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                         {Math.round((selectedObject.scaleX || 1) * 100)}%
                                                     </div>
                                                 </div>
-
-                                                {/* Corner Radius Slider for Image */}
-                                                <div className="flex items-center justify-between px-1 py-1 gap-1">
-                                                    <span className="text-[11px] text-gray-500 font-bold whitespace-nowrap">圓角半徑</span>
-                                                    <div className="flex items-center gap-3 w-[160px] flex-shrink-0 px-2 h-8 bg-gray-50/50 rounded-md border border-transparent">
-                                                        <input
-                                                            type="range"
-                                                            min="0"
-                                                            max="100"
-                                                            step="1"
-                                                            value={(selectedObject as any).rx || 0}
-                                                            onChange={(e) => {
-                                                                const val = parseInt(e.target.value);
-                                                                updateSelectedObject('rx', val);
-                                                                updateSelectedObject('ry', val);
-                                                            }}
-                                                            className="flex-1 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-black"
-                                                        />
-                                                        <span className="text-[10px] font-mono text-gray-400 w-4 text-right">{Math.round((selectedObject as any).rx || 0)}</span>
-                                                    </div>
-                                                </div>
-
-                                                {/* Fill and Flip buttons removed from here to rely on the side floating menu */}
                                             </>
                                         )}
                                     </div>
