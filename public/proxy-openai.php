@@ -2,14 +2,17 @@
 /**
  * proxy-openai.php
  * A simple proxy script to bypass CORS restrictions for OpenAI API calls.
- * 
- * Usage:
- * Send exactly the same POST request to this script as you would to https://api.openai.com/v1/chat/completions
- * Include the Authorization header with your Bearer token.
+ * Also overrides PHP's post_max_size limit for large base64 image payloads.
  */
 
+// Override PHP ini settings for large image base64 payloads (images can be 2-5MB after base64)
+@ini_set('post_max_size', '20M');
+@ini_set('upload_max_filesize', '20M');
+@ini_set('memory_limit', '128M');
+@ini_set('max_execution_time', '120');
+
 // Allow CORS for the frontend domain
-header('Access-Control-Allow-Origin: *'); // Restrict this to your domain in production if needed, e.g. https://ppbears.com
+header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
@@ -22,6 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // Only allow POST requests
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
+    header('Content-Type: application/json');
     echo json_encode(['error' => ['message' => 'Method not allowed. Use POST.']]);
     exit();
 }
@@ -38,6 +42,7 @@ foreach ($headers as $name => $value) {
 
 if (empty($authHeader)) {
     http_response_code(401);
+    header('Content-Type: application/json');
     echo json_encode(['error' => ['message' => 'Missing Authorization header.']]);
     exit();
 }
@@ -45,30 +50,40 @@ if (empty($authHeader)) {
 // Get the raw POST body
 $requestBody = file_get_contents('php://input');
 
+if (empty($requestBody)) {
+    http_response_code(400);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => ['message' => 'Empty request body. Check PHP post_max_size setting. Body length: ' . (int)$_SERVER['CONTENT_LENGTH']]]);
+    exit();
+}
+
 // Initialize cURL session to forward the request to OpenAI
 $ch = curl_init('https://api.openai.com/v1/chat/completions');
 
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_POSTFIELDS, $requestBody);
+curl_setopt($ch, CURLOPT_TIMEOUT, 120);
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
     'Content-Type: application/json',
-    'Authorization: ' . $authHeader
+    'Authorization: ' . $authHeader,
+    'Content-Length: ' . strlen($requestBody)
 ]);
 
 // Execute the cURL request
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-if (curl_errno($ch)) {
-    http_response_code(500);
-    echo json_encode(['error' => ['message' => 'cURL Error: ' . curl_error($ch)]]);
-} else {
-    // Pass the HTTP status code and response back to the client
-    http_response_code($httpCode);
-    header('Content-Type: application/json');
-    echo $response;
-}
+$curlError = curl_error($ch);
 
 curl_close($ch);
+
+header('Content-Type: application/json');
+
+if ($curlError) {
+    http_response_code(500);
+    echo json_encode(['error' => ['message' => 'cURL Error: ' . $curlError]]);
+} else {
+    http_response_code($httpCode);
+    echo $response;
+}
 ?>

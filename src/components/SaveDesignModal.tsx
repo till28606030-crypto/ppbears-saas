@@ -1056,9 +1056,11 @@ export default function SaveDesignModal({
 
         } catch (err) {
             console.error('[AI Recognition] Error:', err);
-            setInlineError('AI 辨識失敗，請重試。');
+            setInlineError('AI 辨識失敗，請重試或直接手動選擇下方規格。');
             setUploadedSpecImage(null);
-            setShowAdvancedAfterUpload(false);
+
+            // Feature: Fallback UI - Ensure advanced options are shown if AI fails
+            setShowAdvancedAfterUpload(true);
         } finally {
             setIsRecognizing(false);
             if (aiFileInputRef.current) aiFileInputRef.current.value = '';

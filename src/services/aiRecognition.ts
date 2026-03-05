@@ -11,17 +11,18 @@ export interface RecognizedProductInfo {
 }
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
-
 /**
  * Helper to convert a File or Blob to a base64 string.
  */
-function fileToBase64(file: File): Promise<string> {
+function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
         reader.onload = () => {
-            const base64String = (reader.result as string).split(',')[1];
-            resolve(base64String);
+            const dataUrl = reader.result as string;
+            const mimeType = dataUrl.split(';')[0].split(':')[1] || 'image/jpeg';
+            const base64String = dataUrl.split(',')[1];
+            resolve({ base64: base64String, mimeType });
         };
         reader.onerror = error => reject(error);
     });
@@ -38,24 +39,15 @@ export async function recognizeProductFromImage(file: File): Promise<RecognizedP
 
     console.log('[AI Recognition] Starting OpenAI Vision recognition for:', file.name);
 
-    const base64Image = await fileToBase64(file);
+    const { base64: base64Image, mimeType } = await fileToBase64(file);
+    console.log('[AI Recognition] File MIME type detected:', mimeType);
 
-    // Development environment uses direct API call to avoid needing PHP development server.
+    // Development environment uses Vite proxy (/openai) to bypass localhost CORS issues.
     // Production uses the PHP proxy script to bypass CORS issues on the live domain.
-    const apiUrl = import.meta.env.PROD ? '/design/proxy-openai.php' : 'https://api.openai.com/v1/chat/completions';
+    const apiUrl = import.meta.env.PROD ? '/design/proxy-openai.php' : '/openai/v1/chat/completions';
+    console.log('[AI Recognition] Using URL:', apiUrl);
 
-    const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-            model: 'gpt-4o',
-            messages: [
-                {
-                    role: 'system',
-                    content: `你是手機殼商品規格辨識專家，專門處理 Devilcase 官網截圖。
+    const promptText = `你是手機殼商品規格辨識專家，專門處理 Devilcase 官網截圖。
 請從截圖中提取：
 1. 手機型號（如 Apple - iPhone 17 Pro Max）
 2. 殼種款式名稱（如 惡魔防摔殼 PRO 3 磁吸版、惡魔防摔殼 標準版 等）
@@ -76,7 +68,20 @@ export async function recognizeProductFromImage(file: File): Promise<RecognizedP
 - ！！！極度重要：請【逐字完整照抄】圖片上的繁體中文文字，絕對不能自行猜測、翻譯或修改成相似的詞語。例如圖片寫「羅賓橘(不耐髒)」，就必須輸出「羅賓橘(不耐髒)」，絕對不能辨識為「羅家莊(不滅)」。
 - caseName 請完整包含版本資訊（根據圖片實際文字，可能是 PRO 3、磁吸版、標準版 等）
 - 動作按鍵和相機按鍵是不同的欄位，請分開辨識
-- 若截圖中看不到某欄位，就不要包含在 specs 裡`
+- 若截圖中看不到某欄位，就不要包含在 specs 裡`;
+
+    const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+            model: 'gpt-4o',
+            messages: [
+                {
+                    role: 'system',
+                    content: promptText
                 },
                 {
                     role: 'user',
@@ -88,7 +93,7 @@ export async function recognizeProductFromImage(file: File): Promise<RecognizedP
                         {
                             type: 'image_url',
                             image_url: {
-                                url: `data:image/jpeg;base64,${base64Image}`
+                                url: `data:${mimeType};base64,${base64Image}`
                             }
                         }
                     ]
@@ -100,18 +105,23 @@ export async function recognizeProductFromImage(file: File): Promise<RecognizedP
     });
 
     if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`OpenAI API error: ${errorData.error?.message || response.statusText}`);
+        let errorMsg = response.statusText;
+        try {
+            const errorData = await response.json();
+            errorMsg = errorData.error?.message || errorMsg;
+            console.error('[AI Recognition] API Error:', JSON.stringify(errorData));
+        } catch (_) { }
+        throw new Error(`OpenAI API error: ${errorMsg}`);
     }
 
     const data = await response.json();
-    const content = data.choices[0]?.message?.content;
+    const content = data.choices?.[0]?.message?.content;
 
     if (!content) {
         throw new Error('No content received from OpenAI');
     }
 
-    // 嘗試解析 JSON（GPT 有時會回傳帶有 markdown code block 的格式）
+    // 嘗試解析 JSON
     let jsonStr = content.trim();
     const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
     if (codeBlockMatch) {
