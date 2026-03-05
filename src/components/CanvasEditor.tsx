@@ -6417,7 +6417,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                                 {/* TAB: FONT */}
                                 {activeMobileSubMenu === 'font' && (
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-gray-300">
                                         {FONT_OPTIONS.map(font => (
                                             <button
                                                 key={font.family}
@@ -6465,24 +6465,33 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 {/* TAB: ALIGN / STYLE */}
                                 {activeMobileSubMenu === 'align' && (
                                     <div className="space-y-4">
-                                        {/* Style (Bold/Italic) - Only for text */}
-                                        {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
-                                            <div className="flex justify-center gap-4">
-                                                <button onClick={() => updateSelectedObject('fontWeight', (selectedObject as any).fontWeight === 'bold' ? 'normal' : 'bold')} className={`flex flex-col items-center gap-1 p-3 rounded-xl border w-20 ${(selectedObject as any).fontWeight === 'bold' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'}`}>
-                                                    <Bold className="w-6 h-6" />
-                                                    <span className="text-[10px] font-medium">粗體</span>
-                                                </button>
-                                                <button onClick={() => updateSelectedObject('fontStyle', (selectedObject as any).fontStyle === 'italic' ? 'normal' : 'italic')} className={`flex flex-col items-center gap-1 p-3 rounded-xl border w-20 ${(selectedObject as any).fontStyle === 'italic' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'}`}>
-                                                    <Italic className="w-6 h-6" />
-                                                    <span className="text-[10px] font-medium">斜體</span>
-                                                </button>
-                                            </div>
-                                        )}
-
-                                        {/* Canvas Align */}
                                         <div>
-                                            <p className="text-[10px] text-gray-400 mb-1 ml-1 font-medium">畫布位置</p>
-                                            <div className="bg-white p-2 rounded-xl border border-gray-200 flex justify-between gap-2">
+                                            <p className="text-[10px] text-gray-400 mb-1 ml-1 font-medium">文字樣式與位置</p>
+                                            <div className="bg-white p-2 rounded-xl border border-gray-200 flex items-center justify-between gap-2">
+                                                {/* Style (Bold/Italic) */}
+                                                {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => updateSelectedObject('fontWeight', (selectedObject as any).fontWeight === 'bold' ? 'normal' : 'bold')}
+                                                            className={`p-2 rounded-lg flex-1 flex justify-center transition-all ${(selectedObject as any).fontWeight === 'bold' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'
+                                                                }`}
+                                                            title="粗體"
+                                                        >
+                                                            <Bold className="w-5 h-5" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => updateSelectedObject('fontStyle', (selectedObject as any).fontStyle === 'italic' ? 'normal' : 'italic')}
+                                                            className={`p-2 rounded-lg flex-1 flex justify-center transition-all ${(selectedObject as any).fontStyle === 'italic' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'
+                                                                }`}
+                                                            title="斜體"
+                                                        >
+                                                            <Italic className="w-5 h-5" />
+                                                        </button>
+                                                        <div className="w-px h-6 bg-gray-100 mx-1"></div>
+                                                    </>
+                                                )}
+
+                                                {/* Canvas Align */}
                                                 <button onClick={() => alignCanvas('left')} className="p-2 rounded-lg flex-1 flex justify-center text-gray-600 hover:bg-gray-50 hover:text-blue-600 active:scale-95 transition-all" title="靠左">
                                                     <AlignLeft className="w-5 h-5" />
                                                 </button>
