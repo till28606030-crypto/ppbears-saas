@@ -896,6 +896,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const [searchParams] = useSearchParams();
     const [isTemplateLoading, setIsTemplateLoading] = useState(false);
     const [hasTemplateLoaded, setHasTemplateLoaded] = useState(false); // Track if template has loaded at least once
+    const [canvasReady, setCanvasReady] = useState(false); // [FIX] Triggers syncLayers after canvas init
     const templateLoadSeqRef = useRef(0);
     const enterSeqRef = useRef(0);
     const enterInFlightRef = useRef(false);
@@ -4540,6 +4541,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         // =====================================================================
 
         fabricCanvas.current = canvas;
+        // [FIX] Signal that canvas is ready, triggering syncLayers re-run
+        setCanvasReady(true);
 
         // [DIAG] Expose dump API to globalThis for Console access
         // @ts-ignore
@@ -5135,7 +5138,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
         syncLayers();
 
-    }, [currentProduct, baseImage, maskImage, applyTemplateForProduct]);
+    }, [currentProduct, baseImage, maskImage, applyTemplateForProduct, canvasReady]);
 
     // 2. Resize Effect (Handles responsive layout without destroying canvas)
     useEffect(() => {
