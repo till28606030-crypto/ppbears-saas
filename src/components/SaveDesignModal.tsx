@@ -16,25 +16,31 @@ const cleanHtmlContent = (htmlStr: string | undefined): string => {
     const trimmed = htmlStr.replace(/<p><br><\/p>/g, '').replace(/<p><\/p>/g, '').trim();
     if (!trimmed) return '';
 
-    // 1. 精確優化：僅移除「夾在轉義代碼標籤內」的真實 HTML 標籤
-    // 這裡尋找 &lt; 到 &gt; 之間的區塊，或從 &lt; 開始直到結尾的區塊
-    // 並將該區塊內的 <br>, <p> 等移除，避免屬性被切斷
-    let healed = htmlStr.replace(/(&lt;[\s\S]*?&gt;|&lt;[\s\S]*$)/g, (match) => {
-        return match.replace(/<[^>]+>/g, ' ');
-    });
+    // 1. Unescape logic: check if the string contains common HTML entities
+    let result = htmlStr;
+    if (htmlStr.includes('&lt;') || htmlStr.includes('&amp;')) {
+        result = htmlStr
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/&nbsp;/g, ' ');
 
-    // 2. 將編碼解碼回來
-    let result = healed
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&nbsp;/g, ' ');
+        // If the unescaped result still contains ReactQuill's internal padding tags
+        // injected during an escaped paste, we clean those up too.
+        if (result.includes('<p>') && (htmlStr.includes('&lt;'))) {
+            result = result.replace(/<p><br><\/p>/g, ' ').replace(/<[^>]+>/g, (tag) => {
+                // Keep the tags that were likely the *intended* HTML vs the wrapper ones
+                // This is a bit heuristic, but sanitization handles the safety part.
+                return tag;
+            });
+        }
+    }
 
-    // 3. 通過 DOMPurify 進行安全過濾，放行更多佈局標籤與屬性
+    // 2. 通過 DOMPurify 進行安全過濾，放行更多佈局標籤與屬性
     return DOMPurify.sanitize(result, {
-        ADD_TAGS: ['section', 'article', 'nav', 'header', 'footer', 'div', 'span', 'i', 'b', 'strong', 'em'],
+        ADD_TAGS: ['a', 'p', 'div', 'span', 'strong', 'em', 'i', 'b', 'u', 'br', 'hr', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ins', 'del', 'section', 'article'],
         ADD_ATTR: ['target', 'style', 'rel', 'class', 'href', 'id', 'align', 'width', 'height', 'bgcolor']
     });
 };
@@ -1544,22 +1550,35 @@ export default function SaveDesignModal({
                                                     if (!ui?.description && (!descriptionImages || descriptionImages.length === 0)) return null;
 
                                                     return (
-                                                        <>
-                                                            <div className={`mb-4 grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
-                                                                {descriptionImages.map((img: string, idx: number) => (
-                                                                    <div key={idx} className="relative group cursor-pointer" onClick={() => openLightbox(descriptionImages, idx)}>
-                                                                        <img
-                                                                            src={img}
-                                                                            className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
-                                                                            alt={`${group.name} 說明圖片 ${idx + 1}`}
-                                                                        />
-                                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
-                                                                            <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                                                        <div className="space-y-4 mb-6">
+                                                            {/* 1. 功能說明文字 (Moved to Header) */}
+                                                            {ui?.description && (
+                                                                <div
+                                                                    className="text-base text-gray-800 prose max-w-none w-full text-left overflow-x-auto [&_a]:no-underline"
+                                                                    dangerouslySetInnerHTML={{
+                                                                        __html: cleanHtmlContent(ui.description)
+                                                                    }}
+                                                                />
+                                                            )}
+
+                                                            {/* 2. 說明圖片 */}
+                                                            {descriptionImages.length > 0 && (
+                                                                <div className={`grid gap-2 ${descriptionImages.length > 1 ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                                                                    {descriptionImages.map((img: string, idx: number) => (
+                                                                        <div key={idx} className="relative group cursor-pointer" onClick={() => openLightbox(descriptionImages, idx)}>
+                                                                            <img
+                                                                                src={img}
+                                                                                className="w-full h-24 object-cover rounded-xl border border-gray-200 transition-transform group-hover:scale-105"
+                                                                                alt={`${group.name} 說明圖片 ${idx + 1}`}
+                                                                            />
+                                                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-xl transition-colors flex items-center justify-center">
+                                                                                <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 drop-shadow-md" />
+                                                                            </div>
                                                                         </div>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     );
                                                 })()}
 
@@ -1576,15 +1595,7 @@ export default function SaveDesignModal({
                                                             const groupKey2 = getGroupKey(group);
                                                             return (
                                                                 <div className="col-span-2 space-y-4 animate-in fade-in zoom-in duration-300">
-                                                                    {/* ===== 功能說明區 (獨立拉出以支援 HTML 版面展開) ===== */}
-                                                                    {ui?.description && (
-                                                                        <div
-                                                                            className="mb-8 text-base text-gray-800 prose max-w-none w-full text-left overflow-x-auto [&_a]:no-underline"
-                                                                            dangerouslySetInnerHTML={{
-                                                                                __html: cleanHtmlContent(ui.description)
-                                                                            }}
-                                                                        />
-                                                                    )}
+
 
                                                                     {/* ===== 上傳區 ===== */}
                                                                     <div className="bg-white border-2 border-dashed border-purple-200 rounded-2xl p-5 text-center">
