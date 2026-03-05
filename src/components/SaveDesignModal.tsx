@@ -699,7 +699,10 @@ export default function SaveDesignModal({
                 const dt = normalizeDisplayType(ui.displayType || (ui as any).display_type);
                 if (dt === 'ai_recognition') {
                     hasChosenSpec = true;
-                    specBase += Number(activeGroup.priceModifier) || 0;
+                    // AI 辨識群組：不論是否選中特定 Item，都要計算該群組的基本加價 (priceModifier)
+                    const groupPrice = Number(activeGroup.priceModifier) || 0;
+                    specBase += groupPrice;
+                    console.log(`[Pricing] AI Group ${activeGroup.name} base price:`, groupPrice);
                 }
             }
         }
@@ -2586,7 +2589,7 @@ export default function SaveDesignModal({
 
                                                             // 補上 AI 辨識出的「殼種款式」（因為 AI 辨識群組本身沒有 ItemID 被選中，不會進入上面的迴圈）
                                                             if (showAdvancedAfterUpload && recognizedProductInfo?.caseName) {
-                                                                customOptions['💡款式'] = recognizedProductInfo.caseName;
+                                                                customOptions['款式'] = recognizedProductInfo.caseName;
                                                             }
 
                                                             try {
