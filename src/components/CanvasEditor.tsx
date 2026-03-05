@@ -3152,7 +3152,17 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     const currentBase = canvas.getObjects().find(o => (o as any).isBaseLayer) as FabricImage;
                     const savedMeta = json.template_meta;
 
-                    if (currentBase && savedMeta) {
+                    // Helper: detect if the saved template was created in Admin Builder with a dummy 1x1 base.
+                    // Admin Builder uses base_image = 1px transparent PNG, so savedMeta.width=1, height=1
+                    // -- or --
+                    // savedMeta.scaleX is enormous (e.g. REAL_WIDTH / 1 pixel = 3543 or similar),
+                    // meaning the canvas width / savedMeta.width >> 1000.
+                    const isDummyAdminBase = savedMeta && (
+                        (savedMeta.width === 1 && savedMeta.height === 1) ||
+                        Math.abs(savedMeta.scaleX) > 1000 // real phone canvas images are never 1000x scaled
+                    );
+
+                    if (currentBase && savedMeta && !isDummyAdminBase) {
                         // Calculate scale delta
                         const currentScaleX = currentBase.scaleX || 1;
                         const savedScaleX = savedMeta.scaleX || currentScaleX;
@@ -3176,6 +3186,35 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                             current: { scaleX: currentScaleX, left: currentLeft, top: currentTop },
                             saved: { scaleX: savedScaleX, left: savedLeft, top: savedTop },
                             calc: { scaleFactor, offsetX, offsetY }
+                        });
+                    } else if (currentBase && savedMeta && isDummyAdminBase) {
+                        // Admin Builder template: objects were placed relative to a dummy 1x1 base.
+                        // The saved canvas coords are final, absolute coords in the Admin Builder's REAL_WIDTH x REAL_HEIGHT space.
+                        // We need to map them to the current model's canvas coordinate space.
+                        // savedMeta.canvasWidth is the VISUAL (display) width; REAL_WIDTH is the logical width.
+                        // Objects are at absolute REAL_WIDTH coords, so we need to shift them to the current center.
+                        const savedCanvasRealW = (savedMeta.width ?? 0) !== 1
+                            ? (savedMeta.left || 0) * 2 // center = left means half REAL_WIDTH
+                            : (savedMeta.canvasWidth || REAL_WIDTH); // best we can do
+                        const savedCanvasRealH = (savedMeta.height ?? 0) !== 1
+                            ? (savedMeta.top || 0) * 2
+                            : (savedMeta.canvasHeight || REAL_HEIGHT);
+
+                        // Calculate scale to transform from saved space to current space
+                        const scaleFactorW = savedCanvasRealW > 0 ? REAL_WIDTH / savedCanvasRealW : 1;
+                        const scaleFactorH = savedCanvasRealH > 0 ? REAL_HEIGHT / savedCanvasRealH : 1;
+                        scaleFactor = Math.min(scaleFactorW, scaleFactorH); // uniform scale
+
+                        // Since Admin Builder has same canvas aspect, objects centered at REAL_WIDTH/2, REAL_HEIGHT/2
+                        // and current base is also at REAL_WIDTH/2, REAL_HEIGHT/2, no offset is needed.
+                        offsetX = 0;
+                        offsetY = 0;
+
+                        console.log('[CanvasEditor] Admin Builder template detected. Applying normalized coordinates:', {
+                            savedMeta,
+                            scaleFactor,
+                            REAL_WIDTH,
+                            REAL_HEIGHT
                         });
                     } else {
                         // Fallback for old designs or missing meta: 
