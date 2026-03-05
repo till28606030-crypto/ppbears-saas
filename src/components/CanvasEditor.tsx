@@ -6955,12 +6955,14 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                                 {/* 3. Color Selection (Condensed) */}
                                 <div className="space-y-3">
-                                    <ColorPickerSection
-                                        label="主要顏色"
-                                        property={(selectedObject.type === 'i-text' || selectedObject.type === 'text') ? 'fill' : 'fill'}
-                                        currentVal={(selectedObject.fill as string) || '#000000'}
-                                        onChange={updateSelectedObject}
-                                    />
+                                    {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
+                                        <ColorPickerSection
+                                            label="文字顏色"
+                                            property="fill"
+                                            currentVal={(selectedObject.fill as string) || '#000000'}
+                                            onChange={updateSelectedObject}
+                                        />
+                                    )}
 
                                     {(selectedObject.type === 'i-text' || selectedObject.type === 'text') && (
                                         <div className="border-t border-gray-50 pt-3">
