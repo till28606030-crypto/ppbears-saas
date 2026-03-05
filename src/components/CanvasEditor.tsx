@@ -632,30 +632,39 @@ const ColorPickerSection = ({ label, property, currentVal, onChange }: { label: 
     };
 
     return (
-        <div className="flex flex-col gap-0.5 px-2 py-0.5">
-            <div className="text-[11px] text-gray-500 font-medium flex justify-between items-center">
-                {label}
-                <div className="flex items-center border border-gray-300 rounded overflow-hidden bg-white">
-                    <div className="relative w-8 h-8 flex-shrink-0 border-r border-gray-200">
-                        <div className="absolute inset-0" style={{ backgroundColor: currentVal }}></div>
+        <div className="flex flex-col gap-1 px-1 py-0.5">
+            <div className="flex items-center justify-between gap-1">
+                <span className="text-[11px] text-gray-500 font-bold whitespace-nowrap">{label}</span>
+                <div className="flex items-center border border-gray-300 rounded overflow-hidden bg-white shadow-sm h-8 w-[160px] flex-shrink-0">
+                    <div className="relative w-8 h-full flex-shrink-0 border-r border-gray-200">
+                        <div className="absolute inset-0" style={{ backgroundColor: currentVal === 'transparent' ? 'transparent' : currentVal }}></div>
+                        <div className="absolute inset-0 bg-white -z-10" style={{ backgroundImage: 'linear-gradient(45deg, #eee 25%, transparent 25%), linear-gradient(-45deg, #eee 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eee 75%), linear-gradient(-45deg, transparent 75%, #eee 75%)', backgroundSize: '4px 4px' }}></div>
                         <input
                             type="color"
-                            value={currentVal}
+                            value={currentVal === 'transparent' ? '#ffffff' : currentVal}
                             onChange={(e) => onChange(property, e.target.value)}
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                         />
                     </div>
-                    <input type="text" value={tempHex.toUpperCase()} onChange={handleHexChange} className="w-20 text-xs p-1 outline-none font-mono" placeholder="#RRGGBB" maxLength={7} />
+                    <input
+                        type="text"
+                        value={tempHex.toUpperCase()}
+                        onChange={handleHexChange}
+                        className="flex-1 min-w-0 text-[10px] px-2 outline-none font-mono text-gray-700"
+                        placeholder="#RRGGBB"
+                    />
 
-                    {property === 'backgroundColor' || property === 'stroke' && (
+                    {(property === 'backgroundColor' || property === 'stroke') ? (
                         <button
-                            className={`w-8 h-8 flex items-center justify-center border-l border-gray-300 bg-white relative overflow-hidden hover:bg-gray-50 ${currentVal === 'transparent' ? 'ring-2 ring-blue-500 ring-inset' : ''}`}
+                            className={`w-9 h-full flex items-center justify-center border-l border-gray-300 bg-white relative overflow-hidden hover:bg-gray-50 transition-colors ${currentVal === 'transparent' ? 'ring-2 ring-blue-500 ring-inset' : ''}`}
                             onClick={() => onChange(property, 'transparent')}
-                            title="Transparent"
+                            title="透明"
                         >
-                            <div className="absolute inset-0 bg-white" style={{ backgroundImage: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)', backgroundSize: '8px 8px', backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px' }}></div>
-                            <div className="absolute inset-0 flex items-center justify-center text-red-500 text-xs font-bold z-10">/</div>
+                            <div className="absolute inset-0 bg-white" style={{ backgroundImage: 'linear-gradient(45deg, #eee 25%, transparent 25%), linear-gradient(-45deg, #eee 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eee 75%), linear-gradient(-45deg, transparent 75%, #eee 75%)', backgroundSize: '6px 6px' }}></div>
+                            <div className="absolute inset-0 flex items-center justify-center text-red-500 text-sm font-bold z-10">/</div>
                         </button>
+                    ) : (
+                        <div className="w-9 h-full border-l border-gray-50 bg-gray-50/30 flex-shrink-0"></div>
                     )}
                 </div>
             </div>
@@ -5647,6 +5656,13 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
     const updateSelectedObject = (key: string, value: any) => {
         if (!fabricCanvas.current || !selectedObject) return;
+
+        // Handle outward stroke for text: paint stroke first so fill stays on top
+        if ((key === 'stroke' || key === 'strokeWidth' || key === 'strokeUniform') &&
+            (selectedObject.type === 'i-text' || selectedObject.type === 'text')) {
+            (selectedObject as any).set('paintFirst', 'stroke');
+        }
+
         selectedObject.set(key, value);
         fabricCanvas.current.renderAll();
         saveHistory();
@@ -6441,9 +6457,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                                         <div className="pt-1 space-y-1">
                                             <ColorPickerSection label="外框顏色" property="stroke" currentVal={(selectedObject.stroke as string) || 'transparent'} onChange={updateSelectedObject} />
-                                            <div className="flex items-center justify-between px-2 pt-1">
-                                                <span className="text-xs text-gray-500 font-medium">外框粗細</span>
-                                                <div className="flex items-center gap-2">
+                                            <div className="flex items-center justify-between px-1 py-1 gap-1">
+                                                <span className="text-[11px] text-gray-500 font-bold whitespace-nowrap">外框粗細</span>
+                                                <div className="flex items-center gap-3 w-[160px] flex-shrink-0 px-2 h-8 bg-gray-50/50 rounded-md border border-transparent">
                                                     <input
                                                         type="range"
                                                         min="0"
@@ -6451,9 +6467,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                         step="0.5"
                                                         value={(selectedObject as any).strokeWidth || 0}
                                                         onChange={(e) => updateSelectedObject('strokeWidth', parseFloat(e.target.value))}
-                                                        className="w-24 accent-black"
+                                                        className="flex-1 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-black"
                                                     />
-                                                    <span className="text-xs text-gray-500 w-4 text-right">{Math.round((selectedObject as any).strokeWidth || 0)}</span>
+                                                    <span className="text-[10px] font-mono text-gray-400 w-4 text-right">{Math.round((selectedObject as any).strokeWidth || 0)}</span>
                                                 </div>
                                             </div>
 
@@ -6462,18 +6478,18 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                             <ColorPickerSection label="背景顏色" property="backgroundColor" currentVal={(selectedObject.backgroundColor as string) || 'transparent'} onChange={updateSelectedObject} />
 
                                             {/* Corner Radius Slider */}
-                                            <div className="flex items-center justify-between px-2 pt-1">
-                                                <span className="text-xs text-gray-500 font-medium">圓角半徑</span>
-                                                <div className="flex items-center gap-2">
+                                            <div className="flex items-center justify-between px-1 py-1 gap-1">
+                                                <span className="text-[11px] text-gray-500 font-bold whitespace-nowrap">圓角半徑</span>
+                                                <div className="flex items-center gap-3 w-[160px] flex-shrink-0 px-2 h-8 bg-gray-50/50 rounded-md border border-transparent">
                                                     <input
                                                         type="range"
                                                         min="0"
                                                         max="50"
                                                         value={(selectedObject as any).bgCornerRadius || 0}
                                                         onChange={(e) => updateSelectedObject('bgCornerRadius', parseInt(e.target.value))}
-                                                        className="w-24 accent-black"
+                                                        className="flex-1 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-black"
                                                     />
-                                                    <span className="text-xs text-gray-500 w-4 text-right">{(selectedObject as any).bgCornerRadius || 0}</span>
+                                                    <span className="text-[10px] font-mono text-gray-400 w-4 text-right">{(selectedObject as any).bgCornerRadius || 0}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -6590,6 +6606,27 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                     </div>
                                                     <div className="text-center text-xs text-gray-500 font-mono mt-1">
                                                         {Math.round((selectedObject.scaleX || 1) * 100)}%
+                                                    </div>
+                                                </div>
+
+                                                {/* Corner Radius Slider for Image */}
+                                                <div className="flex items-center justify-between px-1 py-1 gap-1">
+                                                    <span className="text-[11px] text-gray-500 font-bold whitespace-nowrap">圓角半徑</span>
+                                                    <div className="flex items-center gap-3 w-[160px] flex-shrink-0 px-2 h-8 bg-gray-50/50 rounded-md border border-transparent">
+                                                        <input
+                                                            type="range"
+                                                            min="0"
+                                                            max="100"
+                                                            step="1"
+                                                            value={(selectedObject as any).rx || 0}
+                                                            onChange={(e) => {
+                                                                const val = parseInt(e.target.value);
+                                                                updateSelectedObject('rx', val);
+                                                                updateSelectedObject('ry', val);
+                                                            }}
+                                                            className="flex-1 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-black"
+                                                        />
+                                                        <span className="text-[10px] font-mono text-gray-400 w-4 text-right">{Math.round((selectedObject as any).rx || 0)}</span>
                                                     </div>
                                                 </div>
 
@@ -6989,9 +7026,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                     currentVal={(selectedObject.stroke as string) || 'transparent'}
                                                     onChange={updateSelectedObject}
                                                 />
-                                                <div className="flex items-center justify-between px-2">
-                                                    <span className="text-[11px] text-gray-500 font-medium">外框粗細</span>
-                                                    <div className="flex items-center gap-2">
+                                                <div className="flex items-center justify-between px-1 py-1 gap-1">
+                                                    <span className="text-[11px] text-gray-500 font-bold whitespace-nowrap">外框粗細</span>
+                                                    <div className="flex items-center gap-3 w-[160px] flex-shrink-0 px-2 h-8 bg-gray-50/50 rounded-md border border-transparent">
                                                         <input
                                                             type="range"
                                                             min="0"
@@ -6999,9 +7036,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                             step="0.5"
                                                             value={(selectedObject as any).strokeWidth || 0}
                                                             onChange={(e) => updateSelectedObject('strokeWidth', parseFloat(e.target.value))}
-                                                            className="w-16 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                                            className="flex-1 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                                                         />
-                                                        <span className="text-[10px] text-gray-400 w-3 text-right">{Math.round((selectedObject as any).strokeWidth || 0)}</span>
+                                                        <span className="text-[10px] font-mono text-gray-400 w-4 text-right">{Math.round((selectedObject as any).strokeWidth || 0)}</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -7017,18 +7054,18 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                 onChange={updateSelectedObject}
                                             />
                                             {/* Corner Radius for Text BG */}
-                                            <div className="flex items-center justify-between px-2 mt-2">
-                                                <span className="text-[11px] text-gray-500 font-medium">背景圓角</span>
-                                                <div className="flex items-center gap-2">
+                                            <div className="flex items-center justify-between px-1 py-1 gap-1">
+                                                <span className="text-[11px] text-gray-500 font-bold whitespace-nowrap">背景圓角</span>
+                                                <div className="flex items-center gap-3 w-[160px] flex-shrink-0 px-2 h-8 bg-gray-50/50 rounded-md border border-transparent">
                                                     <input
                                                         type="range"
                                                         min="0"
                                                         max="50"
                                                         value={(selectedObject as any).bgCornerRadius || 0}
                                                         onChange={(e) => updateSelectedObject('bgCornerRadius', parseInt(e.target.value))}
-                                                        className="w-16 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                                        className="flex-1 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                                                     />
-                                                    <span className="text-[10px] text-gray-400 w-3 text-right">{(selectedObject as any).bgCornerRadius || 0}</span>
+                                                    <span className="text-[10px] font-mono text-gray-400 w-4 text-right">{(selectedObject as any).bgCornerRadius || 0}</span>
                                                 </div>
                                             </div>
                                         </div>
