@@ -59,7 +59,6 @@ export async function listFrames(productId?: string): Promise<{ data: Frame[]; s
                 }));
 
                 // Cache the results
-                await set(cacheKey, frames);
                 try {
                     localStorage.setItem(cacheKey, JSON.stringify(frames));
                 } catch (e) {
@@ -81,13 +80,11 @@ export async function listFrames(productId?: string): Promise<{ data: Frame[]; s
         });
     }
 
-    // 2. Fallback to cache
-    let cached = await get<Frame[]>(cacheKey);
-    if (!cached) {
-        const lsData = localStorage.getItem(cacheKey);
-        if (lsData) {
-            try { cached = JSON.parse(lsData); } catch (e) { /* ignore */ }
-        }
+    // 2. Fallback to cache (localStorage only to prevent IndexedDB hanging)
+    let cached: Frame[] | null = null;
+    const lsData = localStorage.getItem(cacheKey);
+    if (lsData) {
+        try { cached = JSON.parse(lsData); } catch (e) { /* ignore */ }
     }
 
     if (cached) {
@@ -112,7 +109,9 @@ export async function listFrameCategories(): Promise<string[]> {
  */
 export async function clearFrameCache(productId?: string): Promise<void> {
     const cacheKey = productId ? `${CACHE_KEY}:${productId}` : CACHE_KEY;
-    await del(cacheKey);
+    try {
+        await del(cacheKey);
+    } catch (e) { }
     localStorage.removeItem(cacheKey);
     console.log('[clearFrameCache] Cache cleared. Next listFrames will fetch from Supabase.');
 }

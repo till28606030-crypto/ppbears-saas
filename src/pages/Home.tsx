@@ -190,46 +190,55 @@ export default function Home() {
         const loadAssets = async () => {
             if (!['stickers', 'backgrounds', 'frames'].includes(activePanel)) return;
 
+            console.log(`[loadAssets] Start loading for panel: ${activePanel}`);
             setLoadingAssets(true);
             setAssetError(null);
 
+            // Safety timeout to prevent infinite spinner (5 seconds)
+            const timeoutId = setTimeout(() => {
+                if (mounted) {
+                    setLoadingAssets(false);
+                    console.warn(`[loadAssets] Safety timeout reached for ${activePanel}`);
+                }
+            }, 5000);
+
             try {
                 if (activePanel === 'frames') {
-                    // Clear stale cache to ensure fresh data from Supabase
-                    await clearFrameCache(productId || undefined);
-                    const { data, source } = await listFrames(productId || undefined);
-                    console.log('%c[相框面板] 載入結果', 'color: blue; font-weight: bold; font-size: 14px', `共 ${data.length} 個相框`, '| 來源:', source);
-                    if (data.length > 0) console.table(data.map(f => ({ id: f.id, name: f.name, category: f.category, url: f.url })));
-                    else console.warn('⚠️ [相框面板] 沒有資料！請確認 Supabase assets 表中有 type="frame" 的記錄，且 RLS 允許匿名用戶讀取。');
+                    console.log('[loadAssets] Fetching frames...');
+                    const { data, source } = await listFrames();
+                    console.log(`[loadAssets] Frames fetched: ${data.length} items from ${source}`);
                     if (mounted) {
                         setFrames(data);
                         setIsOffline(source === 'cache');
                         setFrameDebugInfo({ rowCount: data.length, error: lastFrameDebug.error, source });
                     }
                 } else {
-                    setIsOffline(false);
-                    let type: 'sticker' | 'background' = 'sticker';
-                    if (activePanel === 'stickers') type = 'sticker';
-                    else if (activePanel === 'backgrounds') type = 'background';
-
+                    const type = activePanel === 'stickers' ? 'sticker' : 'background';
+                    console.log(`[loadAssets] Fetching ${type}s...`);
                     const { data } = await listAssets({
                         type,
                         category: selectedAssetCategory,
                         search: assetSearch
                     });
+                    console.log(`[loadAssets] ${type}s fetched: ${data.length} items`);
 
                     if (mounted) {
+                        setIsOffline(false);
                         if (type === 'sticker') setStickers(data);
                         else if (type === 'background') setBackgrounds(data);
                     }
                 }
             } catch (err) {
                 if (mounted) {
-                    console.error(`Failed to load ${activePanel}:`, err);
+                    console.error(`[loadAssets] Failed to load ${activePanel}:`, err);
                     setAssetError("無法載入素材");
                 }
             } finally {
-                if (mounted) setLoadingAssets(false);
+                clearTimeout(timeoutId);
+                if (mounted) {
+                    setLoadingAssets(false);
+                    console.log(`[loadAssets] Loading finished for panel: ${activePanel}`);
+                }
             }
         };
 
@@ -1710,18 +1719,35 @@ export default function Home() {
                             <div className="flex flex-col flex-1 min-h-0 bg-white relative">
                                 {/* Search & Filter Header */}
                                 <div className={`border-b border-gray-100 z-20 bg-white shadow-sm ${activePanel === 'frames' ? 'px-3 py-2' : 'p-3'}`}>
-                                    {/* Search Input */}
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                                            <Search className="w-4 h-4" />
+                                    {/* Search Input Row with Refresh Button */}
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <div className="relative flex-1">
+                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                                                <Search className="w-4 h-4" />
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={assetSearch}
+                                                onChange={(e) => setAssetSearch(e.target.value)}
+                                                placeholder={activePanel === 'designs' ? "搜尋設計..." : "搜尋素材..."}
+                                                className="block w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                                            />
                                         </div>
-                                        <input
-                                            type="text"
-                                            value={assetSearch}
-                                            onChange={(e) => setAssetSearch(e.target.value)}
-                                            placeholder={activePanel === 'designs' ? "搜尋設計..." : "搜尋素材..."}
-                                            className="block w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
-                                        />
+
+                                        {(activePanel === 'frames' || activePanel === 'stickers' || activePanel === 'backgrounds') && (
+                                            <button
+                                                onClick={async () => {
+                                                    if (activePanel === 'frames') await clearFrameCache();
+                                                    // Add a small space to trigger dependency re-run if needed
+                                                    setAssetSearch(prev => prev + ' ');
+                                                    setTimeout(() => setAssetSearch(prev => prev.trim()), 10);
+                                                }}
+                                                className="p-2 text-gray-400 hover:text-blue-500 rounded-lg hover:bg-blue-50 transition-colors shrink-0"
+                                                title="重新整理素材"
+                                            >
+                                                <Sparkles className="w-4 h-4" />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
 
@@ -1875,7 +1901,7 @@ export default function Home() {
                                 </div>
 
                                 {/* Grid Content */}
-                                <div className={`p-2 pb-20 overflow-y-auto flex-1 ${activePanel === 'designs' ? 'grid grid-cols-3 md:grid-cols-2 gap-x-2 gap-y-3' : 'grid grid-cols-4 gap-x-1 gap-y-1 content-start'}`}>
+                                <div className="p-2 pb-20 overflow-y-auto flex-1 grid grid-cols-5 gap-x-1 gap-y-1 content-start">
                                     {activePanel === 'designs' && (
                                         <>
                                             {/* Debug UI for Dev */}
@@ -1911,20 +1937,6 @@ export default function Home() {
                                                 </div>
                                             )}
 
-                                            {/* Loading State for Assets */}
-                                            {loadingAssets && activePanel !== 'designs' && (
-                                                <div className="col-span-full flex justify-center py-8">
-                                                    <div className="w-6 h-6 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin"></div>
-                                                </div>
-                                            )}
-                                            {/* Error State for Assets */}
-                                            {assetError && activePanel !== 'designs' && (
-                                                <div className="col-span-full text-center text-red-500 py-4 text-sm">
-                                                    {assetError}
-                                                    <button onClick={() => setAssetSearch(assetSearch + ' ')} className="block mx-auto mt-2 text-blue-500 underline">重試</button>
-                                                </div>
-                                            )}
-
                                             {loadingDesigns && (
                                                 <div className="col-span-2 flex justify-center py-8">
                                                     <div className="w-6 h-6 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin"></div>
@@ -1936,23 +1948,38 @@ export default function Home() {
                                                     <button onClick={() => setAssetSearch(assetSearch + ' ')} className="block mx-auto mt-2 text-blue-500 underline">重試</button>
                                                 </div>
                                             )}
-                                            {!loadingDesigns && !designError && activePanel === 'designs' && designs.length === 0 && (
+                                            {!loadingDesigns && !designError && designs.length === 0 && (
                                                 <div className="col-span-2 text-center text-gray-400 py-8">
                                                     找不到相關設計。
                                                 </div>
                                             )}
-
-                                            {/* Empty State for Assets */}
-                                            {/* Empty State for Assets */}
-                                            {!loadingAssets && !assetError && activePanel !== 'designs' && activePanel !== 'none' &&
-                                                (activePanel === 'stickers' ? stickers : activePanel === 'backgrounds' ? backgrounds : frames).length === 0 && (
-                                                    <div className="col-span-full text-center text-gray-400 py-8">
-                                                        找不到相關素材。
-                                                    </div>
-                                                )}
-
                                         </>
                                     )}
+
+                                    {/* Loading State for Assets (Stickers, Backgrounds, Frames) */}
+                                    {loadingAssets && activePanel !== 'designs' && (
+                                        <div className="col-span-full flex justify-center py-8">
+                                            <div className="w-6 h-6 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin"></div>
+                                        </div>
+                                    )}
+
+                                    {/* Error State for Assets */}
+                                    {assetError && activePanel !== 'designs' && (
+                                        <div className="col-span-full text-center text-red-500 py-4 text-sm">
+                                            {assetError}
+                                            <button onClick={() => setAssetSearch(assetSearch + ' ')} className="block mx-auto mt-2 text-blue-500 underline">重試</button>
+                                        </div>
+                                    )}
+
+                                    {/* Empty State for Assets */}
+                                    {!loadingAssets && !assetError && !['designs', 'none'].includes(activePanel as string) &&
+                                        (activePanel === 'stickers' ? stickers : activePanel === 'backgrounds' ? backgrounds : activePanel === 'frames' ? frames : []).length === 0 && (
+                                            <div className="col-span-full text-center text-gray-400 py-8">
+                                                找不到相關素材。
+                                            </div>
+                                        )}
+
+
 
                                     {(() => {
                                         // For designs, we use the fetched state directly (already filtered by API)
@@ -2049,14 +2076,26 @@ export default function Home() {
                             </div>
                         )}
                     </div>
-                )}
+                )
+                }
 
                 {/* Top Header */}
                 <header className="h-16 bg-white border-b border-gray-200 flex items-center px-4 md:px-6 justify-between shadow-sm z-10 shrink-0">
                     <div className="flex items-center gap-4">
-                        <h1 className="text-lg font-semibold text-gray-800 truncate">
-                            {currentProduct?.name || '客製化手機殼'}
-                        </h1>
+                        <button
+                            onClick={() => handleToolClick('Product')}
+                            className="flex flex-col items-start text-left hover:bg-gray-50 p-1 -ml-1 rounded transition-colors group"
+                        >
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider leading-none md:hidden">
+                                {currentProduct?.brand || '產品'}
+                            </span>
+                            <div className="flex items-center gap-1">
+                                <h1 className="text-lg font-semibold text-gray-800 truncate leading-none mt-0.5 max-w-[150px] md:max-w-xs">
+                                    {currentProduct?.name || '客製化手機殼'}
+                                </h1>
+                                <ChevronDown className="w-4 h-4 text-gray-400 group-hover:text-gray-600 md:hidden flex-shrink-0" />
+                            </div>
+                        </button>
                         {/* Only show Admin Link in admin/seller routes */}
                         {isAdminRoute(location.pathname) && (
                             <button
@@ -2114,85 +2153,89 @@ export default function Home() {
                         }}
                     />
                 </div>
-            </main>
+            </main >
 
             {/* AI Disclaimer Modal (Defense Line 1) */}
-            {showAiDisclaimer && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
-                        <div className="p-6">
-                            <div className="flex items-center gap-3 mb-4 text-orange-600">
-                                <div className="p-2 bg-orange-100 rounded-lg">
-                                    <AlertTriangle className="w-6 h-6" />
+            {
+                showAiDisclaimer && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
+                            <div className="p-6">
+                                <div className="flex items-center gap-3 mb-4 text-orange-600">
+                                    <div className="p-2 bg-orange-100 rounded-lg">
+                                        <AlertTriangle className="w-6 h-6" />
+                                    </div>
+                                    <h3 className="text-xl font-bold">⚠️ AI 去背功能測試中</h3>
                                 </div>
-                                <h3 className="text-xl font-bold">⚠️ AI 去背功能測試中</h3>
-                            </div>
-                            <div className="space-y-4 text-gray-600 leading-relaxed">
-                                <p>
-                                    AI 去背可協助您快速預覽效果！但若您的圖片背景較複雜（如：髮絲、陰影、相近色），可能會殘留白邊。
-                                </p>
-                                <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 flex items-start gap-2">
-                                    <Sparkles className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
-                                    <p className="text-sm text-blue-800">
-                                        👉 <strong>若您追求完美的印刷品質</strong>，強烈建議您在結帳購物車時勾選 <strong>【專業設計師精修去背】</strong> 服務，印出最完美的商品！
+                                <div className="space-y-4 text-gray-600 leading-relaxed">
+                                    <p>
+                                        AI 去背可協助您快速預覽效果！但若您的圖片背景較複雜（如：髮絲、陰影、相近色），可能會殘留白邊。
                                     </p>
+                                    <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 flex items-start gap-2">
+                                        <Sparkles className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+                                        <p className="text-sm text-blue-800">
+                                            👉 <strong>若您追求完美的印刷品質</strong>，強烈建議您在結帳購物車時勾選 <strong>【專業設計師精修去背】</strong> 服務，印出最完美的商品！
+                                        </p>
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="mt-8 flex flex-col gap-3">
-                                <button
-                                    onClick={() => {
-                                        setShowAiDisclaimer(false);
-                                        if (aiProcessingAction) {
-                                            handleAiAction(aiProcessingAction.action, aiProcessingAction.payload);
-                                            setAiProcessingAction(null);
-                                        }
-                                    }}
-                                    className="w-full py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all shadow-lg"
-                                >
-                                    我知道了，繼續使用 AI 預覽去背
-                                </button>
-                                <button
-                                    onClick={() => setShowAiDisclaimer(false)}
-                                    className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-all"
-                                >
-                                    暫時不需要
-                                </button>
+                                <div className="mt-8 flex flex-col gap-3">
+                                    <button
+                                        onClick={() => {
+                                            setShowAiDisclaimer(false);
+                                            if (aiProcessingAction) {
+                                                handleAiAction(aiProcessingAction.action, aiProcessingAction.payload);
+                                                setAiProcessingAction(null);
+                                            }
+                                        }}
+                                        className="w-full py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all shadow-lg"
+                                    >
+                                        我知道了，繼續使用 AI 預覽去背
+                                    </button>
+                                    <button
+                                        onClick={() => setShowAiDisclaimer(false)}
+                                        className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-all"
+                                    >
+                                        暫時不需要
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Cart Success Overlay */}
-            {cartStatus === 'success' && (
-                <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4 animate-in fade-in duration-300">
-                    <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl scale-in-center animate-in zoom-in-95 duration-200">
-                        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <Check className="w-10 h-10 text-green-600" />
-                        </div>
-                        <h3 className="text-2xl font-bold mb-2">已成功加入購物車</h3>
-                        <p className="text-gray-500 mb-8">您的設計已成功保存並加入清單，您可以繼續設計下一款商品，或直接結帳。</p>
+            {
+                cartStatus === 'success' && (
+                    <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                        <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl scale-in-center animate-in zoom-in-95 duration-200">
+                            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <Check className="w-10 h-10 text-green-600" />
+                            </div>
+                            <h3 className="text-2xl font-bold mb-2">已成功加入購物車</h3>
+                            <p className="text-gray-500 mb-8">您的設計已成功保存並加入清單，您可以繼續設計下一款商品，或直接結帳。</p>
 
-                        <div className="flex flex-col gap-3">
-                            <button
-                                onClick={() => {
-                                    if (checkoutUrl) window.location.href = checkoutUrl;
-                                }}
-                                className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2"
-                            >
-                                <ShoppingCart className="w-5 h-5" />
-                                立即結帳
-                            </button>
-                            <button
-                                onClick={handleContinueShopping}
-                                className="w-full py-4 border-2 border-gray-200 text-gray-700 rounded-xl font-bold text-lg hover:bg-gray-50 transition-all active:scale-95"
-                            >
-                                繼續設計下一款
-                            </button>
+                            <div className="flex flex-col gap-3">
+                                <button
+                                    onClick={() => {
+                                        if (checkoutUrl) window.location.href = checkoutUrl;
+                                    }}
+                                    className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2"
+                                >
+                                    <ShoppingCart className="w-5 h-5" />
+                                    立即結帳
+                                </button>
+                                <button
+                                    onClick={handleContinueShopping}
+                                    className="w-full py-4 border-2 border-gray-200 text-gray-700 rounded-xl font-bold text-lg hover:bg-gray-50 transition-all active:scale-95"
+                                >
+                                    繼續設計下一款
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }

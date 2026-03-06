@@ -56,14 +56,16 @@ function SortableCategoryItem({ id, onDelete }: { id: string; onDelete: (id: str
 }
 
 export default function AdminAssets() {
-    const [activeAssetTab, setActiveAssetTab] = useState<'stickers' | 'backgrounds'>('stickers');
+    const [activeAssetTab, setActiveAssetTab] = useState<'stickers' | 'backgrounds' | 'frames'>('stickers');
     const [stickers, setStickers] = useState<AssetItem[]>([]);
     const [backgrounds, setBackgrounds] = useState<AssetItem[]>([]);
+    const [frames, setFrames] = useState<AssetItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
     // Categories Management State
     const [stickerCategories, setStickerCategories] = useState<string[]>(DEFAULT_STICKER_CATEGORIES);
     const [backgroundCategories, setBackgroundCategories] = useState<string[]>(DEFAULT_BACKGROUND_CATEGORIES);
+    const [frameCategories, setFrameCategories] = useState<string[]>(['基本相框', '節慶', '未分類']);
 
     const [isAddingCategory, setIsAddingCategory] = useState(false);
     const [newCategory, setNewCategory] = useState('');
@@ -79,7 +81,7 @@ export default function AdminAssets() {
             const { data, error } = await supabase
                 .from('assets')
                 .select('*')
-                .in('type', ['sticker', 'background'])
+                .in('type', ['sticker', 'background', 'frame'])
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -87,16 +89,20 @@ export default function AdminAssets() {
             if (data) {
                 const loadedStickers = data.filter(i => i.type === 'sticker').map(mapDbToAsset);
                 const loadedBackgrounds = data.filter(i => i.type === 'background').map(mapDbToAsset);
+                const loadedFrames = data.filter(i => i.type === 'frame').map(mapDbToAsset);
 
                 setStickers(loadedStickers);
                 setBackgrounds(loadedBackgrounds);
+                setFrames(loadedFrames);
 
                 // Extract distinct categories
                 const sCats = Array.from(new Set([...DEFAULT_STICKER_CATEGORIES, ...loadedStickers.map(i => i.category)]));
                 const bCats = Array.from(new Set([...DEFAULT_BACKGROUND_CATEGORIES, ...loadedBackgrounds.map(i => i.category)]));
+                const fCats = Array.from(new Set(['基本相框', '節慶', ...loadedFrames.map(i => i.category)]));
 
                 setStickerCategories(sCats);
                 setBackgroundCategories(bCats);
+                setFrameCategories(fCats);
             }
         } catch (err) {
             console.error("Failed to load assets:", err);
@@ -119,7 +125,9 @@ export default function AdminAssets() {
 
     // Helper to get current active categories based on editType
     const getCurrentCategories = () => {
-        return activeAssetTab === 'stickers' ? stickerCategories : backgroundCategories;
+        if (activeAssetTab === 'stickers') return stickerCategories;
+        if (activeAssetTab === 'backgrounds') return backgroundCategories;
+        return frameCategories;
     };
 
     const handleAddCategory = () => {
@@ -128,8 +136,10 @@ export default function AdminAssets() {
 
         if (activeAssetTab === 'stickers') {
             setStickerCategories(prev => [...prev, cat]);
-        } else {
+        } else if (activeAssetTab === 'backgrounds') {
             setBackgroundCategories(prev => [...prev, cat]);
+        } else {
+            setFrameCategories(prev => [...prev, cat]);
         }
 
         setNewCategory('');
@@ -140,8 +150,10 @@ export default function AdminAssets() {
 
         if (activeAssetTab === 'stickers') {
             setStickerCategories(prev => prev.filter(c => c !== catToDelete));
-        } else {
+        } else if (activeAssetTab === 'backgrounds') {
             setBackgroundCategories(prev => prev.filter(c => c !== catToDelete));
+        } else {
+            setFrameCategories(prev => prev.filter(c => c !== catToDelete));
         }
     };
 
@@ -162,15 +174,16 @@ export default function AdminAssets() {
 
             const newCategories = arrayMove(current, oldIndex, newIndex);
             if (activeAssetTab === 'stickers') setStickerCategories(newCategories);
-            else setBackgroundCategories(newCategories);
+            else if (activeAssetTab === 'backgrounds') setBackgroundCategories(newCategories);
+            else setFrameCategories(newCategories);
         }
     };
 
     // Edit Modal State
     const [editingAsset, setEditingAsset] = useState<AssetItem | null>(null);
-    const [editType, setEditType] = useState<'stickers' | 'backgrounds'>('stickers');
+    const [editType, setEditType] = useState<'stickers' | 'backgrounds' | 'frames'>('stickers');
 
-    const handleAssetUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'stickers' | 'backgrounds') => {
+    const handleAssetUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'stickers' | 'backgrounds' | 'frames') => {
         const file = e.target.files?.[0];
         if (!file) return;
 
@@ -181,7 +194,7 @@ export default function AdminAssets() {
 
             // 2. Insert into Supabase DB
             const newAsset = {
-                type: type === 'stickers' ? 'sticker' : 'background',
+                type: type === 'stickers' ? 'sticker' : type === 'backgrounds' ? 'background' : 'frame',
                 url: publicUrl,
                 name: file.name.split('.')[0],
                 category: '未分類',
@@ -195,7 +208,8 @@ export default function AdminAssets() {
             // 3. Update Local State
             const newItem = mapDbToAsset(data);
             if (type === 'stickers') setStickers(prev => [newItem, ...prev]);
-            else setBackgrounds(prev => [newItem, ...prev]);
+            else if (type === 'backgrounds') setBackgrounds(prev => [newItem, ...prev]);
+            else setFrames(prev => [newItem, ...prev]);
 
         } catch (err: any) {
             console.error("Upload failed:", err);
@@ -203,7 +217,7 @@ export default function AdminAssets() {
         }
     };
 
-    const deleteAsset = async (id: string, type: 'stickers' | 'backgrounds') => {
+    const deleteAsset = async (id: string, type: 'stickers' | 'backgrounds' | 'frames') => {
         if (!confirm('確定要刪除此素材嗎？')) return;
 
         try {
@@ -211,14 +225,15 @@ export default function AdminAssets() {
             if (error) throw error;
 
             if (type === 'stickers') setStickers(prev => prev.filter(i => i.id !== id));
-            else setBackgrounds(prev => prev.filter(i => i.id !== id));
+            else if (type === 'backgrounds') setBackgrounds(prev => prev.filter(i => i.id !== id));
+            else setFrames(prev => prev.filter(i => i.id !== id));
         } catch (err: any) {
             console.error("Delete failed:", err);
             alert("刪除失敗：" + err.message);
         }
     };
 
-    const openEditModal = (asset: AssetItem, type: 'stickers' | 'backgrounds') => {
+    const openEditModal = (asset: AssetItem, type: 'stickers' | 'backgrounds' | 'frames') => {
         setEditingAsset({ ...asset }); // Clone
         setEditType(type);
     };
@@ -241,8 +256,10 @@ export default function AdminAssets() {
             // Update Local State
             if (editType === 'stickers') {
                 setStickers(prev => prev.map(i => i.id === editingAsset.id ? editingAsset : i));
-            } else {
+            } else if (editType === 'backgrounds') {
                 setBackgrounds(prev => prev.map(i => i.id === editingAsset.id ? editingAsset : i));
+            } else {
+                setFrames(prev => prev.map(i => i.id === editingAsset.id ? editingAsset : i));
             }
 
             setEditingAsset(null);
@@ -253,7 +270,7 @@ export default function AdminAssets() {
     };
 
     // Filter Logic
-    const filteredAssets = (activeAssetTab === 'stickers' ? stickers : backgrounds).filter(item => {
+    const filteredAssets = (activeAssetTab === 'stickers' ? stickers : activeAssetTab === 'backgrounds' ? backgrounds : frames).filter(item => {
         const matchesSearch = !searchTerm || item.name.toLowerCase().includes(searchTerm.toLowerCase()) || item.tags.some(t => t.toLowerCase().includes(searchTerm.toLowerCase()));
         const matchesCategory = selectedCategory === '全部' || item.category === selectedCategory;
         return matchesSearch && matchesCategory;
@@ -285,6 +302,12 @@ export default function AdminAssets() {
                             className={`flex-1 py-4 text-center font-medium border-b-2 transition-colors ${activeAssetTab === 'backgrounds' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
                         >
                             <ImageIcon className="w-4 h-4 inline-block mr-2" /> 背景
+                        </button>
+                        <button
+                            onClick={() => setActiveAssetTab('frames')}
+                            className={`flex-1 py-4 text-center font-medium border-b-2 transition-colors ${activeAssetTab === 'frames' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        >
+                            <ImageIcon className="w-4 h-4 inline-block mr-2" /> 相框
                         </button>
                     </div>
 

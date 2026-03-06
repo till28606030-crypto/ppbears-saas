@@ -6359,7 +6359,12 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     )}
                                 </div>
 
-
+                                {/* Align Button */}
+                                <div className="w-6 h-px md:w-px md:h-6 bg-gray-200 flex-shrink-0 my-0.5 md:my-0 md:mx-0.5"></div>
+                                <button onClick={() => { setActiveMobileSubMenu('align'); setShowMobileTextInput(false); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg min-w-[2.25rem] transition-colors ${activeMobileSubMenu === 'align' ? 'text-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}>
+                                    <AlignLeft className="w-4 h-4" />
+                                    <span className="text-[9px] font-bold">對齊</span>
+                                </button>
 
                                 <div className="w-6 h-px md:w-px md:h-6 bg-gray-200 flex-shrink-0 my-0.5 md:my-0 md:mx-0.5"></div>
 
@@ -6712,7 +6717,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             </div>
 
             {/* 4. Tab Bar (Always visible when selected) */}
-            {selectedObject && !isMobileLayersOpen && !showCropMenu &&
+            {
+                selectedObject && !isMobileLayersOpen && !showCropMenu &&
                 ((selectedObject.type === 'i-text' || selectedObject.type === 'text') ||
                     (selectedObject.type === 'image' && !(selectedObject as any).isStickerLayer && !(selectedObject as any).isBarcodeLayer && (!activePanel || activePanel === 'none'))) && (
                     <div className="md:hidden fixed bottom-0 left-0 right-0 z-[120] bg-white border-t border-gray-200 pb-safe pt-2 pb-2 h-[72px] flex justify-center items-center overflow-x-auto">
@@ -6781,16 +6787,11 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     </button>
                                 )}
 
-
-
-                                <button onClick={() => { setActiveMobileSubMenu('align'); setShowMobilePropertyBar(true); }} className={`flex flex-col items-center gap-1 p-2 min-w-[4rem] ${activeMobileSubMenu === 'align' ? 'text-blue-600' : 'text-gray-400'}`}>
-                                    <AlignLeft className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">對齊</span>
-                                </button>
                             </div>
                         )}
                     </div>
-                )}
+                )
+            }
 
             {/* 4. Main Mobile Bottom Tab Bar (Visible when NO Object Selected) */}
             <div className={`
@@ -6799,26 +6800,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         transition-transform duration-300 touch-pan-x snap-x snap-mandatory overscroll-x-contain
         ${(selectedObject && !(selectedObject as any).isStickerLayer && !(selectedObject as any).isBarcodeLayer) || isMobileLayersOpen || showCropMenu ? 'translate-y-full' : 'translate-y-0'}
       `}>
-                {/* Mobile Product Info Bar (Top of Toolbar) */}
-                {currentProduct && !showCropMenu && (
-                    <button
-                        onClick={mobileActions?.onOpenProduct}
-                        className="w-full flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-gray-50/50 active:bg-gray-100 transition-colors"
-                    >
-                        <div className="flex flex-col items-start">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{currentProduct.brand || '產品'}</span>
-                            <div className="flex items-center gap-1">
-                                <span className="text-sm font-semibold text-gray-800">{currentProduct.name}</span>
-                                <ChevronDown className="w-3 h-3 text-gray-400" />
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded-full shadow-sm">
-                                更換
-                            </span>
-                        </div>
-                    </button>
-                )}
+                {/* Mobile Product Info Bar Removed */}
 
                 <div
                     className="flex items-center overflow-x-auto flex-nowrap w-full no-scrollbar gap-2 px-4 py-3"

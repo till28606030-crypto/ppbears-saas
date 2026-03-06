@@ -110,10 +110,10 @@ export default function MyGalleryModal({ isOpen, onClose, onApply }: MyGalleryMo
                     const updated = [newImage, ...prev].slice(0, MAX_HISTORY);
                     return updated;
                 });
-                
+
                 // Auto select the new image
                 setSelectedImageId(newImage.id);
-                
+
                 // Switch to history tab to show it's added? Or just show preview in upload tab?
                 // The requirement says: "Auto select the new image (allow user to apply directly)"
                 // Let's switch to history view or just show it as selected.
@@ -168,18 +168,16 @@ export default function MyGalleryModal({ isOpen, onClose, onApply }: MyGalleryMo
                 <div className="flex border-b border-gray-100 bg-white">
                     <button
                         onClick={() => setActiveTab('computer')}
-                        className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 border-b-2 transition-colors ${
-                            activeTab === 'computer' ? 'border-blue-500 text-blue-600 bg-blue-50/50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                        }`}
+                        className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 border-b-2 transition-colors ${activeTab === 'computer' ? 'border-blue-500 text-blue-600 bg-blue-50/50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                            }`}
                     >
                         <Upload className="w-4 h-4" />
                         圖片上傳
                     </button>
                     <button
                         onClick={() => setActiveTab('history')}
-                        className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 border-b-2 transition-colors ${
-                            activeTab === 'history' ? 'border-blue-500 text-blue-600 bg-blue-50/50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                        }`}
+                        className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 border-b-2 transition-colors ${activeTab === 'history' ? 'border-blue-500 text-blue-600 bg-blue-50/50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                            }`}
                     >
                         <Clock className="w-4 h-4" />
                         從歷史圖片中選擇
@@ -194,9 +192,23 @@ export default function MyGalleryModal({ isOpen, onClose, onApply }: MyGalleryMo
                                 <Upload className="w-10 h-10 text-blue-600" />
                             </div>
                             <h4 className="text-lg font-semibold text-gray-800">上傳照片</h4>
-                            <p className="text-gray-500 text-sm max-w-xs text-center">
-                                支援 JPG, PNG 格式。上傳後將自動儲存至歷史圖庫。
-                            </p>
+                            <div className="text-center space-y-2 max-w-sm px-4">
+                                <p className="text-gray-500 text-sm">
+                                    支援 JPG, PNG 格式。上傳後將自動儲存至歷史圖庫。
+                                </p>
+                                <p className="text-red-500 text-[13px] font-medium leading-relaxed">
+                                    【上傳圖片前，請確認您擁有該圖片的使用權，並同意遵守本網站的
+                                    <a
+                                        href="https://ppbears.com/%e8%b3%bc%e8%b2%b7%e5%89%8d%e9%a0%88%e7%9f%a5/"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 underline underline-offset-2 hover:text-blue-700 transition-colors"
+                                    >
+                                        服務條款購買須知
+                                    </a>
+                                    喔。】
+                                </p>
+                            </div>
                             <button
                                 onClick={() => fileInputRef.current?.click()}
                                 className="mt-4 px-6 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:translate-y-0"
@@ -226,12 +238,11 @@ export default function MyGalleryModal({ isOpen, onClose, onApply }: MyGalleryMo
                                         <div
                                             key={img.id}
                                             onClick={() => setSelectedImageId(img.id)}
-                                            className={`aspect-square rounded-lg overflow-hidden cursor-pointer relative group border-2 transition-all ${
-                                                selectedImageId === img.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300'
-                                            }`}
+                                            className={`aspect-square rounded-lg overflow-hidden cursor-pointer relative group border-2 transition-all ${selectedImageId === img.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300'
+                                                }`}
                                         >
                                             <img src={img.src} alt={img.name} className="w-full h-full object-cover" />
-                                            
+
                                             {/* Selected Indicator */}
                                             {selectedImageId === img.id && (
                                                 <div className="absolute top-1 right-1 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center shadow-sm z-10">
