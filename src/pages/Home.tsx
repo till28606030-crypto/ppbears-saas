@@ -304,7 +304,7 @@ export default function Home() {
     const [aiProcessingAction, setAiProcessingAction] = useState<{ action: string, payload?: any } | null>(null);
 
     // AI Action Handler
-    const handleAiAction = async (action: string, payload?: any) => {
+    const handleAiAction = async (action: string, payload?: any, skipDisclaimer = false) => {
         if (!canvasRef.current) return;
 
         // Check Daily Usage Limit first for "Generation" actions
@@ -322,7 +322,7 @@ export default function Home() {
             }
 
             // Defense Line 1: Background Removal Disclaimer
-            if (action === 'remove_bg') {
+            if (action === 'remove_bg' && !skipDisclaimer) {
                 setAiProcessingAction({ action, payload });
                 setShowAiDisclaimer(true);
                 return;
@@ -2183,7 +2183,7 @@ export default function Home() {
                                         onClick={() => {
                                             setShowAiDisclaimer(false);
                                             if (aiProcessingAction) {
-                                                handleAiAction(aiProcessingAction.action, aiProcessingAction.payload);
+                                                handleAiAction(aiProcessingAction.action, aiProcessingAction.payload, true);
                                                 setAiProcessingAction(null);
                                             }
                                         }}
