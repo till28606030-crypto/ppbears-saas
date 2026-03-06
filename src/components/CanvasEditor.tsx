@@ -4329,6 +4329,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         maskImg.setCoords();
                     }
 
+                    // CRITICAL: Force offset recalculation right before render
+                    canvas.calcOffset();
+
                     canvas.renderOnAddRemove = prevRenderOnAddRemove;
                     canvas.requestRenderAll();
 
@@ -5100,7 +5103,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
     // 1.5 Sync Template and Draft independently
     useEffect(() => {
-        if (!fabricCanvas.current || !initOnceRef.current) return;
+        if (!fabricCanvas.current || !initOnceRef.current || !canvasReady) return;
         const canvas = fabricCanvas.current;
 
         const syncLayers = async () => {
