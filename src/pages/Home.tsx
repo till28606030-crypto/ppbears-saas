@@ -313,7 +313,7 @@ export default function Home() {
             }
 
             // Defense Line 1: Background Removal Disclaimer
-            if (action === 'remove_bg' && !localStorage.getItem('ppbears_ai_bg_disclaimer_accepted')) {
+            if (action === 'remove_bg') {
                 setAiProcessingAction({ action, payload });
                 setShowAiDisclaimer(true);
                 return;
@@ -2141,7 +2141,6 @@ export default function Home() {
                             <div className="mt-8 flex flex-col gap-3">
                                 <button
                                     onClick={() => {
-                                        localStorage.setItem('ppbears_ai_bg_disclaimer_accepted', 'true');
                                         setShowAiDisclaimer(false);
                                         if (aiProcessingAction) {
                                             handleAiAction(aiProcessingAction.action, aiProcessingAction.payload);
