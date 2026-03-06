@@ -832,6 +832,29 @@ export default function AdminOptionManager() {
         }
     };
 
+    const InlineAttributeNameInput: React.FC<{ initialValue: string, onSave: (val: string) => void }> = ({ initialValue, onSave }) => {
+        const [localValue, setLocalValue] = useState(initialValue);
+
+        useEffect(() => {
+            setLocalValue(initialValue);
+        }, [initialValue]);
+
+        return (
+            <input
+                className="font-bold text-gray-800 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white px-1 py-0.5 outline-none transition-all text-sm flex-1 max-w-[200px]"
+                value={localValue}
+                onChange={e => setLocalValue(e.target.value)}
+                onBlur={() => onSave(localValue)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                    }
+                }}
+                placeholder="屬性名稱"
+            />
+        );
+    };
+
     // --- Components ---
 
     const SortableOptionTag: React.FC<{
@@ -853,6 +876,18 @@ export default function AdminOptionManager() {
             transition,
             isDragging
         } = useSortable({ id: option.id });
+
+        // Local state to prevent typing focus loss from parent re-renders
+        const [localName, setLocalName] = useState(editingData?.name || option.name);
+        const [localPrice, setLocalPrice] = useState(editingData?.price || option.priceModifier);
+
+        // Sync local state when editingData explicitly changes (e.g. initial edit click)
+        useEffect(() => {
+            if (isEditing && editingData) {
+                setLocalName(editingData.name);
+                setLocalPrice(editingData.price);
+            }
+        }, [isEditing, editingData]);
 
         const style = {
             transform: CSS.Transform.toString(transform),
@@ -909,20 +944,21 @@ export default function AdminOptionManager() {
                         選圖
                     </button>
                     <input
-                        value={editingData.name}
-                        onChange={(e) => onEditingDataChange({ ...editingData, name: e.target.value })}
-                        className="border rounded px-1 py-0.5 text-xs w-20"
+                        value={localName}
+                        onChange={(e) => setLocalName(e.target.value)}
+                        className="border rounded px-1 py-0.5 text-xs w-20 bg-white text-gray-800"
                         placeholder="名稱"
+                        autoFocus
                     />
                     <input
                         type="number"
-                        value={editingData.price}
-                        onChange={(e) => onEditingDataChange({ ...editingData, price: Number(e.target.value) })}
-                        className="border rounded px-1 py-0.5 text-xs w-12"
+                        value={localPrice}
+                        onChange={(e) => setLocalPrice(Number(e.target.value))}
+                        className="border rounded px-1 py-0.5 text-xs w-12 bg-white text-gray-800"
                         placeholder="$"
                     />
                     <button
-                        onClick={() => onSave({ name: editingData.name, priceModifier: editingData.price, image: editingData.image })}
+                        onClick={() => onSave({ name: localName, priceModifier: localPrice, image: editingData.image })}
                         className="text-green-600 hover:bg-green-100 p-0.5 rounded"
                         title="保存"
                     >
@@ -1474,11 +1510,9 @@ export default function AdminOptionManager() {
                                         <div key={attr.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
                                             {/* Attribute Header */}
                                             <div className="bg-gray-50 px-4 py-3 flex items-center justify-between border-b border-gray-100">
-                                                <input
-                                                    className="font-bold text-gray-800 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white px-1 py-0.5 outline-none transition-all text-sm flex-1 max-w-[200px]"
-                                                    value={attr.name}
-                                                    onChange={e => panelUpdateAttrName(attr.id, e.target.value)}
-                                                    placeholder="屬性名稱"
+                                                <InlineAttributeNameInput
+                                                    initialValue={attr.name}
+                                                    onSave={(val) => panelUpdateAttrName(attr.id, val)}
                                                 />
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-xs text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded-full">{attr.type === 'select' ? '選單' : '文字'}</span>
