@@ -2169,12 +2169,12 @@ export default function Home() {
                                 </div>
                                 <div className="space-y-4 text-gray-600 leading-relaxed">
                                     <p>
-                                        AI 去背可協助您快速預覽效果！但若您的圖片背景較複雜（如：髮絲、陰影、相近色），可能會殘留白邊。
+                                        AI 去背可協助您快速預覽效果！但若您的圖片背景較複雜（如：髮絲、陰影、相近色），可能會殘留白邊，印刷的時候也會跟著印出來喔。
                                     </p>
                                     <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 flex items-start gap-2">
                                         <Sparkles className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
                                         <p className="text-sm text-blue-800">
-                                            👉 <strong>若您追求完美的印刷品質</strong>，強烈建議您在結帳購物車時勾選 <strong>【專業設計師精修去背】</strong> 服務，印出最完美的商品！
+                                            👉 <strong>若您追求完美的印刷品質</strong>，強烈建議您在結帳購物車時勾選 <strong>【專業設計師精修去背】</strong> 服務，由真人設計師幫您去背景，印出最完美的商品！
                                         </p>
                                     </div>
                                 </div>
