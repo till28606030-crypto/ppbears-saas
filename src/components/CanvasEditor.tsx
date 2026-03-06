@@ -1061,13 +1061,16 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
     // --- Auto Save / Restore Logic ---
     const getDraftKey = () => {
+        // [GLOBAL_DRAFT] T1: Unified draft key for all products
+        // If we are in admin edit mode (load_design_id), name the draft separately
+        // to avoid overwriting the user's active customization session.
+        const loadDesignId = searchParams.get('load_design_id');
+        if (loadDesignId) {
+            return `draft:edit:${loadDesignId}`;
+        }
+
         const productId = searchParams.get('productId') || currentProduct?.id;
         if (!productId) return null;
-
-        const deviceHandle = searchParams.get('device_handle') || 'na';
-        const productColor = searchParams.get('product_color') || 'na';
-        const productHandle = searchParams.get('product_handle') || 'na';
-        const productType = searchParams.get('product_type') || 'na';
 
         const rawBase = String(previewConfig?.baseImage ?? '').trim();
         const rawMask = String(previewConfig?.maskImage ?? '').trim();
@@ -1076,7 +1079,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         const templateRev = currentProduct?.updated_at || btoa(rawBase + '|' + rawMask).substr(0, 10);
         if (!templateRev) return null;
 
-        return `draft:v3:${productId}:${deviceHandle}:${productColor}:${productHandle}:${productType}:${templateRev}`;
+        // Use a persistent global key that ignores product/device particulars.
+        // This allows the design to "follow" the user when they switch products.
+        return `draft:global:v4_active`;
     };
 
     const saveDraft = async (isForced = false) => {
@@ -5129,8 +5134,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     console.log('[ENTER] Canvas already has user objects, skipping draft load to preserve layout');
                 } else if (!disableDraft) {
                     const draftKey = getDraftKey();
-                    if (draftKey) {
-                        await loadDraftUserObjects(canvas, draftKey, seq);
+                    if (draftKey && !isRestoring.current && !searchParams.get('load_design_id')) {
+                        const seq = enterSeqRef.current;
+                        loadDraftUserObjects(canvas, draftKey, seq);
                     }
                 }
 

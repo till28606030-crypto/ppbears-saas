@@ -17,6 +17,7 @@ import { AssetItem, Category } from '@/types';
 import { isAdminRoute } from '../lib/isAdminRoute';
 import { FIX_RLS_SQL } from './admin/Designs';
 import { buildCategoryTree } from '@/utils/categoryTree';
+import { removeDraft } from '../lib/draftStore';
 
 const EMPTY_TAGS: string[] = [];
 
@@ -647,14 +648,10 @@ export default function Home() {
                 }
 
                 if (design.canvas_json) {
-                    // Small delay to ensure canvas is fully initialized
-                    setTimeout(async () => {
-                        // Ensure we use the loaded ID for current state
-                        if (loadDesignId !== designId) setDesignId(loadDesignId);
-
-                        await canvasRef.current?.restoreFromJSON?.(design.canvas_json);
-                        console.log('[DesignLoad] Design restored successfully');
-                    }, 1000);
+                    // Remove 1s delay and ensure we use the loaded ID
+                    if (loadDesignId !== designId) setDesignId(loadDesignId);
+                    await canvasRef.current?.restoreFromJSON?.(design.canvas_json);
+                    console.log('[DesignLoad] Design restored successfully');
                 }
             } catch (e: any) {
                 console.error('[DesignLoad] Error loading design:', e);
@@ -1192,6 +1189,10 @@ export default function Home() {
             setCheckoutUrl(checkoutUrl);
             setCartStatus('success');
             setShowCheckout(false);
+
+            // [GLOBAL_DRAFT] Clear active draft after successful checkout
+            await removeDraft('draft:global:v4_active');
+
             console.log('[Cart] All tasks completed, redirecting to:', checkoutUrl);
 
         } catch (error: any) {
@@ -1243,6 +1244,10 @@ export default function Home() {
         if (canvasRef.current) {
             canvasRef.current.clearCanvas();
         }
+
+        // [GLOBAL_DRAFT] Clear active draft when user manually resets / continues
+        removeDraft('draft:global:v4_active');
+
         setPreviewImage(null);
         setUploadedImage(null);
         setDesignId(generateDesignId());
