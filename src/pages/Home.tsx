@@ -1085,8 +1085,21 @@ export default function Home() {
 
             // 提取私有欄位（_ 開頭）：這些欄位不傳給 WooCommerce
             const specImageUrl: string | null = finalOptions['_spec_image_url'] || null;
-            // 刪除私有欄位，避免出現在購物車規格裡
-            delete finalOptions['_spec_image_url'];
+
+            // 刪除私有欄位（_ 開頭）與包含「辨識回退」字眼的非法欄位
+            Object.keys(finalOptions).forEach(key => {
+                if (key.startsWith('_')) {
+                    delete finalOptions[key];
+                }
+                // 如果值是 INVALID_SELECTION，絕對不傳送
+                if (finalOptions[key] === 'INVALID_SELECTION') {
+                    delete finalOptions[key];
+                }
+                // 如果是辨識到但不符的文字回退欄位 (_text_fallback)，也濾除以保淨化
+                if (key.endsWith('_text_fallback')) {
+                    delete finalOptions[key];
+                }
+            });
 
             console.log('[Cart] Starting checkout process...');
             console.log('[Cart] Price:', finalPrice);

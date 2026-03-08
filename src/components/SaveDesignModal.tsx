@@ -2462,13 +2462,24 @@ export default function SaveDesignModal({
                                                         const valCa = selectedOptions[attrKeyCa];
                                                         const valNormal = selectedOptions[attrKeyNormal];
 
-                                                        const isSelected = (valCa && valCa.toString().trim() !== '') || (valNormal && valNormal.toString().trim() !== '');
+                                                        const val = valCa || valNormal;
+                                                        const isSelected = val && val.toString().trim() !== '';
 
                                                         if (!isSelected) {
                                                             setInlineError(`請完成【${group.name}】的選項：${attr.name}`);
                                                             return false;
                                                         }
+
+                                                        if (val === 'INVALID_SELECTION') {
+                                                            setInlineError(`【${group.name}】的選項「${attr.name}」與本站商品不符，請手動修正`);
+                                                            return false;
+                                                        }
                                                     }
+                                                }
+
+                                                if (selectedOptions[groupKey] === 'INVALID_SELECTION') {
+                                                    setInlineError(`【${group.name}】選項與本站商品不符，請重新選擇`);
+                                                    return false;
                                                 }
                                             }
                                             setInlineError(null);
@@ -2516,6 +2527,17 @@ export default function SaveDesignModal({
                                                         type="button"
                                                         onClick={async () => {
                                                             if (!validateCurrentStep()) return;
+
+                                                            // 最終校驗：確保所有步驟都沒有 INVALID_SELECTION 且沒殼種衝突
+                                                            if (caseNameMismatch) {
+                                                                setInlineError('辨識到的殼種與選擇的商品不符，請先修正');
+                                                                return;
+                                                            }
+                                                            const hasInvalid = Object.values(selectedOptions).some(v => v === 'INVALID_SELECTION');
+                                                            if (hasInvalid) {
+                                                                setInlineError('包含不符的規格文字，請手動確認所有選項');
+                                                                return;
+                                                            }
 
                                                             const customOptions: Record<string, any> = {};
 

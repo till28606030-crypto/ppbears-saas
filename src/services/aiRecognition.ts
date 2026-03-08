@@ -195,6 +195,12 @@ export interface MappedSpecResult {
  * - 若分類匹配但選項不在清單 → 以文字填入（textFallback）
  * - 把結果合併回 selectedOptions
  */
+/**
+ * 將辨識到的 specs 對應到 OptionGroup subAttributes。
+ * - 若找到對應選項 → 填入 option id
+ * - 若分類匹配但選項不在清單 → 以文字填入（textFallback）
+ * - ！！！強化：針對關鍵欄位（如包含「版本」或特定關鍵字）執行嚴格比對，不允許回退。
+ */
 export function mapRecognizedSpecs(
     recognized: RecognizedSpec[],
     groups: any[],
@@ -203,6 +209,9 @@ export function mapRecognizedSpecs(
     const nextOptions = { ...selectedOptions };
     const textFallback: Record<string, string> = {};
     let matchCount = 0;
+
+    // 關鍵欄位定義：這些欄位若不匹配，絕對不可使用文字回退
+    const StrictCategories = ['版本', '款式', '系列', '外框', '背蓋'];
 
     recognized.forEach(rec => {
         if (!rec.category || !rec.value) return;
@@ -217,24 +226,50 @@ export function mapRecognizedSpecs(
                 if (!isFuzzyMatch(attr.name, rec.category)) return;
 
                 const attrKey = step === 1 ? `${groupKey}:${attr.id}` : `${groupKey}:ca:${attr.id}`;
+                const isStrict = StrictCategories.some(cat => attr.name.includes(cat) || rec.category.includes(cat));
 
                 if (attr.type === 'select' && attr.options?.length) {
-                    // 先找完全匹配，再找模糊匹配
+                    // 1. 精確匹配 (包含數字與特殊字元)
                     let matchedOption = attr.options.find((opt: any) =>
                         normalizeString(opt.name) === normalizeString(rec.value)
                     );
-                    if (!matchedOption) {
+
+                    // 2. 模糊匹配 (僅在非嚴格模式或特定情境下使用)
+                    if (!matchedOption && !isStrict) {
                         matchedOption = attr.options.find((opt: any) =>
                             isFuzzyMatch(opt.name, rec.value)
                         );
+                    }
+
+                    // ！！！額外校驗：如果辨識結果包含數字（例如 "2"），而匹配到的選項沒有該數字，則視為不匹配
+                    if (matchedOption) {
+                        const recNumbers = rec.value.match(/\d+/g)?.join('') || '';
+                        const optNumbers = matchedOption.name.match(/\d+/g)?.join('') || '';
+                        if (recNumbers !== optNumbers) {
+                            console.warn(`[AI] Version mismatch detected: recognized "${rec.value}" (v${recNumbers}) vs option "${matchedOption.name}" (v${optNumbers})`);
+                            matchedOption = undefined;
+                        }
                     }
 
                     if (matchedOption) {
                         nextOptions[attrKey] = matchedOption.id;
                         matchCount++;
                         console.log(`[AI] ✓ 匹配 ${rec.category} (${attr.name}) -> "${matchedOption.name}"`);
+                        // 移除之前的 fallback（如果有的話）
+                        delete textFallback[attrKey];
+                        delete nextOptions[`${attrKey}_text_fallback`];
                     } else {
-                        // 嘗試尋找並選擇「其他」
+                        // 嚴格模式下，不允許「其他」回退或文字回退
+                        if (isStrict) {
+                            console.log(`[AI] ✗ 嚴格欄位不匹配 ${rec.category} -> "${rec.value}"，不允許回退`);
+                            // 標記為非法（UI 會顯示錯誤或清空）
+                            nextOptions[attrKey] = 'INVALID_SELECTION';
+                            textFallback[attrKey] = `[不符] ${rec.value}`;
+                            nextOptions[`${attrKey}_text_fallback`] = rec.value;
+                            return;
+                        }
+
+                        // 非嚴格模式才嘗試尋找並選擇「其他」
                         const otherOption = attr.options.find((opt: any) =>
                             normalizeString(opt.name) === '其他' || normalizeString(opt.name) === '其它'
                         );
@@ -242,12 +277,10 @@ export function mapRecognizedSpecs(
                         if (otherOption) {
                             nextOptions[attrKey] = otherOption.id;
                             matchCount++;
-                            // 依然保留 fallback 文字，以便 UI 仍能顯示橘色標記與原始辨識文字
                             textFallback[attrKey] = rec.value;
                             nextOptions[`${attrKey}_text_fallback`] = rec.value;
                             console.log(`[AI] ⚠ 找不到對應選項 ${rec.category} -> "${rec.value}"，自動選擇 "${otherOption.name}"`);
                         } else {
-                            // 選單沒有這個顏色，也沒有「其他」 → 用文字標記，由 UI 顯示
                             textFallback[attrKey] = rec.value;
                             nextOptions[`${attrKey}_text_fallback`] = rec.value;
                             console.log(`[AI] ✗ 找不到對應選項 ${rec.category} -> "${rec.value}"，改用文字`);

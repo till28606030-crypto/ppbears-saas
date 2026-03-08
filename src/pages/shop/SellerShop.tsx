@@ -338,9 +338,16 @@ const SellerShop: React.FC = () => {
                         <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">商品分類</h3>
                         <button
                             onClick={() => setActiveCategory('all')}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${activeCategory === 'all' ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                            className={`w-full group relative flex items-center gap-3 px-4 py-4 text-sm font-bold rounded-2xl transition-all active:scale-95 overflow-hidden ${activeCategory === 'all' ? 'bg-black text-white shadow-[0_10px_20px_-5px_rgba(0,0,0,0.2)]' : 'text-gray-600 hover:bg-gray-100'}`}
                         >
-                            <ShoppingBag className="w-5 h-5" /> 全部商品
+                            {activeCategory === 'all' && (
+                                <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-transparent opacity-100 transition-opacity"></div>
+                            )}
+                            <ShoppingBag className={`w-5 h-5 relative z-10 ${activeCategory === 'all' ? 'text-blue-500' : ''}`} />
+                            <span className="relative z-10">全部商品</span>
+                            {activeCategory === 'all' && (
+                                <ChevronRight className="w-4 h-4 ml-auto opacity-50 group-hover:translate-x-1 transition-transform relative z-10" />
+                            )}
                         </button>
 
                         <div className="space-y-1 mt-1">
@@ -430,6 +437,23 @@ const SellerShop: React.FC = () => {
                                 </div>
                             </div>
                         )}
+
+                        {/* Seller Center Entry (Restored) */}
+                        <div className="pt-6 mt-2 border-t border-gray-100">
+                            <h3 className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">商家服務</h3>
+                            <button
+                                onClick={() => navigate('/login')}
+                                className="w-full group relative flex items-center gap-3 px-4 py-4 bg-black text-white rounded-2xl font-bold text-sm shadow-[0_10px_20px_-5px_rgba(0,0,0,0.2)] hover:shadow-[0_15px_30px_-5px_rgba(0,0,0,0.3)] hover:-translate-y-0.5 transition-all active:scale-95 overflow-hidden"
+                            >
+                                <div className="absolute inset-0 bg-gradient-to-r from-red-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                <LogIn className="w-5 h-5 text-red-500 relative z-10" />
+                                <span className="relative z-10">商家登入中心</span>
+                                <ChevronRight className="w-4 h-4 ml-auto opacity-50 group-hover:translate-x-1 transition-transform relative z-10" />
+                            </button>
+                            <p className="px-3 mt-3 text-[10px] text-gray-400 leading-relaxed">
+                                PPBears 合作商家專屬後台，管理您的專屬設計與報表資訊。
+                            </p>
+                        </div>
                     </div>
                 </aside>
 
