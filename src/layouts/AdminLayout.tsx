@@ -164,7 +164,7 @@ export default function AdminLayout() {
           </button>
 
           <div className="px-4 py-2 mt-4 text-center">
-            <span className="text-xs text-gray-400 font-medium">Version 3.1</span>
+            <span className="text-xs text-gray-400 font-medium">Version 3.2</span>
           </div>
         </div>
       </aside>

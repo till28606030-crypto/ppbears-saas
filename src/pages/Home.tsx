@@ -575,6 +575,8 @@ export default function Home() {
             const templateId = searchParams.get('template_id');
 
             if (!templateSlug && !templateId) return;
+            // If we are loading a saved design for re-edit, skip any template application
+            if (searchParams.get('load_design_id')) return;
 
             // Wait for product to be fully loaded and canvas configured
             if (!currentProduct || !productConfig) return;
