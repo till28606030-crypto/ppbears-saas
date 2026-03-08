@@ -99,6 +99,8 @@ export default function Home() {
     const [activeTool, setActiveTool] = useState<string | null>(null);
     const [showCheckout, setShowCheckout] = useState(false);
     const [showGalleryModal, setShowGalleryModal] = useState(false);
+    const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [currentProduct, setCurrentProduct] = useState<any>(null);
 
@@ -186,9 +188,6 @@ export default function Home() {
     const [designCategories, setDesignCategories] = useState<string[]>(['熱門設計', '節慶主題', '風格插畫', '未分類']);
     const [activePanel, setActivePanel] = useState<'none' | 'stickers' | 'backgrounds' | 'barcode' | 'frames' | 'products' | 'designs' | 'ai'>('none');
     const [barcodeText, setBarcodeText] = useState('/');
-
-    // Save Success Modal State
-    const [showSaveSuccess, setShowSaveSuccess] = useState(false);
 
     const [isAiConfirmOpen, setIsAiConfirmOpen] = useState(false);
 
@@ -1005,25 +1004,60 @@ export default function Home() {
 
     const handlePreviewBuy = async () => {
         if (canvasRef.current) {
+            setIsSaving(true);
             try {
-                // console.log('Generating preview...');
                 // Generate high quality preview
                 const dataUrl = canvasRef.current.generatePreview();
-                // console.log('Preview generated, dataUrl length:', dataUrl?.length);
 
                 if (dataUrl && dataUrl.length > 100) {
                     setPreviewImage(dataUrl);
-                    // DONT regenerate designId here, it breaks re-edit sessions
-                    // setDesignId(generateDesignId()); 
-                    setShowSaveSuccess(true); // Open success modal instead of checkout directly
+
+                    // --- PERSISTENCE LOGIC START ---
+                    // Save to Supabase Storage and DB immediately so the ID is valid for lookup
+                    console.log('[DesignSave] Saving design for lookup:', designId);
+
+                    const base64ToBlob = (base64: string, mime: string) => {
+                        const parts = base64.split(',');
+                        const byteString = atob(parts[1]);
+                        const ab = new ArrayBuffer(byteString.length);
+                        const ia = new Uint8Array(ab);
+                        for (let i = 0; i < byteString.length; i++) {
+                            ia[i] = byteString.charCodeAt(i);
+                        }
+                        return new Blob([ab], { type: mime });
+                    };
+
+                    const previewBlob = base64ToBlob(dataUrl, 'image/jpeg');
+                    const previewUrl = supabase.storage.from('design-previews').getPublicUrl(`${designId}/preview.jpg`).data.publicUrl;
+
+                    // Parallel: Upload Image & Upsert DB
+                    const canvasJson = canvasRef.current?.getCanvasJSON?.() || null;
+                    await Promise.all([
+                        supabase.storage.from('design-previews').upload(`${designId}/preview.jpg`, previewBlob, { upsert: true, contentType: 'image/jpeg' }),
+                        supabase.from('custom_designs').upsert({
+                            design_id: designId,
+                            product_id: productId || null,
+                            product_name: currentProduct?.name || '客製化手機殼',
+                            phone_model: currentProduct?.name || 'Unknown',
+                            canvas_json: canvasJson,
+                            preview_image: previewUrl,
+                            updated_at: new Date().toISOString()
+                        }, { onConflict: 'design_id' })
+                    ]);
+                    console.log('[DesignSave] Save completed successfully');
+                    // --- PERSISTENCE LOGIC END ---
+
+                    setShowSaveSuccess(true);
                 } else {
                     console.error('Preview generation returned empty string or invalid data');
                     setPreviewImage('https://placehold.co/600x600?text=Preview+Failed');
                     setShowSaveSuccess(true);
                 }
             } catch (error) {
-                console.error('Error generating preview:', error);
-                alert('預覽生成發生錯誤，請重試');
+                console.error('Error generating/saving preview:', error);
+                alert('儲存設計時發生錯誤，請重試');
+            } finally {
+                setIsSaving(false);
             }
         } else {
             console.error('Canvas ref is null');
@@ -2181,8 +2215,12 @@ export default function Home() {
                         )}
                         <button
                             onClick={handlePreviewBuy}
-                            className="px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-gray-800 transition-colors shadow-md whitespace-nowrap"
-                        >完成設計</button>
+                            disabled={isSaving}
+                            className="px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-gray-800 transition-colors shadow-md whitespace-nowrap flex items-center gap-2"
+                        >
+                            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                            完成設計
+                        </button>
                     </div>
                 </header>
 
