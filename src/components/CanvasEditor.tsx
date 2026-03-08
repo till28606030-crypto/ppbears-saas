@@ -403,6 +403,8 @@ import {
     closestCenter,
     KeyboardSensor,
     PointerSensor,
+    MouseSensor,
+    TouchSensor,
     useSensor,
     useSensors,
     DragEndEvent
@@ -584,9 +586,14 @@ const SortableLayerItem = ({ layer, isActive, onToggleVisible, onToggleLock, onD
             className={`flex items-center gap-2 p-2 rounded-md mb-1 text-sm border select-none ${isActive ? 'border-yellow-400 bg-[#FFFFE0]' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
             onClick={onSelect}
         >
-            {/* Drag Handle */}
-            <div {...attributes} {...listeners} className="cursor-grab text-gray-400 hover:text-gray-600 flex-shrink-0">
-                <GripVertical className="w-4 h-4" />
+            {/* Drag Handle Container (Generous Hit Area) */}
+            <div
+                {...attributes}
+                {...listeners}
+                className="w-10 h-10 -ml-2 flex items-center justify-center cursor-grab text-gray-400 hover:text-gray-600 flex-shrink-0 touch-none"
+                style={{ touchAction: 'none' }}
+            >
+                <GripVertical className="w-5 h-5" />
             </div>
 
             {/* Preview Icon */}
@@ -1226,7 +1233,12 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const [layers, setLayers] = useState<LayerItemData[]>([]);
     const [isMobileLayersOpen, setIsMobileLayersOpen] = useState(false); // Mobile state
     const sensors = useSensors(
-        useSensor(PointerSensor),
+        useSensor(MouseSensor, {
+            activationConstraint: { distance: 8 }
+        }),
+        useSensor(TouchSensor, {
+            activationConstraint: { distance: 5 }
+        }),
         useSensor(KeyboardSensor, {
             coordinateGetter: sortableKeyboardCoordinates,
         })
@@ -6208,7 +6220,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 </div>
 
                 {/* 2. Dynamic Floating Quick Actions (The "Pill") - Positioned relative to property bar on mobile */}
-                {selectedObject && !showMobileTextInput && (
+                {selectedObject && !showMobileTextInput && !isMobileLayersOpen && (
                     <div className={`floating-quick-actions-container fixed md:absolute md:top-16 right-1 md:right-auto md:left-1/2 md:-translate-x-1/2 z-[130] pointer-events-auto bg-white/95 backdrop-blur-md rounded-lg shadow-xl border border-gray-200/50 flex flex-col md:flex-row items-center p-1.5 gap-1 animate-in fade-in duration-200 transition-all duration-300
                         ${showMobilePropertyBar ? 'top-[35%]' : 'top-1/2'} -translate-y-1/2 md:translate-y-0
                     `}>
