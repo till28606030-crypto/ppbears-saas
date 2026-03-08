@@ -1041,7 +1041,7 @@ export default function Home() {
                             phone_model: currentProduct?.name || 'Unknown',
                             canvas_json: canvasJson,
                             preview_image: previewUrl,
-                            updated_at: new Date().toISOString()
+                            // Remove updated_at as it might not exist in the table schema
                         }, { onConflict: 'design_id' })
                     ]);
                     console.log('[DesignSave] Save completed successfully');
