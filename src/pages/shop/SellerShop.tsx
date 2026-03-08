@@ -435,6 +435,37 @@ const SellerShop: React.FC = () => {
 
                 {/* Right Product Grid */}
                 <div className="flex-1 min-w-0 md:mt-0">
+                    {/* Mobile Design ID Search */}
+                    <div className="md:hidden px-4 mb-4">
+                        <div className="p-3 bg-white rounded-xl border border-gray-200">
+                            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <FileSearch className="w-3.5 h-3.5" />
+                                查詢設計ID
+                            </h3>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    placeholder="輸入設計ID..."
+                                    value={designSearchId}
+                                    onChange={e => { setDesignSearchId(e.target.value.toUpperCase()); setDesignSearchError(null); }}
+                                    onKeyDown={e => e.key === 'Enter' && handleDesignSearch()}
+                                    className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-black/10 font-mono placeholder:normal-case"
+                                />
+                                <button
+                                    onClick={handleDesignSearch}
+                                    disabled={isSearchingDesign || !designSearchId.trim()}
+                                    className="px-4 py-2 bg-black text-white text-sm rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors flex items-center gap-2"
+                                >
+                                    {isSearchingDesign ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                                    <span>查詢</span>
+                                </button>
+                            </div>
+                            {designSearchError && (
+                                <p className="text-xs text-red-500 mt-2">{designSearchError}</p>
+                            )}
+                        </div>
+                    </div>
+
                     {/* Mobile Category Filter (Horizontal Scroll) */}
                     <div className="md:hidden w-full overflow-x-auto flex gap-2 no-scrollbar mb-6 pb-2">
                         <button
