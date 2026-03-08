@@ -40,7 +40,7 @@ export default function AdminLayout() {
             A
           </div>
           <span className="font-semibold text-lg flex items-center gap-2">
-            管理後台 <span className="text-xs font-normal bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">V3.2</span>
+            管理後台 <span className="text-xs font-normal bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">V3.1</span>
           </span>
         </div>
         <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
@@ -59,7 +59,7 @@ export default function AdminLayout() {
             A
           </div>
           <span className="font-semibold text-lg flex items-center gap-2">
-            管理後台 <span className="text-xs font-normal bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">V3.2</span>
+            管理後台 <span className="text-xs font-normal bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">V3.1</span>
           </span>
         </div>
 
@@ -163,7 +163,9 @@ export default function AdminLayout() {
             登出
           </button>
 
-
+          <div className="px-4 py-2 mt-4 text-center">
+            <span className="text-xs text-gray-400 font-medium">Version 3.1</span>
+          </div>
         </div>
       </aside>
 

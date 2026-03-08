@@ -101,6 +101,7 @@ export default function Home() {
     const [showGalleryModal, setShowGalleryModal] = useState(false);
     const [showSaveSuccess, setShowSaveSuccess] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [currentProduct, setCurrentProduct] = useState<any>(null);
 
@@ -1012,6 +1013,18 @@ export default function Home() {
                 if (dataUrl && dataUrl.length > 100) {
                     setPreviewImage(dataUrl);
 
+                    // --- PROGRESS BAR SIMULATION ---
+                    let progress = 0;
+                    setUploadProgress(10);
+                    const progressInterval = setInterval(() => {
+                        progress += 10;
+                        if (progress <= 90) {
+                            setUploadProgress(progress);
+                        } else {
+                            clearInterval(progressInterval);
+                        }
+                    }, 100);
+
                     // --- PERSISTENCE LOGIC START ---
                     // Save to Supabase Storage and DB immediately so the ID is valid for lookup
                     console.log('[DesignSave] Saving design for lookup:', designId);
@@ -1032,7 +1045,9 @@ export default function Home() {
 
                     // Parallel: Upload Image & Upsert DB
                     const canvasJson = canvasRef.current?.getCanvasJSON?.() || null;
-                    await Promise.all([
+
+                    // Optimistic update: Do not await saving
+                    Promise.all([
                         supabase.storage.from('design-previews').upload(`${designId}/preview.jpg`, previewBlob, { upsert: true, contentType: 'image/jpeg' }),
                         supabase.from('custom_designs').upsert({
                             design_id: designId,
@@ -1044,20 +1059,33 @@ export default function Home() {
                             canvas_json: canvasJson,
                             preview_image: previewUrl,
                         }, { onConflict: 'design_id' })
-                    ]);
-                    console.log('[DesignSave] Save completed successfully');
+                    ]).then(() => {
+                        console.log('[DesignSave] Save completed successfully in background');
+                        setUploadProgress(100);
+                    }).catch(error => {
+                        console.error('[DesignSave] Error in background upload:', error);
+                    });
+
+                    // Wait for minimum fake progress time
+                    setTimeout(() => {
+                        clearInterval(progressInterval);
+                        setUploadProgress(100);
+                        setTimeout(() => {
+                            setIsSaving(false);
+                            setShowSaveSuccess(true);
+                        }, 200);
+                    }, 1000);
                     // --- PERSISTENCE LOGIC END ---
 
-                    setShowSaveSuccess(true);
                 } else {
                     console.error('Preview generation returned empty string or invalid data');
                     setPreviewImage('https://placehold.co/600x600?text=Preview+Failed');
+                    setIsSaving(false);
                     setShowSaveSuccess(true);
                 }
             } catch (error) {
                 console.error('Error generating/saving preview:', error);
                 alert('儲存設計時發生錯誤，請重試');
-            } finally {
                 setIsSaving(false);
             }
         } else {
@@ -1189,7 +1217,7 @@ export default function Home() {
                 console.log('[Cart] IDB/Mock orders success');
             })();
 
-            // Task: WooCommerce API Call
+            // Task: WooCommerce API Call (with automatic 500 retry without cookies)
             const wpTask = (async () => {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -1203,29 +1231,46 @@ export default function Home() {
                         options: finalOptions,
                     };
 
-                    const response = await fetch('https://ppbears.com/wp-json/ppbears/v1/add-to-cart', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload),
-                        credentials: 'include',
-                        signal: controller.signal
-                    });
+                    const bodyStr = JSON.stringify(payload);
+
+                    // Helper: make the API call
+                    const callApi = async (withCredentials: boolean) => {
+                        const resp = await fetch('https://ppbears.com/wp-json/ppbears/v1/add-to-cart', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: bodyStr,
+                            credentials: withCredentials ? 'include' : 'omit',
+                            signal: controller.signal
+                        });
+                        return resp;
+                    };
+
+                    // 1st attempt: with cookies (preserves WC session for returning users)
+                    let response = await callApi(true);
+
+                    // If 500, retry WITHOUT cookies (fixes WP admin session conflicts)
+                    if (response.status === 500) {
+                        console.warn('[Cart] 500 Error with credentials, retrying without cookies...');
+                        response = await callApi(false);
+                    }
 
                     if (!response.ok) {
-                        let errDetails = '';
                         let serverMessage = '';
+                        let serverCode = '';
                         try {
                             const errJson = await response.clone().json();
-                            errDetails = JSON.stringify(errJson, null, 2);
                             serverMessage = errJson.message || '';
+                            serverCode = errJson.code || '';
                         } catch (e) {
-                            errDetails = await response.text().catch(() => 'Unknown error');
+                            await response.text().catch(() => { });
                         }
 
                         if (response.status === 400 && serverMessage) {
                             throw new Error(`購物車加入拒絕: ${serverMessage}`);
                         }
-                        throw new Error(`伺服器錯誤 (${response.status})`);
+                        // For 500 errors: include the server message for diagnostics
+                        const detail = serverMessage ? ` — ${serverMessage}` : '';
+                        throw new Error(`伺服器錯誤 (${response.status})${detail}`);
                     }
 
                     const result = await response.json();
@@ -1259,56 +1304,14 @@ export default function Home() {
 
         } catch (error: any) {
             console.error("[Cart] Order processing error:", error);
-
-            // 如果遇到 500 錯誤，自動在背景重試一次（不需重新載入頁面）
-            if (error.message.includes('500') || error.message.includes('伺服器錯誤')) {
-                console.warn('[Cart] 500 Error detected. Attempting silent retry...');
-
-                try {
-                    // 等待 1 秒後重試 WP API（讓伺服器 Session 有時間恢復）
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-
-                    const retryPayload = {
-                        product_id: 123835,
-                        price: finalPrice,
-                        design_id: designId,
-                        product_name: currentProduct?.name || '客製化商品',
-                        options: selectedOptions,
-                    };
-
-                    const retryResponse = await fetch('https://ppbears.com/wp-json/ppbears/v1/add-to-cart', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(retryPayload),
-                        credentials: 'include',
-                    });
-
-                    if (retryResponse.ok) {
-                        const retryResult = await retryResponse.json();
-                        if (retryResult.success && retryResult.checkout_url) {
-                            console.log('[Cart] Retry succeeded!');
-                            setCheckoutUrl(retryResult.checkout_url);
-                            setCartStatus('success');
-                            setShowCheckout(false);
-                            await removeDraft('draft:global:v4_active');
-                            return; // 重試成功，不再顯示錯誤
-                        }
-                    }
-
-                    // 重試也失敗
-                    console.error('[Cart] Retry also failed.');
-                    alert(`加入購物車時伺服器暫時忙碌 (500)。\n請稍等幾秒後，再按一次「加入購物車」按鈕即可。`);
-                } catch (retryErr) {
-                    console.error('[Cart] Retry exception:', retryErr);
-                    alert(`加入購物車時伺服器暫時忙碌 (500)。\n請稍等幾秒後，再按一次「加入購物車」按鈕即可。`);
-                }
-            } else {
-                alert(`處理失敗: ${error.message}\n\n請查看瀏覽器 Console (F12) 了解詳細錯誤訊息。`);
-            }
+            // Show the actual error message (includes server-side diagnostic detail if v2.0.0 plugin installed)
+            alert(`加入購物車失敗:\n\n${error.message}\n\n請按 F12 → Console 查看完整錯誤，並截圖提供給工程師。`);
         }
+
     };
 
     const handleContinueShopping = () => {
+
         // Clear current design to prevent accidental double purchase of same design
         if (canvasRef.current) {
             canvasRef.current.clearCanvas();
@@ -2240,7 +2243,7 @@ export default function Home() {
                             className="px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-gray-800 transition-colors shadow-md whitespace-nowrap flex items-center gap-2"
                         >
                             {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                            完成設計
+                            保存設計
                         </button>
                     </div>
                 </header>
@@ -2326,6 +2329,26 @@ export default function Home() {
                     </div>
                 )
             }
+
+            {/* Upload Progress Modal */}
+            {isSaving && (
+                <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl scale-in-center animate-in zoom-in-95 duration-200">
+                        <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <Loader2 className="w-10 h-10 text-black animate-spin" />
+                        </div>
+                        <h3 className="text-2xl font-bold mb-2">上傳圖片中</h3>
+                        <p className="text-gray-500 mb-6 focus:outline-none">正在保存您的設計，請稍候...</p>
+                        <div className="w-full bg-gray-100 rounded-full h-3 mb-2 overflow-hidden">
+                            <div
+                                className="bg-black h-3 rounded-full transition-all duration-300 ease-out"
+                                style={{ width: `${uploadProgress}%` }}
+                            />
+                        </div>
+                        <p className="text-sm font-medium text-gray-500">{uploadProgress}%</p>
+                    </div>
+                </div>
+            )}
 
             {/* Cart Success Overlay */}
             {
