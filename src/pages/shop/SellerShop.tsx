@@ -13,7 +13,9 @@ import {
     LayoutDashboard,
     LogIn,
     ChevronDown,
-    ChevronRight
+    ChevronRight,
+    Loader2,
+    FileSearch
 } from 'lucide-react';
 
 import { isAdminRoute } from '../../lib/isAdminRoute';
@@ -50,6 +52,11 @@ const SellerShop: React.FC = () => {
     const [activeBrand, setActiveBrand] = useState(searchParams.get('brand') || 'all'); // Task 2: Brand State
     const [searchQuery, setSearchQuery] = useState('');
     const [items, setItems] = useState<ShopItem[]>([]);
+
+    // Design ID Search State
+    const [designSearchId, setDesignSearchId] = useState('');
+    const [isSearchingDesign, setIsSearchingDesign] = useState(false);
+    const [designSearchError, setDesignSearchError] = useState<string | null>(null);
 
     const [categories, setCategories] = useState<Category[]>([]);
     const [categoryMap, setCategoryMap] = useState<Map<string, Category>>(new Map());
@@ -197,6 +204,36 @@ const SellerShop: React.FC = () => {
         navigate(`/?${params.toString()}`);
     };
 
+    const handleDesignSearch = async () => {
+        const id = designSearchId.trim().toUpperCase();
+        if (!id) return;
+
+        setIsSearchingDesign(true);
+        setDesignSearchError(null);
+
+        try {
+            const { data, error } = await supabase
+                .from('custom_designs')
+                .select('design_id, product_id')
+                .eq('design_id', id)
+                .maybeSingle();
+
+            if (error || !data) {
+                setDesignSearchError('找不到該設計ID，請確認是否輸入正確。');
+            } else {
+                // Navigate to editor, loading the design
+                const params = new URLSearchParams();
+                if (data.product_id) params.set('productId', data.product_id);
+                params.set('load_design_id', data.design_id);
+                navigate(`/?${params.toString()}`);
+            }
+        } catch (e) {
+            setDesignSearchError('查詢失敗，請稍後再試。');
+        } finally {
+            setIsSearchingDesign(false);
+        }
+    };
+
     const templateId = searchParams.get('template_id');
 
     return (
@@ -265,7 +302,37 @@ const SellerShop: React.FC = () => {
 
                 {/* Left Navigation (Sidebar) */}
                 <aside className="w-64 hidden md:block flex-shrink-0">
-                    <div className="sticky top-24 space-y-1">
+                    <div className="sticky top-24 space-y-4">
+
+                        {/* Design ID Lookup */}
+                        <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <FileSearch className="w-3.5 h-3.5" />
+                                查詢設計ID
+                            </h3>
+                            <div className="flex gap-1.5">
+                                <input
+                                    type="text"
+                                    placeholder="輸入設計ID..."
+                                    value={designSearchId}
+                                    onChange={e => { setDesignSearchId(e.target.value.toUpperCase()); setDesignSearchError(null); }}
+                                    onKeyDown={e => e.key === 'Enter' && handleDesignSearch()}
+                                    className="flex-1 px-2 py-1.5 text-xs border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-black/10 font-mono placeholder:normal-case"
+                                />
+                                <button
+                                    onClick={handleDesignSearch}
+                                    disabled={isSearchingDesign || !designSearchId.trim()}
+                                    className="px-3 py-1.5 bg-black text-white text-xs rounded-lg hover:bg-gray-800 disabled:opacity-40 transition-colors flex items-center gap-1"
+                                >
+                                    {isSearchingDesign ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                                    查詢
+                                </button>
+                            </div>
+                            {designSearchError && (
+                                <p className="text-xs text-red-500 mt-1.5">{designSearchError}</p>
+                            )}
+                        </div>
+
                         <div className="mb-6">
                             <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">管理功能</h3>
                             {isAuthenticated ? (

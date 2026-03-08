@@ -7,11 +7,21 @@ import { listAssets, listAssetCategories } from '../lib/assets';
 import { listFrames, listFrameCategories, Frame, lastFrameDebug, clearFrameCache } from '../lib/frameService';
 // @ts-ignore
 import { readPsd } from 'ag-psd';
-import { Upload, Layers, Smartphone, Type, Wand2, Sparkles, X, ShoppingCart, Check, Sticker, Image, ScanBarcode, Scissors, Circle, Heart, Square, Ban, ChevronRight, ChevronLeft, Copy, Search, SlidersHorizontal, ChevronDown, ChevronUp, Palette, FileImage, Shapes, Lock, Unlock, Plus, Frame as FrameIcon, AlertTriangle, ExternalLink } from 'lucide-react';
+import { useProductStore } from '../store/useProductStore';
+import {
+    Trash2, Type, Palette, Loader2, Undo2, Redo2, Copy, FlipHorizontal, Maximize, Minimize2,
+    AlignCenter, Scissors, ArrowUp, ArrowDown, Bold, Italic, GripVertical, Eye,
+    EyeOff, Lock, Unlock, Image as ImageIcon, Sticker, ScanBarcode, Check, X,
+    Layers, Upload, Pencil, Sparkles, RefreshCw, Crop, ArrowLeft, Square, Circle as CircleIcon, Heart, Shapes,
+    AlignLeft, AlignRight, ChevronDown, ChevronUp, ChevronRight, ChevronLeft, PaintBucket, Baseline, Smartphone, Ban, Frame as FrameIcon, LayoutTemplate, SlidersHorizontal, Wand2, Eraser, Sun, ImagePlus,
+    AlertTriangle, Search, Plus, FileImage, ShoppingCart, ExternalLink
+} from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import CanvasEditor, { CanvasEditorRef } from '../components/CanvasEditor';
 import SaveDesignModal from '../components/SaveDesignModal';
 import MyGalleryModal from '../components/MyGalleryModal';
+import FontPicker from '../components/FontPicker';
+
 import { DEFAULT_STICKERS, DEFAULT_BACKGROUNDS, DEFAULT_FRAMES } from '../data/mockAssets';
 import { AssetItem, Category } from '@/types';
 import { isAdminRoute } from '../lib/isAdminRoute';
@@ -174,9 +184,13 @@ export default function Home() {
     const [backgroundCategories, setBackgroundCategories] = useState<string[]>(['風格類型', '節慶氛圍', '未分類']);
     const [frameCategories, setFrameCategories] = useState<string[]>(['基本相框', '節慶主題', '特殊造型', '未分類']);
     const [designCategories, setDesignCategories] = useState<string[]>(['熱門設計', '節慶主題', '風格插畫', '未分類']);
-
     const [activePanel, setActivePanel] = useState<'none' | 'stickers' | 'backgrounds' | 'barcode' | 'frames' | 'products' | 'designs' | 'ai'>('none');
     const [barcodeText, setBarcodeText] = useState('/');
+
+    // Save Success Modal State
+    const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+
+    const [isAiConfirmOpen, setIsAiConfirmOpen] = useState(false);
 
     // Asset Search & Filter State
     const [assetSearch, setAssetSearch] = useState('');
@@ -1001,11 +1015,11 @@ export default function Home() {
                     setPreviewImage(dataUrl);
                     // DONT regenerate designId here, it breaks re-edit sessions
                     // setDesignId(generateDesignId()); 
-                    setShowCheckout(true);
+                    setShowSaveSuccess(true); // Open success modal instead of checkout directly
                 } else {
                     console.error('Preview generation returned empty string or invalid data');
                     setPreviewImage('https://placehold.co/600x600?text=Preview+Failed');
-                    setShowCheckout(true);
+                    setShowSaveSuccess(true);
                 }
             } catch (error) {
                 console.error('Error generating preview:', error);
@@ -1293,6 +1307,7 @@ export default function Home() {
         <div className="flex h-screen w-screen overflow-hidden bg-gray-50 text-gray-900 font-sans relative">
 
             {/* Checkout Modal (Replaced with SaveDesignModal) */}
+            {/* Final Modals */}
             <SaveDesignModal
                 isOpen={showCheckout}
                 onClose={() => setShowCheckout(false)}
@@ -1302,14 +1317,58 @@ export default function Home() {
                 previewImage={previewImage || ''}
                 onAddToCart={handleAddToCart}
             />
+            {showGalleryModal && (
+                <MyGalleryModal
+                    isOpen={showGalleryModal}
+                    onClose={() => setShowGalleryModal(false)}
+                    onApply={handleGalleryApply}
+                />
+            )}
 
-            <MyGalleryModal
-                isOpen={showGalleryModal}
-                onClose={() => setShowGalleryModal(false)}
-                onApply={handleGalleryApply}
-            />
+            {/* Design Save Success Modal */}
+            {showSaveSuccess && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6 flex flex-col items-center text-center">
+                            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4 shadow-inner">
+                                <Check className="w-8 h-8" />
+                            </div>
+                            <h2 className="text-xl font-bold text-gray-800 mb-2">設計已保存</h2>
+                            <p className="text-sm text-gray-500 mb-6 w-full break-all bg-gray-50 p-3 rounded-lg border border-gray-100 font-mono">
+                                您的設計ID:<br />
+                                <span className="font-bold text-gray-800 text-base">{designId}</span>
+                            </p>
 
-            {/* Hidden File Input for Mobile/Desktop */}
+                            <div className="w-full space-y-3">
+                                <button
+                                    onClick={() => {
+                                        if (designId) {
+                                            navigator.clipboard.writeText(designId);
+                                            alert('設計ID已複製到剪貼簿！');
+                                        }
+                                    }}
+                                    className="w-full py-3 bg-white border-2 border-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <Copy className="w-5 h-5" />
+                                    複製設計ID
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setShowSaveSuccess(false);
+                                        setShowCheckout(true);
+                                    }}
+                                    className="w-full py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all shadow-lg flex items-center justify-center gap-2"
+                                >
+                                    下一步選擇商品規格
+                                    <ArrowLeft className="w-5 h-5 rotate-180" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* End of Modals */}            {/* Hidden File Input for Mobile/Desktop */}
             <input
                 ref={bgFileInputRef}
                 type="file"
@@ -1384,7 +1443,7 @@ export default function Home() {
                         className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'backgrounds' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
                         title="背景"
                     >
-                        <Image className="w-6 h-6 mb-1" />
+                        <ImageIcon className="w-6 h-6 mb-1" />
                         <span className="text-xs font-medium">
                             背景
                         </span>
@@ -1487,7 +1546,7 @@ export default function Home() {
                                 {activePanel === 'products' && <><Smartphone className="w-4 h-4" /> 選擇商品</>}
                                 {activePanel === 'designs' && <><Palette className="w-4 h-4" /> 選擇設計</>}
                                 {activePanel === 'stickers' && <><Sticker className="w-4 h-4" /> 貼圖</>}
-                                {activePanel === 'backgrounds' && <><Image className="w-4 h-4" /> 背景</>}
+                                {activePanel === 'backgrounds' && <><ImageIcon className="w-4 h-4" /> 背景</>}
                                 {activePanel === 'barcode' && <><ScanBarcode className="w-4 h-4" /> 手機條碼</>}
                                 {activePanel === 'frames' && <><FrameIcon className="w-4 h-4" /> 精選相框 {isOffline && <span className="ml-2 text-[10px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full font-normal">離線/快取</span>}</>}
                                 {activePanel === 'ai' && <><Sparkles className="w-4 h-4" /> AI 魔法</>}
