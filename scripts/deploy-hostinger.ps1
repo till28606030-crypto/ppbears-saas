@@ -11,7 +11,7 @@ $FtpUser = "u141631622.czcz28606030"
 $FtpRemotePath = "/"
 
 function Write-Step { param([string]$msg) Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
-function Write-OK   { param([string]$msg) Write-Host "  [OK] $msg" -ForegroundColor Green }
+function Write-OK { param([string]$msg) Write-Host "  [OK] $msg" -ForegroundColor Green }
 function Write-Fail { param([string]$msg) Write-Host "  [!!] $msg" -ForegroundColor Red; exit 1 }
 
 if (-not $FtpPassword) {
@@ -28,7 +28,8 @@ if (-not $SkipGitHub) {
         $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm"
         git commit -m "chore: deploy update $timestamp"
         Write-OK "Committed"
-    } else {
+    }
+    else {
         Write-Host "  (No changes to commit)" -ForegroundColor Yellow
     }
     git push origin main
@@ -89,7 +90,8 @@ Write-Step "Step 5: Post-deploy validation"
 try {
     $resp = Invoke-WebRequest -Uri "https://ppbears.com/design/" -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
     if ($resp.StatusCode -eq 200) { Write-OK "Website returned 200 OK" }
-} catch {
+}
+catch {
     Write-Host "  [Warning] Link test failed: $_" -ForegroundColor Yellow
 }
 Write-OK "Deployment Finished"
