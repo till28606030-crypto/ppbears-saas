@@ -1039,9 +1039,10 @@ export default function Home() {
                             product_id: productId || null,
                             product_name: currentProduct?.name || '客製化手機殼',
                             phone_model: currentProduct?.name || 'Unknown',
+                            price: currentProduct?.price || 980,
+                            options: {},
                             canvas_json: canvasJson,
                             preview_image: previewUrl,
-                            // Remove updated_at as it might not exist in the table schema
                         }, { onConflict: 'design_id' })
                     ]);
                     console.log('[DesignSave] Save completed successfully');
