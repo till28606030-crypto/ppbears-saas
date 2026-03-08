@@ -11,14 +11,16 @@
   - 架構要求：代碼必須模組化，預留「多租戶 (Multi-tenant)」與「點數系統」的接口。 
 
 ## 2. 當前開發狀態 (Current Status) 
-- **最近更新時間**: 2026-01-18
-- **目前進度**: 🟢 核心功能開發中 / 規格管理系統完成
+- **最近更新時間**: 2026-03-08
+- **目前進度**: 🟢 核心功能開發中 / 搜尋系統完成
 - **已完成功能**:
   - [x] 建立 React 專案基礎架構 (Vite, Tailwind).
   - [x] Fabric.js 畫布編輯器 (CanvasEditor) - 支援圖片上傳、縮放、文字編輯.
   - [x] 後台規格管理 (AdminOptionManager) - 支援規格大類、子選項、縮圖上傳、自訂屬性 (Custom Attributes).
   - [x] 前台結帳模組 (SaveDesignModal) - 兩層式規格選擇、燈箱放大預覽、價格動態計算、自訂屬性選單.
-  - [x] 資料持久化 (IndexedDB via idb-keyval) - 暫時替代後端資料庫.
+  - [x] 設計保存與成功彈窗 (Success Modal) - 設計完成後自動保存至 Supabase 並顯示 ID.
+  - [x] 設計 ID 查詢系統 (Search Design ID) - 支援桌機側邊欄與手機版頂部查詢，動態載入設計至編輯器.
+  - [x] 資料持久化 (Supabase) - 正式串接資料庫儲存設計與商品資料.
 
 - **正在處理的任務**: 
   - [ ] 1. 優化畫布操作體驗 (圖層管理、Undo/Redo).
