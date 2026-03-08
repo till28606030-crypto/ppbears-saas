@@ -39,7 +39,9 @@ export default function AdminLayout() {
           <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center text-white font-bold">
             A
           </div>
-          <span className="font-semibold text-lg">管理後台</span>
+          <span className="font-semibold text-lg flex items-center gap-2">
+            管理後台 <span className="text-xs font-normal bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">V3.0</span>
+          </span>
         </div>
         <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
           {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -56,7 +58,9 @@ export default function AdminLayout() {
           <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center text-white font-bold mr-3">
             A
           </div>
-          <span className="font-semibold text-lg">管理後台</span>
+          <span className="font-semibold text-lg flex items-center gap-2">
+            管理後台 <span className="text-xs font-normal bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">V3.0</span>
+          </span>
         </div>
 
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
@@ -158,6 +162,10 @@ export default function AdminLayout() {
             <LogOut className="w-5 h-5" />
             登出
           </button>
+          
+          <div className="px-4 py-2 mt-4 text-center">
+            <span className="text-xs text-gray-400 font-medium">Version 3.0</span>
+          </div>
         </div>
       </aside>
 
