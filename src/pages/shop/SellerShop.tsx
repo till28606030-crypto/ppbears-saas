@@ -333,26 +333,7 @@ const SellerShop: React.FC = () => {
                             )}
                         </div>
 
-                        <div className="mb-6">
-                            <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">管理功能</h3>
-                            {isAuthenticated ? (
-                                <button
-                                    onClick={() => navigate('/seller')}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors bg-black text-white shadow-md hover:bg-gray-800"
-                                >
-                                    <LayoutDashboard className="w-5 h-5" />
-                                    進入後台
-                                </button>
-                            ) : (
-                                <button
-                                    onClick={() => navigate('/login')}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-colors text-gray-600 hover:bg-gray-100 border border-gray-200"
-                                >
-                                    <LogIn className="w-5 h-5" />
-                                    商家登入
-                                </button>
-                            )}
-                        </div>
+
 
                         <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">商品分類</h3>
                         <button
