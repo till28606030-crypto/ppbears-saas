@@ -1260,41 +1260,48 @@ export default function Home() {
         } catch (error: any) {
             console.error("[Cart] Order processing error:", error);
 
-            // 如果遇到 500 錯誤（通常是 WooCommerce Session 暫存衝突）
+            // 如果遇到 500 錯誤，自動在背景重試一次（不需重新載入頁面）
             if (error.message.includes('500') || error.message.includes('伺服器錯誤')) {
-                const url = new URL(window.location.href);
-                const isRetry = url.searchParams.get('retry_checkout') === '1';
+                console.warn('[Cart] 500 Error detected. Attempting silent retry...');
 
-                if (isRetry) {
-                    console.error('[Cart] 500 Error persisted after session reset.');
-                    alert(`結帳伺服器發生持續性錯誤 (500)。\n\n這可能是由於伺服器編碼不支援特殊字元或 Emoji 導致的。\n系統已嘗試修復但失敗，請截圖此畫面並聯繫客服。`);
-                    return;
-                }
-
-                console.warn('[Cart] 500 Error detected. Attempting to clear WooCommerce session cookie for recovery.');
-
-                // Try clearing local session cookies that might be causing conflicts
                 try {
-                    document.cookie.split(";").forEach((c) => {
-                        const cookieName = c.split("=")[0].trim();
-                        if (cookieName.startsWith("wp_") || cookieName.startsWith("woocommerce_")) {
-                            document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-                        }
+                    // 等待 1 秒後重試 WP API（讓伺服器 Session 有時間恢復）
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+
+                    const retryPayload = {
+                        product_id: 123835,
+                        price: finalPrice,
+                        design_id: designId,
+                        product_name: currentProduct?.name || '客製化商品',
+                        options: selectedOptions,
+                    };
+
+                    const retryResponse = await fetch('https://ppbears.com/wp-json/ppbears/v1/add-to-cart', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(retryPayload),
+                        credentials: 'include',
                     });
-                } catch (cookieErr) {
-                    console.error('[Cart] Failed to clear cookies:', cookieErr);
+
+                    if (retryResponse.ok) {
+                        const retryResult = await retryResponse.json();
+                        if (retryResult.success && retryResult.checkout_url) {
+                            console.log('[Cart] Retry succeeded!');
+                            setCheckoutUrl(retryResult.checkout_url);
+                            setCartStatus('success');
+                            setShowCheckout(false);
+                            await removeDraft('draft:global:v4_active');
+                            return; // 重試成功，不再顯示錯誤
+                        }
+                    }
+
+                    // 重試也失敗
+                    console.error('[Cart] Retry also failed.');
+                    alert(`加入購物車時伺服器暫時忙碌 (500)。\n請稍等幾秒後，再按一次「加入購物車」按鈕即可。`);
+                } catch (retryErr) {
+                    console.error('[Cart] Retry exception:', retryErr);
+                    alert(`加入購物車時伺服器暫時忙碌 (500)。\n請稍等幾秒後，再按一次「加入購物車」按鈕即可。`);
                 }
-
-                alert(`系統偵測到結帳暫存衝突 (伺服器錯誤 500)。\n我們正在嘗試自動修復連線，請稍候...`);
-
-                // 強制跳出並重選（帶上 load_design_id 與 retry_checkout）
-                const currentProductId = searchParams.get('productId') || currentProduct?.id;
-                url.searchParams.set('load_design_id', designId);
-                url.searchParams.set('retry_checkout', '1');
-                if (currentProductId) url.searchParams.set('productId', currentProductId);
-
-                // 使用 location.replace 避免回上一頁又陷入錯誤迴圈
-                window.location.replace(url.toString());
             } else {
                 alert(`處理失敗: ${error.message}\n\n請查看瀏覽器 Console (F12) 了解詳細錯誤訊息。`);
             }
