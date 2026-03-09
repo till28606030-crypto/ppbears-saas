@@ -354,7 +354,12 @@ app.post('/api/ai/remove-bg', upload.single('image'), async (req, res) => {
     }
 });
 
-// 3. Auto-Tag (Image Analysis for tagging)
+// 3. Auto-Tag (Image Analysis for tagging using OpenAI GPT-4o-mini)
+const OpenAI = require('openai');
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+});
+
 app.post('/api/ai/auto-tag', express.json({ limit: '1mb' }), async (req, res) => {
     console.log(`[AI] HIT /api/ai/auto-tag (ID: ${BUILD_ID})`);
     try {
@@ -364,8 +369,8 @@ app.post('/api/ai/auto-tag', express.json({ limit: '1mb' }), async (req, res) =>
             return fail(res, '缺少 imageUrl 參數', { errorCode: 'MISSING_PARAM' });
         }
 
-        if (!process.env.REPLICATE_API_TOKEN) {
-            return fail(res, 'Server configuration error (Missing API Key)', { errorCode: 'MISSING_ENV' });
+        if (!process.env.OPENAI_API_KEY) {
+            return fail(res, 'Server configuration error (Missing OpenAI API Key)', { errorCode: 'MISSING_ENV' });
         }
 
         // Build the prompt with existing tags for consistency
@@ -383,29 +388,29 @@ app.post('/api/ai/auto-tag', express.json({ limit: '1mb' }), async (req, res) =>
 請只回傳 JSON 陣列格式，例如：["藍色", "大理石", "簡約"]
 回傳 3~6 個標籤即可，不要回傳其他文字。`;
 
-        console.log(`[AI] Auto-tag for image: ${imageUrl.slice(0, 80)}...`);
+        console.log(`[AI] Auto-tag for image using OpenAI GPT-4o-mini: ${imageUrl.slice(0, 80)}...`);
 
-        // Use LLaVA model for vision + language
-        const model = "yorickvp/llava-13b:80537f9eead1a5bfa72d5ac6ea6414379be41d4d4f6679fd776e9535d1eb58bb";
-        const input = {
-            image: imageUrl,
-            prompt: prompt,
-            max_tokens: 256,
-            temperature: 0.2
-        };
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: prompt },
+                        {
+                            type: "image_url",
+                            image_url: {
+                                "url": imageUrl,
+                            },
+                        },
+                    ],
+                },
+            ],
+            max_tokens: 300,
+        });
 
-        const result = await replicate.run(model, { input });
-        console.log(`[AI] LLaVA Output:`, result);
-
-        // Parse the result - LLaVA returns a string (or array of strings to join)
-        let rawText = '';
-        if (typeof result === 'string') {
-            rawText = result;
-        } else if (Array.isArray(result)) {
-            rawText = result.join('');
-        } else if (result && typeof result === 'object') {
-            rawText = JSON.stringify(result);
-        }
+        const rawText = response.choices[0].message.content;
+        console.log(`[AI] OpenAI Output:`, rawText);
 
         // Extract JSON array from the response
         let tags = [];
@@ -416,7 +421,7 @@ app.post('/api/ai/auto-tag', express.json({ limit: '1mb' }), async (req, res) =>
                 tags = JSON.parse(jsonMatch[0]);
             }
         } catch (parseErr) {
-            console.warn('[AI] Failed to parse JSON from LLaVA output, trying comma split:', parseErr.message);
+            console.warn('[AI] Failed to parse JSON from OpenAI output, trying comma split:', parseErr.message);
             // Fallback: split by commas or Chinese commas
             tags = rawText
                 .replace(/[\[\]"']/g, '')
