@@ -520,7 +520,6 @@ CREATE POLICY "public insert custom_designs"
                                             {/* Info */}
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-3 mb-1 flex-wrap">
-                                                    <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium">已付款</span>
                                                     {design.spec_image_url && (
                                                         <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full font-medium flex items-center gap-1">
                                                             <ImageIcon className="w-3 h-3" /> 含規格截圖
