@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { uploadToSupabase } from '@/lib/upload';
-import { Sticker, Image as ImageIcon, Upload, Trash2, Edit2, X, Plus, Save, GripVertical, Search, Copy } from 'lucide-react';
+import { apiUrl } from '@/lib/apiBase';
+import { Sticker, Image as ImageIcon, Upload, Trash2, Edit2, X, Plus, Save, GripVertical, Search, Copy, Sparkles, Loader2 } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -182,6 +183,7 @@ export default function AdminAssets() {
     // Edit Modal State
     const [editingAsset, setEditingAsset] = useState<AssetItem | null>(null);
     const [editType, setEditType] = useState<'stickers' | 'backgrounds' | 'frames'>('stickers');
+    const [isAiTagging, setIsAiTagging] = useState(false);
 
     const handleAssetUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'stickers' | 'backgrounds' | 'frames') => {
         const file = e.target.files?.[0];
@@ -211,6 +213,11 @@ export default function AdminAssets() {
             else if (type === 'backgrounds') setBackgrounds(prev => [newItem, ...prev]);
             else setFrames(prev => [newItem, ...prev]);
 
+            // 4. Auto-open edit modal and trigger AI tagging
+            setEditingAsset({ ...newItem });
+            setEditType(type);
+            autoTagAsset(publicUrl, newItem);
+
         } catch (err: any) {
             console.error("Upload failed:", err);
             alert("上傳失敗：" + err.message);
@@ -236,6 +243,39 @@ export default function AdminAssets() {
     const openEditModal = (asset: AssetItem, type: 'stickers' | 'backgrounds' | 'frames') => {
         setEditingAsset({ ...asset }); // Clone
         setEditType(type);
+    };
+
+    // AI Auto-Tag Function
+    const autoTagAsset = async (imageUrl: string, asset: AssetItem) => {
+        setIsAiTagging(true);
+        try {
+            // Collect all existing tags from current assets for consistency
+            const allTags = [...stickers, ...backgrounds, ...frames]
+                .flatMap(item => item.tags || []);
+            const existingTags = [...new Set(allTags)].filter(Boolean);
+
+            const response = await fetch(apiUrl('/api/ai/auto-tag'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ imageUrl, existingTags })
+            });
+
+            const result = await response.json();
+            if (result.success && Array.isArray(result.tags) && result.tags.length > 0) {
+                // Only update if the modal is still open for this asset
+                setEditingAsset(prev => {
+                    if (prev && prev.id === asset.id) {
+                        return { ...prev, tags: result.tags };
+                    }
+                    return prev;
+                });
+            }
+        } catch (err) {
+            console.error('AI auto-tag failed:', err);
+            // Silent fail - user can still manually tag
+        } finally {
+            setIsAiTagging(false);
+        }
     };
 
     const saveEdit = async () => {
@@ -525,14 +565,31 @@ export default function AdminAssets() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">標籤 (以逗號分隔)</label>
-                                <input
-                                    type="text"
-                                    value={editingAsset.tags.join(', ')}
-                                    onChange={(e) => setEditingAsset({ ...editingAsset, tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) })}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="例如: 可愛, 紅色, 新年"
-                                />
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="block text-sm font-medium text-gray-700">標籤 (以逗號分隔)</label>
+                                    {!isAiTagging && editingAsset.tags.length === 0 && (
+                                        <button
+                                            onClick={() => autoTagAsset(editingAsset.url, editingAsset)}
+                                            className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1"
+                                        >
+                                            <Sparkles className="w-3 h-3" /> AI 自動標籤
+                                        </button>
+                                    )}
+                                </div>
+                                {isAiTagging ? (
+                                    <div className="flex items-center gap-2 px-3 py-2 border border-purple-200 bg-purple-50 rounded-lg text-purple-600 text-sm">
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        <span>✨ AI 分析中，正在辨識圖片標籤...</span>
+                                    </div>
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={editingAsset.tags.join(', ')}
+                                        onChange={(e) => setEditingAsset({ ...editingAsset, tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                        placeholder="例如: 可愛, 紅色, 新年"
+                                    />
+                                )}
                             </div>
                         </div>
 
