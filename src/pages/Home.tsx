@@ -648,9 +648,9 @@ export default function Home() {
     useEffect(() => {
         const bgId = searchParams.get('bg_id');
         if (!bgId || !currentProduct || !productConfig) return;
-        // If we are loading a saved design for re-edit, skip background application
         if (searchParams.get('load_design_id')) return;
 
+        let cancelled = false;
         const applySharedBackground = async () => {
             try {
                 const { data, error } = await supabase
@@ -660,24 +660,28 @@ export default function Home() {
                     .eq('type', 'background')
                     .single();
 
-                if (error || !data?.url) {
-                    console.error("Failed to load shared background:", error);
-                    return;
-                }
+                if (error || !data?.url || cancelled) return;
 
-                // Small delay to ensure canvas is fully initialized with product
-                setTimeout(() => {
+                // Retry applying background at increasing intervals
+                // The product template (base image) needs time to load on canvas
+                const delays = [2000, 4000, 6000];
+                for (const delay of delays) {
+                    if (cancelled) return;
+                    await new Promise(resolve => setTimeout(resolve, delay === delays[0] ? delay : delay - delays[delays.indexOf(delay) - 1]));
+                    if (cancelled) return;
                     if (canvasRef.current) {
                         currentBgRef.current = data.url;
-                        canvasRef.current.setCanvasBgImage(data.url);
+                        await canvasRef.current.setCanvasBgImage(data.url);
+                        console.log(`[BG-SHARE] Background applied at ${delay}ms`);
                     }
-                }, 800);
+                }
             } catch (e) {
                 console.error("Error applying shared background:", e);
             }
         };
 
         applySharedBackground();
+        return () => { cancelled = true; };
     }, [searchParams, currentProduct, productConfig]);
 
     // [Task 5] Load a specific design by design_id for admin re-editing
