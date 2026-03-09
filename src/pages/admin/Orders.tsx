@@ -10,7 +10,7 @@ interface Design {
     phone_model: string;
     price: number;
     options: Record<string, any>;
-    canvas_json: object | null;
+    canvas_json?: object | null;
     preview_image: string | null;
     print_image: string | null; // 透明背景的高清印刷稿
     spec_image_url: string | null; // 客戶上傳的 AI 辨識截圖
@@ -38,7 +38,7 @@ export default function AdminOrders() {
         try {
             const { data, error: supabaseError } = await supabase
                 .from('custom_designs')
-                .select('id, design_id, product_id, product_name, phone_model, price, options, canvas_json, preview_image, print_image, spec_image_url, created_at')
+                .select('id, design_id, product_id, product_name, phone_model, price, options, preview_image, print_image, spec_image_url, created_at')
                 .order('created_at', { ascending: false });
 
             if (supabaseError) throw supabaseError;
@@ -191,19 +191,60 @@ export default function AdminOrders() {
             const response = await fetch(imageUrl);
             const blob = await response.blob();
 
-            // Create a temporary object URL
-            const url = window.URL.createObjectURL(blob);
+            let downloadUrl = '';
+            let extension = 'png';
+
+            if (type === 'PREVIEW') {
+                // Compress to JPG
+                const img = new Image();
+                const objectUrl = window.URL.createObjectURL(blob);
+
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = reject;
+                    img.src = objectUrl;
+                });
+
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+
+                if (ctx) {
+                    ctx.fillStyle = '#FFFFFF'; // Fill white behind transparent areas
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0);
+
+                    const jpgBlobUrl = await new Promise<string>((resolve) => {
+                        canvas.toBlob((b) => {
+                            resolve(b ? window.URL.createObjectURL(b) : objectUrl);
+                        }, 'image/jpeg', 0.8); // 80% quality JPG
+                    });
+
+                    downloadUrl = jpgBlobUrl;
+                    extension = 'jpg';
+                } else {
+                    downloadUrl = objectUrl;
+                }
+
+                if (downloadUrl !== objectUrl) {
+                    window.URL.revokeObjectURL(objectUrl);
+                }
+            } else {
+                downloadUrl = window.URL.createObjectURL(blob);
+                extension = 'png'; // 印刷稿維持高品質 PNG
+            }
 
             // Create a link and trigger download
             const link = document.createElement('a');
-            link.href = url;
-            link.download = `design-${design.design_id}-${type}.png`;
+            link.href = downloadUrl;
+            link.download = `design-${design.design_id}-${type.toLowerCase()}.${extension}`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
 
             // Clean up the object URL
-            window.URL.revokeObjectURL(url);
+            window.URL.revokeObjectURL(downloadUrl);
         } catch (error) {
             console.error('Download failed:', error);
             // Fallback to direct navigation if blob download fails, but set target blank
@@ -325,7 +366,7 @@ export default function AdminOrders() {
                         </div>
                         <div className="flex flex-col sm:flex-row items-center gap-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
                             <label className="flex items-center gap-2 cursor-pointer">
-                                <span className={`w-10 h-6 flex items-center bg-gray-300 rounded-full p-1 duration-300 ease-in-out ${autoCleanupEnabled ? 'bg-blue-500' : ''}`}>
+                                <span className={`w-10 h-6 flex items-center rounded-full p-1 duration-300 ease-in-out ${autoCleanupEnabled ? 'bg-blue-500' : 'bg-gray-300'}`}>
                                     <input
                                         type="checkbox"
                                         className="hidden"
@@ -538,7 +579,7 @@ CREATE POLICY "public insert custom_designs"
                                                             : '—'}
                                                     </span>
                                                     <span>NT$ {design.price}</span>
-                                                    {!design.canvas_json && (
+                                                    {!design.product_id && (
                                                         <span className="text-amber-500 text-xs">⚠ 舊版設計（無法重新編輯）</span>
                                                     )}
                                                 </div>
@@ -547,7 +588,7 @@ CREATE POLICY "public insert custom_designs"
                                             {/* Actions */}
                                             <div className="flex items-center gap-2 flex-shrink-0">
                                                 {/* Open in Editor */}
-                                                {design.canvas_json && design.product_id && (
+                                                {design.product_id && (
                                                     <a
                                                         href={getEditUrl(design)}
                                                         target="_blank"
