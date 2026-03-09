@@ -130,6 +130,8 @@ export default function Home() {
     const [designId, setDesignId] = useState('');
     const [cartStatus, setCartStatus] = useState<'idle' | 'success' | 'checking_out'>('idle');
     const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+    // Accumulate checkout tokens across multiple add-to-cart calls
+    const [pendingTokens, setPendingTokens] = useState<string[]>([]);
     const [copied, setCopied] = useState(false);
     const [isCropping, setIsCropping] = useState(false);
     const [hasClipPath, setHasClipPath] = useState(false);
@@ -1368,7 +1370,13 @@ export default function Home() {
                         throw new Error(result.message || '無法獲取結帳連結');
                     }
 
-                    console.log('[Cart] WP API success');
+                    // Extract token and accumulate for batch checkout
+                    const tokenMatch = result.checkout_url.match(/ppbears_token=([^&]+)/);
+                    if (tokenMatch) {
+                        setPendingTokens(prev => [...prev, tokenMatch[1]]);
+                    }
+
+                    console.log('[Cart] WP API success, token accumulated');
                     return result.checkout_url;
                 } finally {
                     clearTimeout(timeoutId);
@@ -2464,7 +2472,13 @@ export default function Home() {
                             <div className="flex flex-col gap-3">
                                 <button
                                     onClick={() => {
-                                        if (checkoutUrl) window.location.href = checkoutUrl;
+                                        // Batch checkout: combine ALL accumulated tokens into one URL
+                                        if (pendingTokens.length > 0) {
+                                            const baseUrl = checkoutUrl ? checkoutUrl.split('?')[0] : 'https://ppbears.com/checkout/';
+                                            window.location.href = `${baseUrl}?ppbears_token=${pendingTokens.join(',')}`;
+                                        } else if (checkoutUrl) {
+                                            window.location.href = checkoutUrl;
+                                        }
                                     }}
                                     className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2"
                                 >

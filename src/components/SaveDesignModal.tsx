@@ -409,6 +409,7 @@ export default function SaveDesignModal({
             setRecognizedProductInfo(null);
             setTextFallbackFields({});
             setCaseNameMismatch(null);
+            setInlineError(null); // ← 確保關閉後重開不殘留上次錯誤
 
             // Timeout wrapper for IndexedDB operations
             const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
@@ -658,7 +659,9 @@ export default function SaveDesignModal({
                             } else {
                                 const validItems = getFilteredItems(group.id);
                                 if (validItems.length > 0) {
-                                    next[groupKey] = validItems[0].id;
+                                    // 優先選名稱含「無」的選項（例如「無亮面」），避免意外選到非預設選項
+                                    const noneItem = validItems.find(i => i.name.includes('無'));
+                                    next[groupKey] = (noneItem || validItems[0]).id;
                                     hasChanges = true;
                                 }
                             }

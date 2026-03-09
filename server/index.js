@@ -373,40 +373,63 @@ app.post('/api/ai/auto-tag', express.json({ limit: '1mb' }), async (req, res) =>
             return fail(res, 'Server configuration error (Missing OpenAI API Key)', { errorCode: 'MISSING_ENV' });
         }
 
+        // ★ Download image on our server & compress to small base64
+        // This avoids OpenAI's "Image size exceeds the limit" / timeout errors
+        console.log(`[AI] Downloading image for auto-tag: ${imageUrl.slice(0, 80)}...`);
+        const imgBuffer = await fetchImageBuffer(imageUrl);
+        console.log(`[AI] Downloaded ${imgBuffer.length} bytes, compressing...`);
+
+        // Resize to max 512px and convert to JPEG (much smaller than PNG for photos)
+        const compressed = await sharp(imgBuffer)
+            .resize(512, 512, { fit: 'inside' })
+            .jpeg({ quality: 70 })
+            .toBuffer();
+        const imageDataUri = `data:image/jpeg;base64,${compressed.toString('base64')}`;
+        console.log(`[AI] Compressed to ${compressed.length} bytes (${Math.round(compressed.length / 1024)}KB)`);
+
         // Build the prompt with existing tags for consistency
         const existingTagsStr = Array.isArray(existingTags) && existingTags.length > 0
             ? existingTags.join('、')
-            : '（目前無已有標籤）';
+            : '';
 
-        const prompt = `請分析這張圖片，根據以下三個維度產生標籤（繁體中文）：
-1. 主色調（例：藍色、粉色、木紋色、白色）
-2. 圖案風格（例：簡約、復古、可愛、抽象、寫實）
-3. 圖案內容（例：花朵、大理石、星空、蛋糕、動物）
+        const userPrompt = existingTagsStr
+            ? `分析這張圖片並產生標籤。系統已有標籤供參考：${existingTagsStr}`
+            : `分析這張圖片並產生標籤。`;
 
-以下是系統中已有的標籤，請盡量使用這些標籤（若適用）：${existingTagsStr}
-
-請只回傳 JSON 陣列格式，例如：["藍色", "大理石", "簡約"]
-回傳 3~6 個標籤即可，不要回傳其他文字。`;
-
-        console.log(`[AI] Auto-tag for image using OpenAI GPT-4o-mini: ${imageUrl.slice(0, 80)}...`);
+        console.log(`[AI] Sending to OpenAI GPT-4o-mini...`);
 
         const response = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [
                 {
+                    role: "system",
+                    content: `你是圖片標籤產生器。請分析圖片後，嚴格按照以下順序產生 3~6 個繁體中文標籤：
+第1個標籤：必須是圖片的整體主色調（例如：白色、粉色、藍色、木紋色、灰色、黑色）
+第2個標籤：圖案材質或內容（例如：大理石、花朵、星空、木紋、幾何圖形）
+第3個標籤：風格描述（例如：簡約、復古、可愛、奢華、自然）
+第4~6個標籤（選填）：其他特徵描述
+
+回覆規則：
+- 只回覆一個 JSON 陣列，不要有任何其他文字
+- 格式範例：["白色","大理石","簡約"]
+- 第一個一定是顏色`
+                },
+                {
                     role: "user",
                     content: [
-                        { type: "text", text: prompt },
+                        { type: "text", text: userPrompt },
                         {
                             type: "image_url",
                             image_url: {
-                                "url": imageUrl,
+                                url: imageDataUri,
+                                detail: "low"
                             },
                         },
                     ],
                 },
             ],
-            max_tokens: 300,
+            max_tokens: 150,
+            temperature: 0.3,
         });
 
         const rawText = response.choices[0].message.content;
@@ -419,6 +442,8 @@ app.post('/api/ai/auto-tag', express.json({ limit: '1mb' }), async (req, res) =>
             const jsonMatch = rawText.match(/\[[\s\S]*?\]/);
             if (jsonMatch) {
                 tags = JSON.parse(jsonMatch[0]);
+            } else {
+                throw new Error("AI did not return a JSON array");
             }
         } catch (parseErr) {
             console.warn('[AI] Failed to parse JSON from OpenAI output, trying comma split:', parseErr.message);

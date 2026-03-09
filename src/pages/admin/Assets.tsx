@@ -254,6 +254,8 @@ export default function AdminAssets() {
                 .flatMap(item => item.tags || []);
             const existingTags = [...new Set(allTags)].filter(Boolean);
 
+            console.log('[AutoTag] Sending request for asset:', asset.id, 'url:', imageUrl.slice(0, 60));
+
             const response = await fetch(apiUrl('/api/ai/auto-tag'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -261,19 +263,26 @@ export default function AdminAssets() {
             });
 
             const result = await response.json();
+            console.log('[AutoTag] Response:', JSON.stringify(result));
+
             if (result.success && Array.isArray(result.tags) && result.tags.length > 0) {
-                // Only update if the modal is still open for this asset
+                const newTags = result.tags;
+                // Update tags first, then reset loading flag
                 setEditingAsset(prev => {
                     if (prev && prev.id === asset.id) {
-                        return { ...prev, tags: result.tags };
+                        return { ...prev, tags: newTags };
                     }
                     return prev;
                 });
+                // Small delay to ensure React commits the tags state before showing the input
+                await new Promise(r => setTimeout(r, 50));
+                setIsAiTagging(false);
+            } else {
+                console.warn('[AutoTag] Empty or invalid tags received:', result);
+                setIsAiTagging(false);
             }
         } catch (err) {
-            console.error('AI auto-tag failed:', err);
-            // Silent fail - user can still manually tag
-        } finally {
+            console.error('[AutoTag] Failed:', err);
             setIsAiTagging(false);
         }
     };
