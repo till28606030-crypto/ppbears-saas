@@ -66,13 +66,19 @@ const SellerShop: React.FC = () => {
     const { isAuthenticated } = useAuth();
     const showAdminEntry = isAdminRoute(location.pathname);
 
-    // Task 2: Sync URL Params
+    // Task 2: Sync URL Params (preserve passthrough params like bg_id, template_id)
     useEffect(() => {
-        const params: any = {};
-        if (activeCategory !== 'all') params.category = activeCategory;
-        if (activeBrand !== 'all') params.brand = activeBrand;
+        const params = new URLSearchParams();
+        if (activeCategory !== 'all') params.set('category', activeCategory);
+        if (activeBrand !== 'all') params.set('brand', activeBrand);
+        // Preserve passthrough params for shareable links
+        const preserveKeys = ['bg_id', 'template_id', 'require_product_selection'];
+        preserveKeys.forEach(key => {
+            const val = searchParams.get(key);
+            if (val) params.set(key, val);
+        });
         setSearchParams(params, { replace: true });
-    }, [activeCategory, activeBrand, setSearchParams]);
+    }, [activeCategory, activeBrand]);
 
     // Task 2: Distinct Brands Logic
     const distinctBrands = React.useMemo(() => {
