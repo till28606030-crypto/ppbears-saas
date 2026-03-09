@@ -196,6 +196,38 @@ export default function Home() {
     const [assetSearch, setAssetSearch] = useState('');
     const [selectedAssetCategory, setSelectedAssetCategory] = useState('全部');
 
+    // Infinite Scroll State
+    const [displayLimit, setDisplayLimit] = useState(30);
+    const loadMoreRef = useRef<HTMLDivElement>(null);
+
+    // Reset limit when changing panels, search or category
+    useEffect(() => {
+        setDisplayLimit(30);
+    }, [activePanel, assetSearch, selectedAssetCategory]);
+
+    // Intersection observer for infinite scroll
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    setDisplayLimit((prev) => prev + 30);
+                }
+            },
+            { root: null, rootMargin: '100px', threshold: 0.1 }
+        );
+
+        const currentRef = loadMoreRef.current;
+        if (currentRef) {
+            observer.observe(currentRef);
+        }
+
+        return () => {
+            if (currentRef) {
+                observer.unobserve(currentRef);
+            }
+        };
+    }, [activePanel, selectedAssetCategory, assetSearch, displayLimit]);
+
     // Navigation State for Products Panel
     const [navPath, setNavPath] = useState<string[]>([]); // ['all' | 'other' | categoryId]
 
@@ -2204,53 +2236,63 @@ export default function Home() {
                                             });
                                         }
 
-                                        return displayItems.map((item, idx) => {
-                                            if (activePanel === 'designs') {
-                                                const design = item as DesignTemplate;
-                                                return (
-                                                    <button
-                                                        key={design.id}
-                                                        onClick={() => handleAddDesignLayers(design)}
-                                                        className="group flex flex-col items-center gap-2 w-full"
-                                                    >
-                                                        <div className="aspect-[1/2] w-full bg-gray-50 rounded-xl overflow-hidden relative shadow-sm group-hover:shadow-md transition-all border border-gray-100">
-                                                            {/* Background Preview (Product Template) */}
-                                                            {productConfig?.baseImage && (
-                                                                <div className="absolute inset-0 p-1 flex items-center justify-center">
-                                                                    <img
-                                                                        src={productConfig.baseImage}
-                                                                        className="w-full h-full object-contain opacity-50 mix-blend-multiply"
-                                                                        alt="template"
-                                                                    />
-                                                                </div>
-                                                            )}
+                                        const paginatedItems = displayItems.slice(0, displayLimit);
 
-                                                            {design.previewUrl ? (
-                                                                <img src={design.previewUrl} alt={design.name} className="w-full h-full object-contain p-1 relative z-10" />
-                                                            ) : (
-                                                                <div className="w-full h-full flex items-center justify-center relative z-10">
-                                                                    <FileImage className="w-8 h-8 text-gray-300" />
-                                                                </div>
-                                                            )}
+                                        return (
+                                            <>
+                                                {paginatedItems.map((item, idx) => {
+                                                    if (activePanel === 'designs') {
+                                                        const design = item as DesignTemplate;
+                                                        return (
+                                                            <button
+                                                                key={design.id}
+                                                                onClick={() => handleAddDesignLayers(design)}
+                                                                className="group flex flex-col items-center gap-2 w-full"
+                                                            >
+                                                                <div className="aspect-[1/2] w-full bg-gray-50 rounded-xl overflow-hidden relative shadow-sm group-hover:shadow-md transition-all border border-gray-100">
+                                                                    {/* Background Preview (Product Template) */}
+                                                                    {productConfig?.baseImage && (
+                                                                        <div className="absolute inset-0 p-1 flex items-center justify-center">
+                                                                            <img
+                                                                                src={productConfig.baseImage}
+                                                                                className="w-full h-full object-contain opacity-50 mix-blend-multiply"
+                                                                                alt="template"
+                                                                                loading="lazy"
+                                                                            />
+                                                                        </div>
+                                                                    )}
 
-                                                            {/* Hover Effect Overlay */}
-                                                            <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity z-20" />
-                                                        </div>
-                                                    </button>
-                                                );
-                                            } else {
-                                                return (
-                                                    <button
-                                                        key={item.id || idx}
-                                                        onClick={() => handleAddAsset(item, activePanel === 'stickers' ? 'sticker' : activePanel === 'frames' ? 'frame' : 'background')}
-                                                        className="aspect-square rounded-md border border-gray-200 p-0.5 hover:border-blue-500 hover:shadow-md transition-all bg-white flex items-center justify-center relative group"
-                                                        title={item.name}
-                                                    >
-                                                        <img src={item.url} alt={item.name} className="max-w-full max-h-full object-contain" />
-                                                    </button>
-                                                );
-                                            }
-                                        });
+                                                                    {design.previewUrl ? (
+                                                                        <img src={design.previewUrl} alt={design.name} className="w-full h-full object-contain p-1 relative z-10" loading="lazy" />
+                                                                    ) : (
+                                                                        <div className="w-full h-full flex items-center justify-center relative z-10">
+                                                                            <FileImage className="w-8 h-8 text-gray-300" />
+                                                                        </div>
+                                                                    )}
+
+                                                                    {/* Hover Effect Overlay */}
+                                                                    <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity z-20" />
+                                                                </div>
+                                                            </button>
+                                                        );
+                                                    } else {
+                                                        return (
+                                                            <button
+                                                                key={item.id || idx}
+                                                                onClick={() => handleAddAsset(item, activePanel === 'stickers' ? 'sticker' : activePanel === 'frames' ? 'frame' : 'background')}
+                                                                className="aspect-square rounded-md border border-gray-200 p-0.5 hover:border-blue-500 hover:shadow-md transition-all bg-white flex items-center justify-center relative group"
+                                                                title={item.name}
+                                                            >
+                                                                <img src={item.url} alt={item.name} className="max-w-full max-h-full object-contain" loading="lazy" />
+                                                            </button>
+                                                        );
+                                                    }
+                                                })}
+                                                {displayItems.length > displayLimit && (
+                                                    <div ref={loadMoreRef} className="h-4 w-full col-span-full" />
+                                                )}
+                                            </>
+                                        );
                                     })()}
                                 </div>
                             </div>
