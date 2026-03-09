@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { ShoppingBag, Download, Clock, Search, Trash2, ExternalLink, RefreshCw, CheckSquare, Square, Copy, Image as ImageIcon } from 'lucide-react';
+import { ShoppingBag, Download, Clock, Search, Trash2, ExternalLink, RefreshCw, CheckSquare, Square, Copy, Image as ImageIcon, Settings, Save, Loader2 } from 'lucide-react';
 
 interface Design {
     id: string;
@@ -26,6 +26,11 @@ export default function AdminOrders() {
 
     const [deleteTarget, setDeleteTarget] = useState<'bulk' | string | null>(null);
 
+    // Auto-cleanup settings
+    const [autoCleanupEnabled, setAutoCleanupEnabled] = useState(false);
+    const [cleanupDays, setCleanupDays] = useState(30);
+    const [isCleaningUp, setIsCleaningUp] = useState(false);
+
     const fetchDesigns = async () => {
         setLoading(true);
         setError(null);
@@ -46,8 +51,82 @@ export default function AdminOrders() {
         }
     };
 
+    const runAutoCleanup = async (enabled: boolean, days: number) => {
+        if (!enabled || isCleaningUp) return;
+
+        console.log(`[Auto Cleanup] Running... deleting designs older than ${days} days`);
+        setIsCleaningUp(true);
+
+        try {
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - days);
+            const cutoffIsoString = cutoffDate.toISOString();
+
+            // Find old designs
+            const { data: oldDesigns, error: fetchError } = await supabase
+                .from('custom_designs')
+                .select('design_id')
+                .lt('created_at', cutoffIsoString);
+
+            if (fetchError) throw fetchError;
+
+            if (oldDesigns && oldDesigns.length > 0) {
+                const oldDesignIds = oldDesigns.map(d => d.design_id);
+                console.log(`[Auto Cleanup] Found ${oldDesignIds.length} old designs to delete.`);
+
+                // Call the admin RPC for deletion
+                const { error: deleteError } = await supabase.rpc('delete_custom_designs_admin', {
+                    design_ids: oldDesignIds
+                });
+
+                if (deleteError) throw deleteError;
+
+                console.log(`[Auto Cleanup] Successfully deleted ${oldDesignIds.length} designs.`);
+                // Refresh list if deleted
+                await fetchDesigns();
+            } else {
+                console.log(`[Auto Cleanup] No designs older than ${days} days found.`);
+            }
+        } catch (err) {
+            console.error('[Auto Cleanup] Failed:', err);
+        } finally {
+            setIsCleaningUp(false);
+        }
+    };
+
+    const saveAutoCleanupSettings = () => {
+        if (cleanupDays < 1) {
+            alert('清理天數不得小於 1 天');
+            return;
+        }
+        localStorage.setItem('ppbears_auto_cleanup_enabled', autoCleanupEnabled ? 'true' : 'false');
+        localStorage.setItem('ppbears_auto_cleanup_days', cleanupDays.toString());
+
+        alert('自動清理設定已儲存！');
+
+        // Immediately run cleanup if enabled
+        if (autoCleanupEnabled) {
+            runAutoCleanup(true, cleanupDays);
+        }
+    };
+
     useEffect(() => {
-        fetchDesigns();
+        // Load existing settings
+        const savedEnabled = localStorage.getItem('ppbears_auto_cleanup_enabled') === 'true';
+        const savedDaysStr = localStorage.getItem('ppbears_auto_cleanup_days');
+        const savedDays = savedDaysStr ? parseInt(savedDaysStr, 10) : 30;
+
+        setAutoCleanupEnabled(savedEnabled);
+        setCleanupDays(savedDays);
+
+        fetchDesigns().then(() => {
+            // After initial load, run cleanup if enabled
+            if (savedEnabled) {
+                runAutoCleanup(savedEnabled, savedDays);
+            }
+        });
+
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const confirmDelete = async () => {
@@ -232,6 +311,57 @@ export default function AdminOrders() {
             </header>
 
             <div className="p-8 max-w-6xl mx-auto">
+                {/* Auto Cleanup Settings */}
+                <div className="mb-6 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div>
+                            <h2 className="text-base font-semibold flex items-center gap-2 text-gray-800">
+                                <Settings className="w-4 h-4 text-blue-600" />
+                                自動清理過期設計
+                            </h2>
+                            <p className="text-sm text-gray-500 mt-1 max-w-xl">
+                                系統每次載入此頁面時，將自動清除超過指定天數的舊設計稿，以維持資料庫與儲存空間整潔。
+                            </p>
+                        </div>
+                        <div className="flex flex-col sm:flex-row items-center gap-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <span className={`w-10 h-6 flex items-center bg-gray-300 rounded-full p-1 duration-300 ease-in-out ${autoCleanupEnabled ? 'bg-blue-500' : ''}`}>
+                                    <input
+                                        type="checkbox"
+                                        className="hidden"
+                                        checked={autoCleanupEnabled}
+                                        onChange={(e) => setAutoCleanupEnabled(e.target.checked)}
+                                    />
+                                    <div className={`bg-white w-4 h-4 rounded-full shadow-md transform duration-300 ease-in-out ${autoCleanupEnabled ? 'translate-x-4' : ''}`}></div>
+                                </span>
+                                <span className="text-sm font-medium text-gray-700">啟用自動清理</span>
+                            </label>
+
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-600">清理</span>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={cleanupDays}
+                                    onChange={(e) => setCleanupDays(parseInt(e.target.value) || 1)}
+                                    disabled={!autoCleanupEnabled}
+                                    className="w-16 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                                />
+                                <span className="text-sm text-gray-600">天前的設計</span>
+                            </div>
+
+                            <button
+                                onClick={saveAutoCleanupSettings}
+                                disabled={isCleaningUp}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50"
+                            >
+                                {isCleaningUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                儲存
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Search Bar */}
                 <div className="mb-6 relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
