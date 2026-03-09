@@ -1045,13 +1045,18 @@ export default function Home() {
                     const previewBlob = base64ToBlob(dataUrl, 'image/jpeg');
                     const previewUrl = supabase.storage.from('design-previews').getPublicUrl(`${designId}/preview.jpg`).data.publicUrl;
 
+                    // Generate print file at save time so download is available without checkout
+                    const printFileData = canvasRef.current?.generatePrintFile?.();
+                    const printBlob = printFileData ? base64ToBlob(printFileData, 'image/png') : null;
+                    const printUrl = supabase.storage.from('design-previews').getPublicUrl(`${designId}/print.png`).data.publicUrl;
+
                     // Parallel: Upload Image & Upsert DB
                     const canvasJson = canvasRef.current?.getCanvasJSON?.() || null;
 
                     // Optimistic update: Do not await saving
-                    Promise.all([
+                    const uploadTasks: Promise<any>[] = [
                         supabase.storage.from('design-previews').upload(`${designId}/preview.jpg`, previewBlob, { upsert: true, contentType: 'image/jpeg' }),
-                        supabase.from('custom_designs').upsert({
+                        (supabase.from('custom_designs').upsert({
                             design_id: designId,
                             product_id: productId || null,
                             product_name: currentProduct?.name || '客製化手機殼',
@@ -1060,13 +1065,24 @@ export default function Home() {
                             options: {},
                             canvas_json: canvasJson,
                             preview_image: previewUrl,
-                        }, { onConflict: 'design_id' })
-                    ]).then(() => {
+                            print_image: printUrl,
+                        }, { onConflict: 'design_id' }) as unknown as Promise<any>)
+                    ];
+
+                    // Upload print.png in parallel if generated successfully
+                    if (printBlob) {
+                        uploadTasks.push(
+                            supabase.storage.from('design-previews').upload(`${designId}/print.png`, printBlob, { upsert: true, contentType: 'image/png' })
+                        );
+                    }
+
+                    Promise.all(uploadTasks).then(() => {
                         console.log('[DesignSave] Save completed successfully in background');
                         setUploadProgress(100);
                     }).catch(error => {
                         console.error('[DesignSave] Error in background upload:', error);
                     });
+
 
                     // Wait for minimum fake progress time
                     setTimeout(() => {
