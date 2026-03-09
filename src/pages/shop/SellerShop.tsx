@@ -235,6 +235,7 @@ const SellerShop: React.FC = () => {
     };
 
     const templateId = searchParams.get('template_id');
+    const bgId = searchParams.get('bg_id');
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -292,9 +293,11 @@ const SellerShop: React.FC = () => {
                 </div>
             </header>
 
-            {templateId && (
+            {(templateId || bgId) && (
                 <div className="bg-blue-600 text-white text-center py-3 px-4 shadow-sm relative text-sm font-medium flex justify-center items-center">
-                    請先選擇上方商品分類及型號，選擇後將自動套用您所點擊的設計模板
+                    {bgId
+                        ? '請先選擇上方商品分類及型號，選擇後將自動套用您所點擊的背景素材'
+                        : '請先選擇上方商品分類及型號，選擇後將自動套用您所點擊的設計模板'}
                 </div>
             )}
 

@@ -644,6 +644,42 @@ export default function Home() {
         loadTemplate();
     }, [searchParams, currentProduct, productConfig]);
 
+    // [Task 6] Load background from shared link (bg_id)
+    useEffect(() => {
+        const bgId = searchParams.get('bg_id');
+        if (!bgId || !currentProduct || !productConfig) return;
+        // If we are loading a saved design for re-edit, skip background application
+        if (searchParams.get('load_design_id')) return;
+
+        const applySharedBackground = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('assets')
+                    .select('url')
+                    .eq('id', bgId)
+                    .eq('type', 'background')
+                    .single();
+
+                if (error || !data?.url) {
+                    console.error("Failed to load shared background:", error);
+                    return;
+                }
+
+                // Small delay to ensure canvas is fully initialized with product
+                setTimeout(() => {
+                    if (canvasRef.current) {
+                        currentBgRef.current = data.url;
+                        canvasRef.current.setCanvasBgImage(data.url);
+                    }
+                }, 800);
+            } catch (e) {
+                console.error("Error applying shared background:", e);
+            }
+        };
+
+        applySharedBackground();
+    }, [searchParams, currentProduct, productConfig]);
+
     // [Task 5] Load a specific design by design_id for admin re-editing
     useEffect(() => {
         const loadDesignById = async () => {

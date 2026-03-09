@@ -13,6 +13,29 @@ export default function PublicTemplate() {
             if (!slug) return;
 
             try {
+                // Check if this is a background asset link (bg-{id})
+                if (slug.startsWith('bg-')) {
+                    const assetId = slug.substring(3); // Remove 'bg-' prefix
+                    const { data: asset, error: assetError } = await supabase
+                        .from('assets')
+                        .select('id')
+                        .eq('id', assetId)
+                        .eq('type', 'background')
+                        .single();
+
+                    if (assetError || !asset) {
+                        setError("此背景素材不存在");
+                        return;
+                    }
+
+                    const params = new URLSearchParams();
+                    params.set('bg_id', assetId);
+                    params.set('require_product_selection', 'true');
+                    navigate(`/shop?${params.toString()}`, { replace: true });
+                    return;
+                }
+
+                // Original design template logic
                 // 1. Fetch Design
                 const { data: design, error: fetchError } = await supabase
                     .from('design_templates')

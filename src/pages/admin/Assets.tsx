@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { uploadToSupabase } from '@/lib/upload';
-import { Sticker, Image as ImageIcon, Upload, Trash2, Edit2, X, Plus, Save, GripVertical, Search } from 'lucide-react';
+import { Sticker, Image as ImageIcon, Upload, Trash2, Edit2, X, Plus, Save, GripVertical, Search, Copy } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -386,6 +386,19 @@ export default function AdminAssets() {
                                             >
                                                 <Edit2 className="w-4 h-4" />
                                             </button>
+                                            {activeAssetTab === 'backgrounds' && (
+                                                <button
+                                                    onClick={() => {
+                                                        const link = `${window.location.origin}${import.meta.env.VITE_BASE_PATH || '/'}t/bg-${item.id}`;
+                                                        navigator.clipboard.writeText(link);
+                                                        alert("背景素材連結已複製！\n\n網址: " + link);
+                                                    }}
+                                                    className="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
+                                                    title="複製對外連結"
+                                                >
+                                                    <Copy className="w-4 h-4" />
+                                                </button>
+                                            )}
                                             <button
                                                 onClick={() => deleteAsset(item.id, activeAssetTab)}
                                                 className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
