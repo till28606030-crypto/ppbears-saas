@@ -32,7 +32,7 @@
 - **PPBears Checkout Link v1.9.0**：`handle_checkout_token()` 支援逗號分隔的多 token 批次處理
 
 ### 測試結果
-- ⏳ 尚未由用戶測試（未部署至 Hostinger）
+- ✅ 用戶測試成功，購物車功能回復正常（需搭配 Plugin v1.9.0）
 
 ---
 
