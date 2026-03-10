@@ -269,21 +269,34 @@ export function mapRecognizedSpecs(
                             return;
                         }
 
-                        // 非嚴格模式才嘗試尋找並選擇「其他」
-                        const otherOption = attr.options.find((opt: any) =>
-                            normalizeString(opt.name) === '其他' || normalizeString(opt.name) === '其它'
-                        );
+                        let fallbackValue = rec.value;
+                        let otherOption: any = undefined;
+
+                        // 針對「支架」的特殊處理：若辨識結果包含「支架」，優先尋找「支架 其他」選項，且文字回退統一改為「支架 其他」
+                        if (rec.value.includes('支架')) {
+                            fallbackValue = '支架 其他';
+                            otherOption = attr.options.find((opt: any) =>
+                                normalizeString(opt.name) === '支架其他' || normalizeString(opt.name) === '支架其它'
+                            );
+                        }
+
+                        // 非嚴格模式才嘗試尋找並選擇「其他」 (如果前面沒找到特定的其他選項)
+                        if (!otherOption) {
+                            otherOption = attr.options.find((opt: any) =>
+                                normalizeString(opt.name) === '其他' || normalizeString(opt.name) === '其它'
+                            );
+                        }
 
                         if (otherOption) {
                             nextOptions[attrKey] = otherOption.id;
                             matchCount++;
-                            textFallback[attrKey] = rec.value;
-                            nextOptions[`${attrKey}_text_fallback`] = rec.value;
-                            console.log(`[AI] ⚠ 找不到對應選項 ${rec.category} -> "${rec.value}"，自動選擇 "${otherOption.name}"`);
+                            textFallback[attrKey] = fallbackValue;
+                            nextOptions[`${attrKey}_text_fallback`] = fallbackValue;
+                            console.log(`[AI] ⚠ 找不到對應選項 ${rec.category} -> "${rec.value}"，自動選擇 "${otherOption.name}"，填寫文字 "${fallbackValue}"`);
                         } else {
-                            textFallback[attrKey] = rec.value;
-                            nextOptions[`${attrKey}_text_fallback`] = rec.value;
-                            console.log(`[AI] ✗ 找不到對應選項 ${rec.category} -> "${rec.value}"，改用文字`);
+                            textFallback[attrKey] = fallbackValue;
+                            nextOptions[`${attrKey}_text_fallback`] = fallbackValue;
+                            console.log(`[AI] ✗ 找不到對應選項 ${rec.category} -> "${rec.value}"，改用文字 "${fallbackValue}"`);
                         }
                     }
                 } else if (attr.type === 'text') {

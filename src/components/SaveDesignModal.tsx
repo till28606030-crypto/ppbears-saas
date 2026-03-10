@@ -1023,16 +1023,27 @@ export default function SaveDesignModal({
                 const currentGroupName = norm(currentStepGroups.find(g => g.id === activeCaseGroupId)?.name || '');
 
                 // 只要這三個名稱之間，有直接文字包含關係，就算吻合（例如："惡魔防摔殼pro3磁吸版" 包含在 "惡魔防摔殼pro3磁吸版" 裡面）
-                const isDirectMatch =
+                let isDirectMatch =
                     (recognizedCase.includes(currentName) && currentName.length > 0) ||
                     (currentName.includes(recognizedCase) && recognizedCase.length > 0) ||
                     (recognizedCase.includes(currentGroupName) && currentGroupName.length > 0) ||
                     (currentGroupName.includes(recognizedCase) && recognizedCase.length > 0);
 
-                // 如果沒有直接包含關係，才去比對關鍵字是否衝突
+                // 🌟 新增：即使有包含關係，但如果在「殼種名稱」上有數字差異（如標準版 vs 標準版2），則強制判定為非吻合
+                if (isDirectMatch && currentGroupName.length > 0 && recognizedCase.length > 0) {
+                    const recNums = recognizedCase.match(/\d+/g)?.join('') || '';
+                    const curGroupNums = currentGroupName.match(/\d+/g)?.join('') || '';
+                    // 只有當兩者都有長度時，如果數字不相等代表殼種的代數不同，視為不同款式
+                    if (recNums !== curGroupNums) {
+                        isDirectMatch = false;
+                    }
+                }
+
+                // 如果沒有直接包含關係，或者版本數字不同，才去比對關鍵字是否衝突
                 let isMismatch = false;
                 if (!isDirectMatch) {
-                    const keywords = ['pro3', 'pro2', '標準版', '磁吸版', '標準磁吸版', 'ultra'];
+                    // 加入更詳細的版本關鍵字
+                    const keywords = ['pro3', 'pro2', 'pro', '標準版2', '標準版', '磁吸版', '標準磁吸版', 'ultra'];
                     for (const kw of keywords) {
                         const kwNorm = norm(kw);
                         const hasInRecognized = recognizedCase.includes(kwNorm);
@@ -1351,6 +1362,12 @@ export default function SaveDesignModal({
                                     <span className="text-xs text-gray-500">您選擇的商品：</span>
                                     <div className="font-bold text-gray-900">{productName}</div>
                                 </div>
+                                {activeCaseGroupId && (
+                                    <div>
+                                        <span className="text-xs text-gray-500">您選擇的殼種：</span>
+                                        <div className="font-bold text-gray-900">{stepGroups.get(1)?.find(g => g.id === activeCaseGroupId)?.name || ''}</div>
+                                    </div>
+                                )}
                                 <div>
                                     <span className="text-xs text-gray-500">截圖辨識到的殼種：</span>
                                     <div className="font-bold text-orange-700">{caseNameMismatch}</div>
