@@ -8,6 +8,8 @@ import { buildDesignShareUrl, copyToClipboard } from '../shared/shareLink';
 import { Category } from '@/types';
 import { buildCategoryTree } from '@/utils/categoryTree';
 import CategorySelect from '@/components/CategorySelect';
+import BulkAttributeModal from './BulkAttributeModal';
+import SingleAttributeModal from './SingleAttributeModal';
 import {
   DndContext,
   closestCenter,
@@ -29,12 +31,15 @@ import { GripVertical } from 'lucide-react';
 
 interface SortableRowProps {
   product: Partial<ProductRow>;
+  isSelected?: boolean;
+  onToggleSelection?: (id: string) => void;
+  onOpenSingleEdit?: (product: Partial<ProductRow>) => void;
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
   navigate: (path: string) => void;
 }
 
-const SortableRow: React.FC<SortableRowProps> = ({ product, onDelete, onDuplicate, navigate }) => {
+const SortableRow: React.FC<SortableRowProps> = ({ product, isSelected, onToggleSelection, onOpenSingleEdit, onDelete, onDuplicate, navigate }) => {
   const {
     attributes,
     listeners,
@@ -56,6 +61,15 @@ const SortableRow: React.FC<SortableRowProps> = ({ product, onDelete, onDuplicat
     <tr ref={setNodeRef} style={style} className={`hover:bg-gray-50 transition-colors ${isDragging ? 'bg-blue-50' : ''}`}>
       <td className="px-6 py-4">
         <div className="flex items-center gap-3">
+          {onToggleSelection && (
+            <input
+              type="checkbox"
+              className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+              checked={isSelected || false}
+              onChange={() => onToggleSelection(product.id!)}
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
           <button {...attributes} {...listeners} className="p-1 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing">
             <GripVertical className="w-4 h-4" />
           </button>
@@ -81,13 +95,24 @@ const SortableRow: React.FC<SortableRowProps> = ({ product, onDelete, onDuplicat
       <td className="px-6 py-4 text-center">
         {(() => {
           const linkedCount = (product as any).specs?.linked_option_groups?.length || 0;
-          return linkedCount > 0 ? (
-            <div className="flex items-center justify-center gap-1 text-blue-600 text-sm">
-              <span className="font-medium">{linkedCount}</span>
-              <span>個規格</span>
-            </div>
-          ) : (
-            <span className="text-gray-400 text-xs">未設定</span>
+          return (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onOpenSingleEdit) onOpenSingleEdit(product);
+              }}
+              className="flex items-center justify-center gap-1 mx-auto hover:bg-gray-100 px-2 py-1 rounded-md transition-colors"
+            >
+              {linkedCount > 0 ? (
+                <div className="flex items-center gap-1 text-blue-600 text-sm">
+                  <span className="font-semibold underline underline-offset-2">{linkedCount} 個規格</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 text-gray-400 text-sm">
+                  <span className="underline underline-offset-2 hover:text-blue-600">未設定</span>
+                </div>
+              )}
+            </button>
           );
         })()}
       </td>
@@ -167,6 +192,11 @@ const ProductListV2: React.FC = () => {
   const [products, setProducts] = useState<Partial<ProductRow>[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Bulk / Single Selection State
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Partial<ProductRow> | null>(null);
 
   // Search & Filter State
   const [categories, setCategories] = useState<Category[]>([]);
@@ -277,6 +307,24 @@ const ProductListV2: React.FC = () => {
     }
   };
 
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedProductIds(products.map(p => p.id!));
+    } else {
+      setSelectedProductIds([]);
+    }
+  };
+
+  const handleToggleSelection = (id: string) => {
+    setSelectedProductIds(prev =>
+      prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id]
+    );
+  };
+
+  const handleOpenSingleEdit = (product: Partial<ProductRow>) => {
+    setEditingProduct(product);
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('確定要刪除此產品嗎？此操作無法復原。')) return;
 
@@ -332,6 +380,24 @@ const ProductListV2: React.FC = () => {
 
   return (
     <div className="p-6">
+      <BulkAttributeModal
+        isOpen={showBulkModal}
+        onClose={() => setShowBulkModal(false)}
+        selectedProductIds={selectedProductIds}
+        onSuccess={() => {
+          setSelectedProductIds([]);
+          fetchProducts();
+        }}
+      />
+      <SingleAttributeModal
+        isOpen={!!editingProduct}
+        product={editingProduct}
+        onClose={() => setEditingProduct(null)}
+        onSuccess={() => {
+          fetchProducts();
+        }}
+      />
+
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">產品管理 V2</h1>
         <button
@@ -385,7 +451,15 @@ const ProductListV2: React.FC = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-50 border-bottom border-gray-200">
-                <th className="px-6 py-4 font-semibold text-gray-600">ID / 名稱</th>
+                <th className="px-6 py-4 font-semibold text-gray-600 flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    className="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                    checked={products.length > 0 && selectedProductIds.length === products.length}
+                    onChange={handleSelectAll}
+                  />
+                  <span>ID / 名稱</span>
+                </th>
                 <th className="px-6 py-4 font-semibold text-gray-600 text-center">Base Image</th>
                 <th className="px-6 py-4 font-semibold text-gray-600 text-center">關聯規格</th>
                 <th className="px-6 py-4 font-semibold text-gray-600 text-center">分享連結</th>
@@ -414,6 +488,9 @@ const ProductListV2: React.FC = () => {
                       <SortableRow
                         key={product.id}
                         product={product}
+                        isSelected={selectedProductIds.includes(product.id!)}
+                        onToggleSelection={handleToggleSelection}
+                        onOpenSingleEdit={handleOpenSingleEdit}
                         onDelete={handleDelete}
                         onDuplicate={handleDuplicate}
                         navigate={navigate}
@@ -424,6 +501,30 @@ const ProductListV2: React.FC = () => {
               </SortableContext>
             </DndContext>
           </table>
+        </div>
+      )}
+
+      {/* Floating Bulk Action Toolbar */}
+      {selectedProductIds.length > 0 && (
+        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-[100] bg-white shadow-2xl rounded-2xl p-4 border border-gray-200 flex items-center gap-4 animate-in slide-in-from-bottom-10 fade-in duration-300">
+          <div className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg font-medium text-sm">
+            已選取 {selectedProductIds.length} 個產品
+          </div>
+          <button
+            onClick={() => {
+              setShowBulkModal(true);
+            }}
+            className="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 shadow-md transition-all flex items-center gap-2"
+          >
+            批次設定關聯規格
+          </button>
+          <button
+            onClick={() => setSelectedProductIds([])}
+            className="px-4 py-2 text-gray-500 bg-gray-100 hover:text-gray-700 hover:bg-gray-200 rounded-lg text-sm font-medium transition-all"
+            title="取消選取"
+          >
+            取消選取
+          </button>
         </div>
       )}
     </div>

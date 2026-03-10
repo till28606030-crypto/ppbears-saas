@@ -1,0 +1,6 @@
+# Project Rules
+
+每次進行部署更新或提交程式碼變更時，必須：
+1. 更新 \`package.json\` 中的版號 (version)。
+2. 同步更新 \`src/layouts/AdminLayout.tsx\` (以及任何有寫死版本號的 UI 元件) 中的版本顯示字串 (包含左上角及左下角)。
+3. 在 \`CHANGELOG.md\` 中記錄修改內容。
