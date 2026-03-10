@@ -20,6 +20,13 @@ export interface SubAttribute {
     options?: SubAttributeOption[];
 }
 
+export interface MarketingTag {
+    id: string;
+    label: string;
+    theme: 'hot' | 'new' | 'sale' | 'custom';
+    expiresAt?: string; // ISO datetime string
+}
+
 export interface OptionGroupUIConfig {
     step?: number; // 1, 2, 3...
     displayType?: 'cards' | 'grid' | 'list' | 'checkbox' | 'ai_recognition';
@@ -31,6 +38,7 @@ export interface OptionGroupUIConfig {
     categorySortOrder?: number; // 分類標籤本身的排序順序
     dependsOnGroupId?: string; // 顯示條件：必須先選擇的前置規格大類 ID
     dependsOnOptionId?: string; // 顯示條件：必須先選擇的前置子選項 ID (可選)
+    marketingTags?: MarketingTag[]; // 行銷標註 (新品, 推薦, 限時特價等)
 }
 
 export interface OptionGroup {

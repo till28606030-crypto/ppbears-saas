@@ -1099,6 +1099,24 @@ export default function AdminOptionManager() {
                                                             group.uiConfig.displayType === 'checkbox' ? '勾選框' : group.uiConfig.displayType}
                                         </span>
                                     )}
+                                    {/* Active Marketing Tags Indicators */}
+                                    {(() => {
+                                        const tags = group.uiConfig?.marketingTags || [];
+                                        const now = new Date();
+                                        const activeTags = tags.filter((t: any) => !t.expiresAt || new Date(t.expiresAt) > now);
+                                        return activeTags.map((tag: any) => {
+                                            let icon = "✦";
+                                            if (tag.theme === 'hot') icon = "🔥";
+                                            if (tag.theme === 'new') icon = "✨";
+                                            if (tag.theme === 'sale') icon = "💰";
+                                            return (
+                                                <span key={tag.id} className="text-[10px] bg-gray-50 text-gray-600 px-1.5 py-0.5 rounded border border-gray-200 shrink-0 flex items-center gap-0.5" title={tag.label}>
+                                                    <span>{icon}</span>
+                                                    <span className="max-w-[60px] truncate">{tag.label}</span>
+                                                </span>
+                                            );
+                                        });
+                                    })()}
                                 </div>
                             </div>
                         </div>
@@ -1929,9 +1947,93 @@ export default function AdminOptionManager() {
                                     }}
                                 />
                             </div>
+
+                            {/* 🔥 Marketing Tags */}
+                            <div className="bg-orange-50/50 p-4 rounded-xl border border-orange-100 shadow-sm mt-4">
+                                <div className="flex justify-between items-center mb-3">
+                                    <label className="text-sm font-bold text-orange-800 flex items-center gap-2">
+                                        🔥 行銷標籤設定 (Marketing Tags)
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setEditingGroupData(prev => ({
+                                                ...prev,
+                                                uiConfig: {
+                                                    ...prev.uiConfig,
+                                                    marketingTags: [
+                                                        ...(prev.uiConfig?.marketingTags || []),
+                                                        { id: Date.now().toString(), label: '', theme: 'hot' }
+                                                    ]
+                                                }
+                                            }));
+                                        }}
+                                        className="px-2 py-1 text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 rounded font-bold transition-colors"
+                                    >
+                                        + 新增標籤
+                                    </button>
+                                </div>
+                                <div className="space-y-3">
+                                    {(editingGroupData.uiConfig?.marketingTags || []).map((tag, index) => (
+                                        <div key={tag.id} className="flex flex-col sm:flex-row gap-2 items-start sm:items-center bg-white p-2.5 rounded-lg border border-orange-100">
+                                            <input
+                                                value={tag.label}
+                                                onChange={(e) => {
+                                                    const newTags = [...(editingGroupData.uiConfig?.marketingTags || [])];
+                                                    newTags[index] = { ...tag, label: e.target.value };
+                                                    setEditingGroupData(prev => ({ ...prev, uiConfig: { ...prev.uiConfig, marketingTags: newTags } }));
+                                                }}
+                                                placeholder="例如: 強力推薦"
+                                                className="flex-1 border border-gray-200 rounded px-2 py-1.5 text-sm"
+                                            />
+                                            <select
+                                                value={tag.theme}
+                                                onChange={(e) => {
+                                                    const newTags = [...(editingGroupData.uiConfig?.marketingTags || [])];
+                                                    newTags[index] = { ...tag, theme: e.target.value as any };
+                                                    setEditingGroupData(prev => ({ ...prev, uiConfig: { ...prev.uiConfig, marketingTags: newTags } }));
+                                                }}
+                                                className="w-full sm:w-auto border border-gray-200 rounded px-2 py-1.5 text-sm"
+                                            >
+                                                <option value="hot">🔥 熱銷/推薦 (紅)</option>
+                                                <option value="new">✨ 新品 (紫)</option>
+                                                <option value="sale">💰 優惠 (綠)</option>
+                                                <option value="custom">✦ 自訂 (灰)</option>
+                                            </select>
+                                            <div className="flex-1 w-full sm:w-auto relative group/tooltip">
+                                                <input
+                                                    type="datetime-local"
+                                                    value={tag.expiresAt ? new Date(new Date(tag.expiresAt).getTime() - new Date(tag.expiresAt).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
+                                                    onChange={(e) => {
+                                                        const newTags = [...(editingGroupData.uiConfig?.marketingTags || [])];
+                                                        newTags[index] = { ...tag, expiresAt: e.target.value ? new Date(e.target.value).toISOString() : undefined };
+                                                        setEditingGroupData(prev => ({ ...prev, uiConfig: { ...prev.uiConfig, marketingTags: newTags } }));
+                                                    }}
+                                                    className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm"
+                                                />
+                                                {!tag.expiresAt && <span className="absolute right-8 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">永久有效</span>}
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    const newTags = [...(editingGroupData.uiConfig?.marketingTags || [])];
+                                                    newTags.splice(index, 1);
+                                                    setEditingGroupData(prev => ({ ...prev, uiConfig: { ...prev.uiConfig, marketingTags: newTags } }));
+                                                }}
+                                                className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors shrink-0"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {!(editingGroupData.uiConfig?.marketingTags?.length) && (
+                                        <div className="text-xs text-gray-400 text-center py-2">尚未新增任何行銷標籤</div>
+                                    )}
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-2">設定到期時間後，時間一過標籤將自動隱藏；若留空則為永久顯示。</p>
+                            </div>
                         </div>
 
-                        <div className="flex justify-end gap-2 pt-4">
+                        <div className="flex justify-end gap-2 pt-4 border-t border-gray-100 mt-4">
                             <button onClick={() => setIsEditingGroup(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">取消</button>
                             <button onClick={handleSaveGroup} className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800">保存</button>
                         </div>

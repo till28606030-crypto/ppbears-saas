@@ -133,12 +133,30 @@ export default function SaveDesignModal({
     const openLightbox = (images: string[], index: number) => {
         setZoomedImageList(images);
         setZoomedImageIndex(index);
+        window.history.pushState({ lightboxOpen: true }, '');
     };
 
     const closeLightbox = () => {
         setZoomedImageList([]);
         setZoomedImageIndex(0);
+        if (window.history.state?.lightboxOpen) {
+            window.history.back();
+        }
     };
+
+    // 攔截手機上一步按鈕，如果放大鏡(Lightbox)開啟，則只關閉放大鏡
+    React.useEffect(() => {
+        const onPopState = () => {
+            if (zoomedImageList.length > 0) {
+                setZoomedImageList([]);
+                setZoomedImageIndex(0);
+            }
+        };
+        if (zoomedImageList.length > 0) {
+            window.addEventListener('popstate', onPopState);
+            return () => window.removeEventListener('popstate', onPopState);
+        }
+    }, [zoomedImageList.length]);
 
     const handleNextImage = (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -1486,21 +1504,20 @@ export default function SaveDesignModal({
                                                 <button
                                                     type="button"
                                                     onClick={() => setCurrentStep(stepNum)}
-                                                    disabled={stepNum > currentStep && !hasChosenSpec} // Allow navigation if spec is chosen? Or enforce sequence?
-                                                    // Current logic: disabled={stepNum > currentStep} which forces sequential.
-                                                    // But user wants "Direct Checkout". If spec is chosen, maybe allow jumping?
-                                                    // For now, let's keep it sequential but allow jumping back.
-                                                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 transition-colors ${currentStep === stepNum
-                                                        ? 'bg-black text-white'
-                                                        : (stepNum < currentStep || hasChosenSpec) // Allow jump if visited OR if main spec selected
-                                                            ? 'bg-gray-800 text-white cursor-pointer'
-                                                            : 'bg-gray-100 text-gray-400'
+                                                    disabled={stepNum > currentStep && !hasChosenSpec}
+                                                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 transition-colors duration-300 ${currentStep === stepNum
+                                                        ? 'bg-black text-white shadow-md'
+                                                        : stepNum < currentStep
+                                                            ? 'bg-gray-800 text-white cursor-pointer hover:bg-black'
+                                                            : hasChosenSpec
+                                                                ? 'bg-white text-gray-500 border-2 border-gray-200 cursor-pointer hover:border-gray-800 hover:text-gray-800'
+                                                                : 'bg-gray-100 text-gray-400'
                                                         }`}
                                                 >
                                                     {displayNum}
                                                 </button>
                                                 {idx < availableSteps.length - 1 && (
-                                                    <div className={`h-1 w-4 sm:w-8 shrink-0 ${availableSteps[idx + 1] <= currentStep || (hasChosenSpec && currentStep >= stepNum) // Logic for bar coloring
+                                                    <div className={`h-1 w-4 sm:w-8 shrink-0 transition-colors duration-300 ${availableSteps[idx + 1] <= currentStep
                                                         ? 'bg-gray-800'
                                                         : 'bg-gray-200'
                                                         }`}></div>
@@ -1872,6 +1889,42 @@ export default function SaveDesignModal({
                                                             }
                                                         });
 
+                                                        const renderMarketingTags = (config: any) => {
+                                                            const tags = config?.marketingTags || [];
+                                                            if (!tags || tags.length === 0) return null;
+                                                            const now = new Date();
+                                                            const activeTags = tags.filter((t: any) => !t.expiresAt || new Date(t.expiresAt) > now);
+                                                            if (activeTags.length === 0) return null;
+
+                                                            return (
+                                                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                                                    {activeTags.map((tag: any) => {
+                                                                        let badgeClass = "bg-gray-100 text-gray-600 border-gray-200";
+                                                                        let icon = null;
+                                                                        if (tag.theme === 'hot') {
+                                                                            badgeClass = "bg-gradient-to-r from-red-500 to-orange-500 text-white border-transparent shadow-sm shadow-red-500/20";
+                                                                            icon = "🔥";
+                                                                        } else if (tag.theme === 'new') {
+                                                                            badgeClass = "bg-gradient-to-r from-purple-500 to-blue-500 text-white border-transparent shadow-sm shadow-purple-500/20";
+                                                                            icon = "✨";
+                                                                        } else if (tag.theme === 'sale') {
+                                                                            badgeClass = "bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-transparent shadow-sm shadow-emerald-500/20";
+                                                                            icon = "💰";
+                                                                        } else {
+                                                                            badgeClass = "bg-gray-100 text-gray-700 border-gray-200";
+                                                                            icon = "✦";
+                                                                        }
+                                                                        return (
+                                                                            <span key={tag.id} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border leading-none ${badgeClass}`}>
+                                                                                {icon && <span>{icon}</span>}
+                                                                                {tag.label}
+                                                                            </span>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            );
+                                                        };
+
                                                         const renderCardGroup = (group: OptionGroup) => {
                                                             const ui = getUI(group);
                                                             const groupKey = getGroupKey(group);
@@ -1900,11 +1953,14 @@ export default function SaveDesignModal({
                                                                                 </div>
                                                                             )}
                                                                             <div>
-                                                                                <h3 className="font-bold text-gray-900 text-base">{group.name}</h3>
-                                                                                <p className="text-sm text-gray-500">{group.priceModifier > 0 ? `NT$ ${group.priceModifier}` : ''}</p>
+                                                                                <h3 className="font-bold text-gray-900 text-base flex flex-col items-start xl:flex-row xl:items-center gap-1 xl:gap-2">
+                                                                                    {group.name}
+                                                                                </h3>
+                                                                                <p className="text-[13px] font-semibold text-blue-600 mt-0.5">{group.priceModifier > 0 ? `NT$ ${group.priceModifier}` : ''}</p>
+                                                                                {renderMarketingTags(ui)}
                                                                             </div>
                                                                         </div>
-                                                                        <div className="flex items-center gap-3 shrink-0">
+                                                                        <div className="flex items-center gap-3 shrink-0 ml-2">
                                                                             {isSelected && (
                                                                                 <div className="w-7 h-7 rounded-full bg-black flex items-center justify-center shadow-lg animate-in zoom-in duration-300">
                                                                                     <Check className="w-4 h-4 text-white stroke-[3px]" />
