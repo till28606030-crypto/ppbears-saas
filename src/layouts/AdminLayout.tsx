@@ -1,4 +1,5 @@
 import { useState } from 'react';
+const APP_VERSION = __APP_VERSION__;
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { ShoppingBag, Image as ImageIcon, LayoutDashboard, LogOut, Menu, X, ArrowLeft, Palette, Shapes, Settings, FolderTree } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -41,7 +42,7 @@ export default function AdminLayout() {
           </div>
           <span className="font-semibold text-gray-800">管理後台</span>
           <span className="px-2 py-0.5 whitespace-nowrap bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full ml-1">
-            V3.9.5
+            V{APP_VERSION}
           </span>
         </div>
         <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
@@ -60,7 +61,7 @@ export default function AdminLayout() {
             A
           </div>
           <span className="font-semibold text-lg flex items-center gap-2">
-            管理後台 <span className="text-xs font-normal bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">V3.9.5</span>
+            管理後台 <span className="text-xs font-normal bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">V{APP_VERSION}</span>
           </span>
         </div>
 
@@ -166,7 +167,7 @@ export default function AdminLayout() {
 
           <div className="px-4 py-2 mt-4 text-center">
             <div className="text-center text-[10px] text-gray-400 mt-6 font-mono">
-              Version 3.9.5
+              Version {APP_VERSION}
             </div>
           </div>
         </div>

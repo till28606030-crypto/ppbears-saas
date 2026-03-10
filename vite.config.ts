@@ -2,6 +2,9 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tsconfigPaths from "vite-tsconfig-paths";
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
+
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -9,6 +12,9 @@ export default defineConfig(({ mode }) => {
   const apiProxyTarget = env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:3001'
   return {
     base: env.VITE_BASE_PATH || '/',
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+    },
     build: {
       sourcemap: false, // 關閉 sourcemap 以節省空間且減少上傳負擔
     },
