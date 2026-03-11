@@ -122,7 +122,8 @@ const SellerShop: React.FC = () => {
                     .from('products')
                     .select('*')
                     .eq('is_active', true)
-                    .order('sort_order', { ascending: true });
+                    .order('sort_order', { ascending: true })
+                    .order('created_at', { ascending: false });
 
                 if (error) {
                     console.error('Failed to load products (SellerShop):', error);
