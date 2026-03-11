@@ -1375,7 +1375,7 @@ export default function AdminOptionManager() {
                     >
                         <SortableContext items={sortedCategories.map(cat => `cat-${cat}`)} strategy={verticalListSortingStrategy}>
                             {sortedCategories.map(cat => {
-                                const isExpanded = expandedCategories[cat] !== false; // Default to true
+                                const isExpanded = expandedCategories[cat] === true; // Default to false
                                 const catGroups = groupedOptions[cat].sort((a, b) => {
                                     if (a.uiConfig?.step !== b.uiConfig?.step) return (a.uiConfig?.step || 1) - (b.uiConfig?.step || 1);
                                     return (a.uiConfig?.sortOrder || 0) - (b.uiConfig?.sortOrder || 0);
@@ -1387,7 +1387,7 @@ export default function AdminOptionManager() {
                                         cat={cat}
                                         catGroups={catGroups}
                                         isExpanded={isExpanded}
-                                        onToggle={() => setExpandedCategories(prev => ({ ...prev, [cat]: !isExpanded }))}
+                                        onToggle={() => setExpandedCategories(isExpanded ? {} : { [cat]: true })}
                                     >
                                         <DndContext
                                             collisionDetection={closestCenter}
