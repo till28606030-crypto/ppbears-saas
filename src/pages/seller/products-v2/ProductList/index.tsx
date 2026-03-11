@@ -10,6 +10,7 @@ import { buildCategoryTree } from '@/utils/categoryTree';
 import CategorySelect from '@/components/CategorySelect';
 import BulkAttributeModal from './BulkAttributeModal';
 import SingleAttributeModal from './SingleAttributeModal';
+import PermissionModal from './PermissionModal';
 import {
   DndContext,
   closestCenter,
@@ -34,12 +35,13 @@ interface SortableRowProps {
   isSelected?: boolean;
   onToggleSelection?: (id: string) => void;
   onOpenSingleEdit?: (product: Partial<ProductRow>) => void;
+  onOpenPermissionEdit?: (product: Partial<ProductRow>) => void;
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
   navigate: (path: string) => void;
 }
 
-const SortableRow: React.FC<SortableRowProps> = ({ product, isSelected, onToggleSelection, onOpenSingleEdit, onDelete, onDuplicate, navigate }) => {
+const SortableRow: React.FC<SortableRowProps> = ({ product, isSelected, onToggleSelection, onOpenSingleEdit, onOpenPermissionEdit, onDelete, onDuplicate, navigate }) => {
   const {
     attributes,
     listeners,
@@ -80,19 +82,6 @@ const SortableRow: React.FC<SortableRowProps> = ({ product, isSelected, onToggle
         </div>
       </td>
       <td className="px-6 py-4 text-center">
-        {product.base_image ? (
-          <div className="flex items-center justify-center gap-1 text-green-600 text-sm">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>已設定</span>
-          </div>
-        ) : (
-          <div className="flex items-center justify-center gap-1 text-red-500 text-sm">
-            <XCircle className="w-4 h-4" />
-            <span>未設定</span>
-          </div>
-        )}
-      </td>
-      <td className="px-6 py-4 text-center">
         {(() => {
           const linkedCount = (product as any).specs?.linked_option_groups?.length || 0;
           return (
@@ -111,6 +100,32 @@ const SortableRow: React.FC<SortableRowProps> = ({ product, isSelected, onToggle
                 <div className="flex items-center gap-1 text-gray-400 text-sm">
                   <span className="underline underline-offset-2 hover:text-blue-600">未設定</span>
                 </div>
+              )}
+            </button>
+          );
+        })()}
+      </td>
+      <td className="px-6 py-4 text-center">
+        {(() => {
+          const permissions = (product as any).client_permissions || {
+            text: true, background: true, designs: true, ai_remove_bg: true,
+            stickers: true, barcode: true, ai_cartoon: true, frames: true,
+          };
+          const enabledCount = Object.values(permissions).filter(Boolean).length;
+          const isAllEnabled = enabledCount === 8;
+
+          return (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onOpenPermissionEdit) onOpenPermissionEdit(product);
+              }}
+              className="flex items-center justify-center gap-1 mx-auto hover:bg-gray-100 px-2 py-1 rounded-md transition-colors"
+            >
+              {isAllEnabled ? (
+                <div className="text-green-600 text-sm font-semibold underline underline-offset-2">全開放</div>
+              ) : (
+                <div className="text-blue-600 text-sm font-semibold underline underline-offset-2">開放 {enabledCount} 項</div>
               )}
             </button>
           );
@@ -198,11 +213,91 @@ const ProductListV2: React.FC = () => {
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Partial<ProductRow> | null>(null);
 
+  // Permission Modal State
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [permissionProducts, setPermissionProducts] = useState<{ id: string; name: string; permissions?: any }[]>([]);
+
   // Search & Filter State
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  // Advanced Filter State
+  const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
+  const [filterSpecs, setFilterSpecs] = useState<'all' | 'configured' | 'unconfigured' | 'specific'>('all');
+  const [selectedSpecGroups, setSelectedSpecGroups] = useState<string[]>([]);
+
+  const [filterPermissions, setFilterPermissions] = useState<'all' | 'full' | 'partial' | 'specific'>('all');
+  const [selectedPermissions, setSelectedPermissions] = useState<Record<string, boolean>>({
+    text: false, background: false, designs: false, ai_remove_bg: false,
+    stickers: false, barcode: false, ai_cartoon: false, frames: false,
+  });
+
+  // Option Groups Data
+  const [optionGroups, setOptionGroups] = useState<{ id: string; name: string }[]>([]);
+
+  // Load Categories & Option Groups on mount
+  useEffect(() => {
+    const fetchSelectData = async () => {
+      // Categories
+      const { data: catData } = await supabase.from('product_categories').select('*').order('sort_order');
+      if (catData) {
+        const { tree } = buildCategoryTree(catData as any);
+        if (tree.length === 1 && tree[0].children && tree[0].children.length > 0) {
+          setCategories(tree[0].children);
+        } else {
+          setCategories(tree);
+        }
+      }
+
+      // Option Groups
+      const { data: groupData } = await supabase.from('option_groups').select('id, name').order('created_at', { ascending: false });
+      if (groupData) {
+        setOptionGroups(groupData);
+      }
+    };
+    fetchSelectData();
+  }, []);
+
+  const filteredProducts = React.useMemo(() => {
+    return products.filter(product => {
+      // Specs filter
+      const linkedGroups = (product.specs as any)?.linked_option_groups || [];
+      if (filterSpecs === 'configured' && linkedGroups.length === 0) return false;
+      if (filterSpecs === 'unconfigured' && linkedGroups.length > 0) return false;
+      if (filterSpecs === 'specific') {
+        if (selectedSpecGroups.length > 0) {
+          const hasMatch = selectedSpecGroups.some(groupId => linkedGroups.includes(groupId));
+          if (!hasMatch) return false;
+        } else {
+          return false; // If 'specific' is selected but nothing checked, show nothing
+        }
+      }
+
+      // Permissions filter
+      if (filterPermissions !== 'all') {
+        const perms = (product as any).client_permissions || {
+          text: true, background: true, designs: true, ai_remove_bg: true,
+          stickers: true, barcode: true, ai_cartoon: true, frames: true,
+        };
+        const enabledCount = Object.values(perms).filter(Boolean).length;
+        if (filterPermissions === 'full' && enabledCount !== 8) return false;
+        if (filterPermissions === 'partial' && enabledCount === 8) return false;
+        if (filterPermissions === 'specific') {
+          const requiredKeys = Object.entries(selectedPermissions).filter(([_, v]) => v).map(([k]) => k);
+          if (requiredKeys.length > 0) {
+            const hasAll = requiredKeys.every(k => perms[k] === true);
+            if (!hasAll) return false;
+          } else {
+            return false; // If 'specific' is selected but nothing checked, show nothing
+          }
+        }
+      }
+
+      return true;
+    });
+  }, [products, filterSpecs, selectedSpecGroups, filterPermissions, selectedPermissions]);
 
   const navigate = useNavigate();
   const { deleteProduct, duplicateProduct } = useProductEditor();
@@ -217,23 +312,6 @@ const ProductListV2: React.FC = () => {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
-
-  // Load Categories on mount
-  useEffect(() => {
-    const fetchCategories = async () => {
-      const { data } = await supabase.from('product_categories').select('*').order('sort_order');
-      if (data) {
-        const { tree } = buildCategoryTree(data as any);
-        // [Flatten Logic] If single root, hoist children
-        if (tree.length === 1 && tree[0].children && tree[0].children.length > 0) {
-          setCategories(tree[0].children);
-        } else {
-          setCategories(tree);
-        }
-      }
-    };
-    fetchCategories();
-  }, []);
 
   // Debounce search
   useEffect(() => {
@@ -253,7 +331,7 @@ const ProductListV2: React.FC = () => {
       setLoading(true);
       let query = supabase
         .from('products')
-        .select('id, name, updated_at, created_at, base_image, specs, category_id, sort_order')
+        .select('id, name, updated_at, created_at, base_image, specs, client_permissions, category_id, sort_order')
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: false });
 
@@ -399,6 +477,15 @@ const ProductListV2: React.FC = () => {
           fetchProducts();
         }}
       />
+      <PermissionModal
+        isOpen={showPermissionModal}
+        selectedProducts={permissionProducts}
+        onClose={() => setShowPermissionModal(false)}
+        onSuccess={() => {
+          setSelectedProductIds([]);
+          fetchProducts();
+        }}
+      />
 
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">產品管理 V2</h1>
@@ -421,18 +508,120 @@ const ProductListV2: React.FC = () => {
           />
         </div>
 
-        {/* Text Search */}
-        <div className="relative flex-1">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-            <Search className="w-4 h-4" />
+        {/* Text Search & Filters */}
+        <div className="flex-1 flex flex-col gap-3">
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                <Search className="w-4 h-4" />
+              </div>
+              <input
+                type="text"
+                placeholder="搜尋產品名稱..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              />
+            </div>
+            <button
+              onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${showAdvancedFilter ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+            >
+              <Filter className="w-4 h-4" />
+              進階過濾
+            </button>
           </div>
-          <input
-            type="text"
-            placeholder="搜尋產品名稱..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-          />
+
+          {showAdvancedFilter && (
+            <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm flex flex-col gap-4 animate-in fade-in slide-in-from-top-2 z-10">
+              <div>
+                <span className="text-sm font-semibold text-gray-700 mb-2 block">關聯規格狀態</span>
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap gap-4">
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer hover:text-gray-900">
+                      <input type="radio" checked={filterSpecs === 'all'} onChange={() => setFilterSpecs('all')} className="text-blue-600" /> 全部顯示
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer hover:text-gray-900">
+                      <input type="radio" checked={filterSpecs === 'configured'} onChange={() => setFilterSpecs('configured')} className="text-blue-600" /> 已設定關聯規格
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer hover:text-gray-900">
+                      <input type="radio" checked={filterSpecs === 'unconfigured'} onChange={() => setFilterSpecs('unconfigured')} className="text-blue-600" /> 未設定
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer hover:text-gray-900">
+                      <input type="radio" checked={filterSpecs === 'specific'} onChange={() => setFilterSpecs('specific')} className="text-blue-600" /> 包含特定群組
+                    </label>
+                  </div>
+                  {filterSpecs === 'specific' && (
+                    <div className="pl-6 border-l-2 border-gray-100 mt-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                      {optionGroups.map(group => (
+                        <label key={group.id} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 p-1.5 rounded truncate">
+                          <input
+                            type="checkbox"
+                            checked={selectedSpecGroups.includes(group.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedSpecGroups(prev => [...prev, group.id]);
+                              } else {
+                                setSelectedSpecGroups(prev => prev.filter(id => id !== group.id));
+                              }
+                            }}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                          />
+                          <span className="truncate" title={group.name}>{group.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="h-px bg-gray-100" />
+              <div>
+                <span className="text-sm font-semibold text-gray-700 mb-2 block">設計權限狀態</span>
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap gap-4">
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer hover:text-gray-900">
+                      <input type="radio" checked={filterPermissions === 'all'} onChange={() => setFilterPermissions('all')} className="text-blue-600" /> 全部顯示
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer hover:text-gray-900">
+                      <input type="radio" checked={filterPermissions === 'full'} onChange={() => setFilterPermissions('full')} className="text-blue-600" /> 全開放
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer hover:text-gray-900">
+                      <input type="radio" checked={filterPermissions === 'partial'} onChange={() => setFilterPermissions('partial')} className="text-blue-600" /> 部分限制
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer hover:text-gray-900">
+                      <input type="radio" checked={filterPermissions === 'specific'} onChange={() => setFilterPermissions('specific')} className="text-blue-600" /> 包含特定開啟權限
+                    </label>
+                  </div>
+                  {filterPermissions === 'specific' && (
+                    <div className="pl-6 border-l-2 border-gray-100 mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {[
+                        { key: 'text', label: '文字 (Text)' },
+                        { key: 'background', label: '背景 (Background)' },
+                        { key: 'designs', label: '設計 (Designs)' },
+                        { key: 'ai_remove_bg', label: '一鍵去背 (AI Remove BG)' },
+                        { key: 'stickers', label: '貼圖 (Stickers)' },
+                        { key: 'barcode', label: '條碼 (Barcode)' },
+                        { key: 'ai_cartoon', label: '卡通化 (AI Cartoon)' },
+                        { key: 'frames', label: '相框 (Frames)' }
+                      ].map(perm => (
+                        <label key={perm.key} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 p-1.5 rounded">
+                          <input
+                            type="checkbox"
+                            checked={selectedPermissions[perm.key]}
+                            onChange={(e) => {
+                              setSelectedPermissions(prev => ({ ...prev, [perm.key]: e.target.checked }));
+                            }}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                          />
+                          <span className="truncate">{perm.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -462,8 +651,8 @@ const ProductListV2: React.FC = () => {
                   />
                   <span>ID / 名稱</span>
                 </th>
-                <th className="px-6 py-4 font-semibold text-gray-600 text-center">Base Image</th>
                 <th className="px-6 py-4 font-semibold text-gray-600 text-center">關聯規格</th>
+                <th className="px-6 py-4 font-semibold text-gray-600 text-center">客戶設計權限</th>
                 <th className="px-6 py-4 font-semibold text-gray-600 text-center">分享連結</th>
                 <th className="px-6 py-4 font-semibold text-gray-600">建立時間</th>
                 <th className="px-6 py-4 font-semibold text-gray-600 text-right">操作</th>
@@ -475,24 +664,28 @@ const ProductListV2: React.FC = () => {
               onDragEnd={handleDragEnd}
             >
               <SortableContext
-                items={products.map(p => p.id!)}
+                items={filteredProducts.map(p => p.id!)}
                 strategy={verticalListSortingStrategy}
               >
                 <tbody className="divide-y divide-gray-100">
-                  {products.length === 0 ? (
+                  {filteredProducts.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
                         尚無產品資料
                       </td>
                     </tr>
                   ) : (
-                    products.map((product) => (
+                    filteredProducts.map((product) => (
                       <SortableRow
                         key={product.id}
                         product={product}
                         isSelected={selectedProductIds.includes(product.id!)}
                         onToggleSelection={handleToggleSelection}
                         onOpenSingleEdit={handleOpenSingleEdit}
+                        onOpenPermissionEdit={(p) => {
+                          setPermissionProducts([{ id: p.id!, name: p.name || '未命名產品', permissions: p.client_permissions as any }]);
+                          setShowPermissionModal(true);
+                        }}
                         onDelete={handleDelete}
                         onDuplicate={handleDuplicate}
                         navigate={navigate}
@@ -519,6 +712,19 @@ const ProductListV2: React.FC = () => {
             className="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 shadow-md transition-all flex items-center gap-2"
           >
             批次設定關聯規格
+          </button>
+          <button
+            onClick={() => {
+              setPermissionProducts(products.filter(p => selectedProductIds.includes(p.id!)).map(p => ({
+                id: p.id!,
+                name: p.name || '未命名產品',
+                permissions: p.client_permissions
+              })));
+              setShowPermissionModal(true);
+            }}
+            className="px-5 py-2 bg-purple-600 text-white rounded-lg font-medium text-sm hover:bg-purple-700 shadow-md transition-all flex items-center gap-2"
+          >
+            批次設定權限
           </button>
           <button
             onClick={() => setSelectedProductIds([])}
