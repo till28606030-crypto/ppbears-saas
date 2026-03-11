@@ -1,13 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useProductEditor } from '../hooks/useProductEditor';
-import { Loader2, ArrowLeft, Save, AlertCircle, Upload, Image as ImageIcon, Check, ChevronRight, Layout, Info, ExternalLink, Share2, Sparkles } from 'lucide-react';
+import { Loader2, ArrowLeft, Save, AlertCircle, Upload, Image as ImageIcon, Check, ChevronRight, Layout, Info, ExternalLink, Share2, Sparkles, ImagePlus } from 'lucide-react';
 import VisualTab from './tabs/VisualTab';
 import PreviewTab from './tabs/PreviewTab';
 import AttributeSettingsTab from './tabs/AttributeSettingsTab';
 import { buildDesignShareUrl, copyToClipboard } from '../shared/shareLink';
 import { CategoryTreeSelect } from '@/components/CategoryTreeSelect';
 import { useOptionItems } from '../hooks/useOptionItems';
+import MediaSelectorModal from '@/components/admin/MediaSelectorModal';
 
 const STEPS = [
   { id: 1, title: '基本資料與尺寸' },
@@ -23,6 +24,10 @@ const ProductEditorV2: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [collapsedSteps, setCollapsedSteps] = useState<Record<number, boolean>>({});
   const [activeCategoryByStep, setActiveCategoryByStep] = useState<Record<number, string | null>>({});
+
+  // Media Selector State
+  const [showBaseSelector, setShowBaseSelector] = useState(false);
+  const [showMaskSelector, setShowMaskSelector] = useState(false);
 
   const editor = useProductEditor();
   const {
@@ -342,6 +347,15 @@ const ProductEditorV2: React.FC = () => {
                       </div>
                     )}
                   </div>
+                  <div className="flex justify-center mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowBaseSelector(true)}
+                      className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors font-medium border border-blue-100"
+                    >
+                      <ImagePlus className="w-4 h-4" /> 從媒體庫選擇
+                    </button>
+                  </div>
                   <input type="file" ref={baseImageInputRef} onChange={(e) => onFileChange(e, 'base')} className="hidden" accept="image/*" />
                 </div>
 
@@ -370,6 +384,15 @@ const ProductEditorV2: React.FC = () => {
                         <span className="text-xs text-gray-400">若無遮罩需求可略過此步</span>
                       </div>
                     )}
+                  </div>
+                  <div className="flex justify-center mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowMaskSelector(true)}
+                      className="flex items-center gap-2 text-sm text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 px-4 py-2 rounded-lg transition-colors font-medium border border-purple-100"
+                    >
+                      <ImagePlus className="w-4 h-4" /> 從媒體庫選擇
+                    </button>
                   </div>
                   <input type="file" ref={maskImageInputRef} onChange={(e) => onFileChange(e, 'mask')} className="hidden" accept="image/*" />
                 </div>
@@ -459,6 +482,8 @@ const ProductEditorV2: React.FC = () => {
                                     return sortedCategories.map(cat => {
                                       const catGroups = groupsByCategory[cat];
                                       const isCatExpanded = activeCategoryByStep[stepNum] === cat;
+                                      const linkedGroups = draft?.specs?.linked_option_groups || [];
+                                      const selectedCount = catGroups.filter(g => linkedGroups.includes(g.id)).length;
 
                                       return (
                                         <div key={cat} className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
@@ -473,7 +498,7 @@ const ProductEditorV2: React.FC = () => {
                                           >
                                             <div className="flex items-center gap-2">
                                               <span className="font-bold text-gray-700">{cat}</span>
-                                              <span className="text-xs text-gray-400">({catGroups.length})</span>
+                                              <span className={`text-xs ${selectedCount > 0 ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>({selectedCount})</span>
                                             </div>
                                             <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isCatExpanded ? 'rotate-90' : ''}`} />
                                           </button>
@@ -505,6 +530,11 @@ const ProductEditorV2: React.FC = () => {
                                                       />
                                                       <div className="flex-1">
                                                         <div className="text-sm font-bold text-gray-800">{group.name}</div>
+                                                        {group.ui_config?.note && (
+                                                          <div className="text-[10px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded w-fit mt-1">
+                                                            {group.ui_config.note}
+                                                          </div>
+                                                        )}
                                                         {group.price_modifier !== 0 && (
                                                           <div className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded w-fit mt-1">
                                                             加價: {group.price_modifier > 0 ? '+' : ''}{group.price_modifier} 元
@@ -695,6 +725,24 @@ const ProductEditorV2: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <MediaSelectorModal
+        isOpen={showBaseSelector}
+        onClose={() => setShowBaseSelector(false)}
+        onSelect={(url) => {
+          setDraft({ base_image: url });
+          setShowBaseSelector(false);
+        }}
+      />
+
+      <MediaSelectorModal
+        isOpen={showMaskSelector}
+        onClose={() => setShowMaskSelector(false)}
+        onSelect={(url) => {
+          setDraft({ mask_image: url });
+          setShowMaskSelector(false);
+        }}
+      />
     </div>
   );
 };
