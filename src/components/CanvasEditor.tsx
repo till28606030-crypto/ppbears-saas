@@ -3352,15 +3352,26 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             const originalBaseVisible = baseLayer ? baseLayer.visible : true;
             const originalMaskVisible = maskLayer ? maskLayer.visible : true;
 
+            // Save original viewport
+            const originalVpt = canvas.viewportTransform ? canvas.viewportTransform.slice() : [1, 0, 0, 1, 0, 0];
+            
+            // Temporarily disable object caching to fix bounding box clipping on high-res exports
+            const cacheStates: boolean[] = [];
+            canvas.getObjects().forEach(obj => {
+                cacheStates.push(obj.objectCaching);
+                obj.objectCaching = false;
+            });
+
             canvas.backgroundColor = 'transparent';
             if (baseLayer) baseLayer.visible = false;
             if (maskLayer) maskLayer.visible = false;
 
+            // Reset viewport to 1:1 scale before export
+            canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
             canvas.renderAll();
 
-            const currentZoom = canvas.getZoom();
-            // Restore to 3.0 for 300 DPI professional print quality
-            const multiplier = 3 / currentZoom;
+            // 3.0 for 300 DPI professional print quality (relative to REAL_WIDTH which is already 300dpi, so this makes it ultra-high-res as originally intended)
+            const multiplier = 3;
 
             const dataUrl = canvas.toDataURL({
                 format: 'png',
@@ -3368,9 +3379,16 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 enableRetinaScaling: false // Prevent huge output on mobile retina displays causing memory crash
             });
 
+            // Restore state
+            canvas.setViewportTransform(originalVpt as [number, number, number, number, number, number]);
             canvas.backgroundColor = originalBg;
             if (baseLayer) baseLayer.visible = originalBaseVisible;
             if (maskLayer) maskLayer.visible = originalMaskVisible;
+
+            // Restore caching
+            canvas.getObjects().forEach((obj, i) => {
+                obj.objectCaching = cacheStates[i];
+            });
 
             canvas.requestRenderAll();
             return dataUrl;

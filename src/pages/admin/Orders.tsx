@@ -274,6 +274,26 @@ export default function AdminOrders() {
         }
     };
 
+    const handleBulkDownloadPrint = async () => {
+        if (selectedIds.size === 0) return;
+
+        const selectedDesigns = designs.filter(d => selectedIds.has(d.design_id) && d.print_image);
+
+        if (selectedDesigns.length === 0) {
+            alert('選取的設計中沒有可下載的印刷稿。');
+            return;
+        }
+
+        if (selectedDesigns.length > 3) {
+            alert(`準備下載 ${selectedDesigns.length} 份印刷稿，這可能需要一點時間。`);
+        }
+
+        for (const design of selectedDesigns) {
+            await handleDownload(design, 'PRINT');
+            await new Promise(resolve => setTimeout(resolve, 300));
+        }
+    };
+
     const toggleSelection = (designId: string) => {
         setSelectedIds(prev => {
             const newSet = new Set(prev);
@@ -317,36 +337,13 @@ export default function AdminOrders() {
             <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 shadow-sm">
                 <h1 className="text-xl font-semibold text-gray-800">客戶設計管理</h1>
                 <div className="flex items-center gap-3">
-                    {selectedIds.size > 0 && (
-                        <div className="flex items-center bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 mr-2 animate-in fade-in slide-in-from-right-4 duration-300">
-                            <span className="text-sm text-blue-800 font-medium mr-4">
-                                已選取 {selectedIds.size} 項
-                            </span>
-                            <button
-                                onClick={handleBulkDownload}
-                                className="flex items-center gap-1.5 px-3 py-1.5 mr-2 bg-white text-gray-700 hover:text-blue-600 hover:bg-blue-50 border border-gray-200 hover:border-blue-200 rounded-md transition-colors text-sm font-medium shadow-sm"
-                                title="批次下載"
-                            >
-                                <Download className="w-4 h-4" />
-                                下載
-                            </button>
-                            <button
-                                onClick={handleBulkDelete}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-red-600 hover:bg-red-50 border border-gray-200 rounded-md transition-colors text-sm font-medium shadow-sm"
-                                title="批次刪除"
-                            >
-                                <Trash2 className="w-4 h-4" />
-                                刪除
-                            </button>
-                        </div>
-                    )}
                     <button
                         onClick={fetchDesigns}
-                        className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors text-sm"
+                        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-lg transition-colors text-sm font-medium shadow-sm"
                         title="重新整理"
                     >
                         <RefreshCw className="w-4 h-4" />
-                        重新整理
+                        重新整理資料
                     </button>
                 </div>
             </header>
@@ -402,6 +399,47 @@ export default function AdminOrders() {
                         </div>
                     </div>
                 </div>
+
+                {/* Bulk Actions Panel */}
+                {selectedIds.size > 0 && (
+                    <div className="mb-6 justify-between items-center bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100/50 rounded-xl p-5 flex shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-white shadow-sm rounded-lg flex items-center justify-center border border-blue-100">
+                                <CheckSquare className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-bold text-blue-900 tracking-tight">已選取 {selectedIds.size} 項設計</h3>
+                                <p className="text-sm text-blue-700/80 mt-0.5 font-medium">您可以對選取的項目執行批次操作</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => handleBulkDownloadPrint()}
+                                className="flex items-center gap-2 px-5 py-2.5 bg-white text-purple-700 hover:bg-purple-600 hover:text-white border border-purple-200 hover:border-transparent rounded-lg transition-all duration-200 text-sm font-bold shadow-sm"
+                                title="批次下載印刷稿"
+                            >
+                                <Download className="w-4 h-4" />
+                                批次下載印刷稿
+                            </button>
+                            <button
+                                onClick={handleBulkDownload}
+                                className="flex items-center gap-2 px-5 py-2.5 bg-white text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 hover:border-transparent rounded-lg transition-all duration-200 text-sm font-bold shadow-sm"
+                                title="批次下載預覽圖"
+                            >
+                                <Download className="w-4 h-4" />
+                                批次下載預覽圖
+                            </button>
+                            <button
+                                onClick={handleBulkDelete}
+                                className="flex items-center gap-2 px-5 py-2.5 bg-white text-red-600 hover:bg-red-600 hover:text-white border border-red-200 hover:border-transparent rounded-lg transition-all duration-200 text-sm font-bold shadow-sm"
+                                title="批次刪除設計"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                批次刪除設計
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Search Bar */}
                 <div className="mb-6 relative">
