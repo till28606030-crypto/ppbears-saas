@@ -64,3 +64,5 @@ export default defineConfig(({ mode }) => {
     },
   }
 })
+
+// Trigger dev server restart for version update (v4.3)

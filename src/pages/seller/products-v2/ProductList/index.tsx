@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { ProductRow } from '../shared/types';
 import { useProductEditor } from '../hooks/useProductEditor';
-import { Loader2, Plus, AlertCircle, CheckCircle2, XCircle, Copy, Trash2, Share2, ExternalLink, Search, Filter } from 'lucide-react';
+import { Loader2, Plus, AlertCircle, CheckCircle2, XCircle, Copy, Trash2, Share2, ExternalLink, Search, Filter, ChevronDown, ChevronRight } from 'lucide-react';
 import { buildDesignShareUrl, copyToClipboard } from '../shared/shareLink';
 import { Category } from '@/types';
 import { buildCategoryTree } from '@/utils/categoryTree';
@@ -235,7 +235,21 @@ const ProductListV2: React.FC = () => {
   });
 
   // Option Groups Data
-  const [optionGroups, setOptionGroups] = useState<{ id: string; name: string }[]>([]);
+  const [optionGroups, setOptionGroups] = useState<{ id: string; name: string; category: string }[]>([]);
+  const [expandedSpecCategories, setExpandedSpecCategories] = useState<Record<string, boolean>>({});
+
+  const groupedOptionGroups = React.useMemo(() => {
+    const acc: Record<string, typeof optionGroups> = {};
+    optionGroups.forEach(g => {
+      if (!acc[g.category]) acc[g.category] = [];
+      acc[g.category].push(g);
+    });
+    return acc;
+  }, [optionGroups]);
+
+  const toggleCategory = (cat: string) => {
+    setExpandedSpecCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
+  };
 
   // Load Categories & Option Groups on mount
   useEffect(() => {
@@ -252,9 +266,14 @@ const ProductListV2: React.FC = () => {
       }
 
       // Option Groups
-      const { data: groupData } = await supabase.from('option_groups').select('id, name').order('created_at', { ascending: false });
+      const { data: groupData } = await supabase.from('option_groups').select('id, name, ui_config').order('created_at', { ascending: false });
       if (groupData) {
-        setOptionGroups(groupData);
+        const parsedGroups = groupData.map(g => ({
+          id: g.id,
+          name: g.name,
+          category: (g.ui_config as any)?.category || '未分類'
+        }));
+        setOptionGroups(parsedGroups);
       }
     };
     fetchSelectData();
@@ -552,24 +571,49 @@ const ProductListV2: React.FC = () => {
                     </label>
                   </div>
                   {filterSpecs === 'specific' && (
-                    <div className="pl-6 border-l-2 border-gray-100 mt-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                      {optionGroups.map(group => (
-                        <label key={group.id} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 p-1.5 rounded truncate">
-                          <input
-                            type="checkbox"
-                            checked={selectedSpecGroups.includes(group.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedSpecGroups(prev => [...prev, group.id]);
-                              } else {
-                                setSelectedSpecGroups(prev => prev.filter(id => id !== group.id));
-                              }
-                            }}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0"
-                          />
-                          <span className="truncate" title={group.name}>{group.name}</span>
-                        </label>
-                      ))}
+                    <div className="pl-2 border-l-2 border-gray-100 mt-2 flex flex-col gap-2 max-h-64 overflow-y-auto custom-scrollbar pr-2">
+                      {Object.entries(groupedOptionGroups).map(([cat, groups]) => {
+                        const isExpanded = expandedSpecCategories[cat] === true;
+                        const selectedInCat = groups.filter(g => selectedSpecGroups.includes(g.id)).length;
+
+                        return (
+                          <div key={cat} className="border border-gray-100 rounded-lg overflow-hidden shrink-0">
+                            <button
+                              onClick={() => toggleCategory(cat)}
+                              className="w-full flex items-center justify-between p-2 bg-gray-50 hover:bg-gray-100 text-sm font-medium text-gray-700 transition-colors"
+                            >
+                              <div className="flex items-center gap-2">
+                                {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+                                {cat}
+                                {selectedInCat > 0 && (
+                                  <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full">{selectedInCat}</span>
+                                )}
+                              </div>
+                            </button>
+                            {isExpanded && (
+                              <div className="p-2 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 bg-white border-t border-gray-100">
+                                {groups.map(group => (
+                                  <label key={group.id} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 p-1.5 rounded truncate border border-transparent hover:border-gray-200">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedSpecGroups.includes(group.id)}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setSelectedSpecGroups(prev => [...prev, group.id]);
+                                        } else {
+                                          setSelectedSpecGroups(prev => prev.filter(id => id !== group.id));
+                                        }
+                                      }}
+                                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                                    />
+                                    <span className="truncate" title={group.name}>{group.name}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
