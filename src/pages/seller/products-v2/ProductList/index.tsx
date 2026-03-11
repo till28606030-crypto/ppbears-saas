@@ -383,7 +383,9 @@ const ProductListV2: React.FC = () => {
       <BulkAttributeModal
         isOpen={showBulkModal}
         onClose={() => setShowBulkModal(false)}
-        selectedProductIds={selectedProductIds}
+        selectedProducts={products
+          .filter(p => selectedProductIds.includes(p.id!))
+          .map(p => ({ id: p.id!, name: p.name || '未命名產品' }))}
         onSuccess={() => {
           setSelectedProductIds([]);
           fetchProducts();

@@ -39,6 +39,7 @@ export interface OptionGroupUIConfig {
     dependsOnGroupId?: string; // 顯示條件：必須先選擇的前置規格大類 ID
     dependsOnOptionId?: string; // 顯示條件：必須先選擇的前置子選項 ID (可選)
     marketingTags?: MarketingTag[]; // 行銷標註 (新品, 推薦, 限時特價等)
+    note?: string; // 內部管理備註
 }
 
 export interface OptionGroup {

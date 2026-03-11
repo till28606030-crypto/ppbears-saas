@@ -14,12 +14,12 @@ interface OptionGroup {
 interface BulkAttributeModalProps {
     isOpen: boolean;
     onClose: () => void;
-    selectedProductIds: string[];
+    selectedProducts: { id: string; name: string }[];
     initialSelectedGroupIds?: string[];
     onSuccess: () => void;
 }
 
-const BulkAttributeModal: React.FC<BulkAttributeModalProps> = ({ isOpen, onClose, selectedProductIds, initialSelectedGroupIds, onSuccess }) => {
+const BulkAttributeModal: React.FC<BulkAttributeModalProps> = ({ isOpen, onClose, selectedProducts, initialSelectedGroupIds, onSuccess }) => {
     const [groups, setGroups] = useState<OptionGroup[]>([]);
     const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
@@ -102,7 +102,7 @@ const BulkAttributeModal: React.FC<BulkAttributeModalProps> = ({ isOpen, onClose
     });
 
     const handleSave = async (mode: 'overwrite' | 'append' | 'remove') => {
-        if (selectedProductIds.length === 0) {
+        if (selectedProducts.length === 0) {
             setError('未選擇任何產品');
             return;
         }
@@ -111,7 +111,7 @@ const BulkAttributeModal: React.FC<BulkAttributeModalProps> = ({ isOpen, onClose
             if (!confirmed) return;
         } else {
             const actionText = mode === 'overwrite' ? '覆蓋' : mode === 'append' ? '附加新增' : '刪除移除';
-            const confirmed = confirm(`即將對 ${selectedProductIds.length} 個產品「${actionText}」所選的 ${selectedGroupIds.length} 項規格，確定執行嗎？`);
+            const confirmed = confirm(`即將對 ${selectedProducts.length} 個產品「${actionText}」所選的 ${selectedGroupIds.length} 項規格，確定執行嗎？`);
             if (!confirmed) return;
         }
 
@@ -122,7 +122,7 @@ const BulkAttributeModal: React.FC<BulkAttributeModalProps> = ({ isOpen, onClose
             const { data: productsData, error: fetchError } = await supabase
                 .from('products')
                 .select('id, specs')
-                .in('id', selectedProductIds);
+                .in('id', selectedProducts.map(p => p.id));
 
             if (fetchError) throw fetchError;
 
@@ -173,7 +173,7 @@ const BulkAttributeModal: React.FC<BulkAttributeModalProps> = ({ isOpen, onClose
             <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
                 <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 shrink-0">
                     <h2 className="font-bold text-gray-800 text-lg">
-                        {selectedProductIds.length === 1 ? '設定關聯規格' : '批次設定關聯規格'}
+                        {selectedProducts.length === 1 ? '設定關聯規格' : '批次設定關聯規格'}
                     </h2>
                     <button onClick={onClose} disabled={saving} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-lg transition-colors">
                         <X className="w-5 h-5" />
@@ -181,9 +181,18 @@ const BulkAttributeModal: React.FC<BulkAttributeModalProps> = ({ isOpen, onClose
                 </div>
 
                 <div className="p-6 overflow-y-auto flex-1">
-                    <div className="mb-4 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg border border-blue-100">
-                        您正在設定 <strong>{selectedProductIds.length}</strong> 個產品的共用規格群組。<br />
-                        下方提供三種批次操作：你可以選擇「覆蓋」、「新增」或「刪除」勾選的這些規格。
+                    <div className="mb-4 text-sm text-gray-600 bg-blue-50 p-3 rounded-lg border border-blue-100 flex flex-col gap-2">
+                        <div>
+                            您正在設定 <strong>{selectedProducts.length}</strong> 個產品的共用規格群組。<br />
+                            下方提供三種批次操作：你可以選擇「覆蓋」、「新增」或「刪除」勾選的這些規格。
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                            {selectedProducts.map(product => (
+                                <span key={product.id} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-white text-blue-700 border border-blue-200 shadow-sm">
+                                    {product.name}
+                                </span>
+                            ))}
+                        </div>
                     </div>
 
                     {error && (
@@ -228,7 +237,7 @@ const BulkAttributeModal: React.FC<BulkAttributeModalProps> = ({ isOpen, onClose
                                                     全選此分類
                                                 </label>
                                             </div>
-                                            <div className="p-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            <div className="p-2 grid grid-cols-1 gap-2">
                                                 {catGroups.map(group => (
                                                     <label
                                                         key={group.id}
@@ -241,7 +250,14 @@ const BulkAttributeModal: React.FC<BulkAttributeModalProps> = ({ isOpen, onClose
                                                             onChange={() => handleToggleGroup(group.id)}
                                                         />
                                                         <div className="flex-1 overflow-hidden">
-                                                            <div className="font-medium text-gray-800 truncate">{group.name}</div>
+                                                            <div className="font-medium text-gray-800 break-words whitespace-normal">{group.name}</div>
+                                                            {group.uiConfig?.note && (
+                                                                <div className="text-xs text-red-500 mt-0.5 break-words whitespace-normal flex flex-col items-start gap-1">
+                                                                    <div className="bg-red-50 border border-red-100 rounded px-1.5 py-0.5">
+                                                                        {group.uiConfig.note}
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </label>
                                                 ))}

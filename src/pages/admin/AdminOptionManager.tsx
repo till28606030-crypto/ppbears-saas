@@ -1063,7 +1063,7 @@ export default function AdminOptionManager() {
                 ref={setNodeRef}
                 style={style}
                 onClick={onClick}
-                className={`p-3 rounded-xl cursor-pointer border transition-all flex items-start gap-2 bg-white ${isSelected ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200 hover:border-gray-300'}`}
+                className={`p-3 rounded-xl cursor-pointer border transition-all flex items-start gap-2 bg-white ${isSelected ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-200 hover:border-gray-300'}`}
             >
                 <div {...attributes} {...listeners} className="cursor-move text-gray-400 hover:text-gray-600 self-center p-1 -ml-1">
                     <GripVertical className="w-5 h-5" />
@@ -1089,6 +1089,13 @@ export default function AdminOptionManager() {
                                         </span>
                                     )}
                                 </h3>
+                                {group.uiConfig?.note && (
+                                    <div className="text-xs text-red-500 mt-0.5 break-words whitespace-normal flex flex-col items-start gap-1">
+                                        <div className="bg-red-50 border border-red-100 rounded px-1.5 py-0.5">
+                                            {group.uiConfig.note}
+                                        </div>
+                                    </div>
+                                )}
                                 <div className="flex flex-wrap gap-1 mt-1 items-center">
                                     {group.uiConfig?.displayType && (
                                         <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100 shrink-0">
@@ -1398,6 +1405,7 @@ export default function AdminOptionManager() {
                                                         onClick={() => setSelectedGroupId(group.id)}
                                                         onEdit={(e: React.MouseEvent) => {
                                                             e.stopPropagation();
+                                                            setSelectedGroupId(group.id);
                                                             setEditingGroupData(group);
                                                             setIsEditingGroup(true);
                                                         }}
@@ -1673,6 +1681,19 @@ export default function AdminOptionManager() {
                                 value={editingGroupData.name || ''}
                                 onChange={e => setEditingGroupData(prev => ({ ...prev, name: e.target.value }))}
                                 placeholder="例如: 惡魔防摔殼"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold mb-1">備註 <span className="text-xs text-gray-400 font-normal">(內部管理用，不顯示於前台)</span></label>
+                            <input
+                                className="w-full border rounded-lg px-3 py-2 text-sm bg-gray-50"
+                                value={editingGroupData.uiConfig?.note || ''}
+                                onChange={e => setEditingGroupData(prev => ({
+                                    ...prev,
+                                    uiConfig: { ...prev.uiConfig, note: e.target.value }
+                                }))}
+                                placeholder="例如: 2024 新版包裝"
                             />
                         </div>
 

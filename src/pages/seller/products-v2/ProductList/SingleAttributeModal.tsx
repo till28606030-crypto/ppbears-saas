@@ -288,7 +288,16 @@ const SingleAttributeModal: React.FC<SingleAttributeModalProps> = ({ isOpen, onC
                                                         <div className="p-2 grid grid-cols-1 gap-1">
                                                             {catGroups.map(g => (
                                                                 <div key={g.id} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-md transition-colors group">
-                                                                    <div className="font-medium text-gray-800 text-sm truncate flex-1 pr-4">{g.name}</div>
+                                                                    <div className="flex-1 pr-4 min-w-0">
+                                                                        <div className="font-medium text-gray-800 text-sm break-words whitespace-normal">{g.name}</div>
+                                                                        {g.uiConfig?.note && (
+                                                                            <div className="text-xs text-red-500 mt-0.5 break-words whitespace-normal flex flex-col items-start gap-1">
+                                                                                <div className="bg-red-50 border border-red-100 rounded px-1.5 py-0.5 inline-block">
+                                                                                    {g.uiConfig.note}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
                                                                     <button
                                                                         onClick={() => handleRemoveLinkedGroup(g.id)}
                                                                         disabled={saving}
@@ -390,8 +399,15 @@ const SingleAttributeModal: React.FC<SingleAttributeModalProps> = ({ isOpen, onC
                                                                                 checked={selectedNewGroupIds.includes(group.id)}
                                                                                 onChange={() => handleToggleNewGroup(group.id)}
                                                                             />
-                                                                            <div className="flex-1 overflow-hidden">
-                                                                                <div className="font-medium text-gray-800 text-sm truncate">{group.name}</div>
+                                                                            <div className="flex-1 overflow-hidden min-w-0">
+                                                                                <div className="font-medium text-gray-800 text-sm break-words whitespace-normal">{group.name}</div>
+                                                                                {group.uiConfig?.note && (
+                                                                                    <div className="text-xs text-red-500 mt-0.5 break-words whitespace-normal flex flex-col items-start gap-1">
+                                                                                        <div className="bg-red-50 border border-red-100 rounded px-1.5 py-0.5 inline-block">
+                                                                                            {group.uiConfig.note}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )}
                                                                             </div>
                                                                         </label>
                                                                     ))}
