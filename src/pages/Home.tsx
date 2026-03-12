@@ -348,15 +348,24 @@ export default function Home() {
     const bgFileInputRef = useRef<HTMLInputElement>(null);
     const [bgUrlInput, setBgUrlInput] = useState('');
 
-    const handleGalleryApply = (src: string) => {
-        if (canvasRef.current) {
-            canvasRef.current.insertImageFromSrc(src);
+    const handleGalleryApply = (src: string | string[]) => {
+        const srcs = Array.isArray(src) ? src : [src];
+        
+        if (galleryMode === 'ai_collage') {
+            setAiCollageInitialImages(srcs);
+            setShowDesignCollageModal(true);
+        } else if (canvasRef.current) {
+            srcs.forEach(s => canvasRef.current!.insertImageFromSrc(s));
         }
+        
+        setGalleryMode('normal'); // Reset mode
     };
 
     const [showAiDisclaimer, setShowAiDisclaimer] = useState(false);
     const [aiProcessingAction, setAiProcessingAction] = useState<{ action: string, payload?: any } | null>(null);
     const [showDesignCollageModal, setShowDesignCollageModal] = useState(false);
+    const [galleryMode, setGalleryMode] = useState<'normal' | 'ai_collage'>('normal');
+    const [aiCollageInitialImages, setAiCollageInitialImages] = useState<string[]>([]);
 
     // AI Action Handler
     const handleAiAction = async (action: string, payload?: any, skipDisclaimer = false) => {
@@ -411,7 +420,8 @@ export default function Home() {
                     }
                     break;
                 case 'design_collage':
-                    setShowDesignCollageModal(true);
+                    setGalleryMode('ai_collage');
+                    setShowGalleryModal(true);
                     break;
             }
         } catch (error: any) {
@@ -1491,6 +1501,7 @@ export default function Home() {
                     isOpen={showGalleryModal}
                     onClose={() => setShowGalleryModal(false)}
                     onApply={handleGalleryApply}
+                    maxSelection={5}
                 />
             )}
 
@@ -2495,9 +2506,10 @@ export default function Home() {
             <DesignCollageModal
                 isOpen={showDesignCollageModal}
                 onClose={() => setShowDesignCollageModal(false)}
-                onResult={(url) => {
-                    if (canvasRef.current) {
-                        canvasRef.current.insertImageFromSrc(url);
+                initialImages={aiCollageInitialImages}
+                onResult={(payload) => {
+                    if (canvasRef.current && canvasRef.current.insertAiCollage) {
+                        canvasRef.current.insertAiCollage(payload);
                     }
                 }}
                 productSpecs={{

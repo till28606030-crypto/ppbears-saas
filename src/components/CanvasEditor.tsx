@@ -876,6 +876,7 @@ export interface CanvasEditorRef {
     removeBackgroundFromSelection: () => Promise<void>;
     setBackgroundImage: (url: string) => Promise<void> | void;
     insertImageFromSrc: (src: string) => Promise<void>;
+    insertAiCollage: (payload: { bgUrl: string, cutoutUrls: string[] }) => Promise<void>;
     clearCanvas: () => void;
     confirmClearCanvas: () => void;
     getCanvasJSON: () => object;
@@ -1982,8 +1983,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 if (frame) objectsToSelect.push(frame);
             }
 
-            // Multi-selection Logic (Ctrl/Cmd)
-            if (e && (e.ctrlKey || e.metaKey)) {
+            // Multi-selection Logic (Ctrl/Cmd/Shift)
+            if (e && (e.ctrlKey || e.metaKey || e.shiftKey)) {
                 const activeObject = canvas.getActiveObject();
                 let currentSelected: FabricObject[] = [];
 
@@ -3057,10 +3058,105 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         }
     };
 
+    const handleInsertAiCollage = async (payload: { bgUrl: string, cutoutUrls: string[] }) => {
+        try {
+            const canvas = fabricCanvas.current;
+            if (!canvas) return;
+
+            let targetW = canvas.width || 800;
+            let targetH = canvas.height || 600;
+            let targetLeft = targetW / 2;
+            let targetTop = targetH / 2;
+
+            if (baseLayerRef.current) {
+                targetW = baseLayerRef.current.getScaledWidth();
+                targetH = baseLayerRef.current.getScaledHeight();
+                targetLeft = baseLayerRef.current.left || targetLeft;
+                targetTop = baseLayerRef.current.top || targetTop;
+            }
+
+            // 1. Add background layer first
+            FabricImage.fromURL(payload.bgUrl, { crossOrigin: 'anonymous' }).then((bgImg) => {
+                const scaleX = targetW / (bgImg.width || 1);
+                const scaleY = targetH / (bgImg.height || 1);
+                const scale = Math.max(scaleX, scaleY); // Ensure it covers the base layer
+                
+                bgImg.set({
+                    scaleX: scale,
+                    scaleY: scale,
+                    originX: 'center',
+                    originY: 'center',
+                    left: targetLeft,
+                    top: targetTop,
+                    id: `ai-bg-${Date.now()}`
+                });
+                
+                canvas.add(bgImg);
+                
+                // Move bgImg to back (just above baseLayerRef)
+                canvas.sendObjectToBack(bgImg);
+                if (baseLayerRef.current) {
+                    const baseIndex = canvas.getObjects().indexOf(baseLayerRef.current);
+                    if (baseIndex > -1) canvas.moveObjectTo(bgImg, baseIndex + 1);
+                }
+
+                if (maskLayerRef.current) canvas.bringObjectToFront(maskLayerRef.current);
+
+                // 2. Add cutout layers sequentially to preserve order
+                let loadedCount = 0;
+                const totalCutouts = payload.cutoutUrls.length;
+
+                payload.cutoutUrls.forEach((cutoutUrl, idx) => {
+                    FabricImage.fromURL(cutoutUrl, { crossOrigin: 'anonymous' }).then((cutoutImg) => {
+                        // scale height to about 40% of the target case height
+                        const targetCutoutH = targetH * 0.45;
+                        const cutoutScale = targetCutoutH / (cutoutImg.height || 1);
+                        
+                        // Spread them horizontally across the bottom
+                        let offsetX = 0;
+                        if (totalCutouts > 1) {
+                            const spreadSpan = targetW * 0.7; // cover 70% of case width
+                            const step = spreadSpan / (totalCutouts - 1);
+                            offsetX = -spreadSpan/2 + (step * idx);
+                        }
+
+                        // Anchor near the bottom of the mask layer
+                        const offsetY = (targetH / 2) * 0.8;
+
+                        cutoutImg.set({
+                            scaleX: cutoutScale,
+                            scaleY: cutoutScale,
+                            originX: 'center',
+                            originY: 'bottom',
+                            left: targetLeft + offsetX,
+                            top: targetTop + offsetY,
+                            id: `ai-cutout-${Date.now()}-${idx}`
+                        });
+                        
+                        canvas.add(cutoutImg);
+                        
+                        loadedCount++;
+                        if (loadedCount === totalCutouts) {
+                            if (maskLayerRef.current) canvas.bringObjectToFront(maskLayerRef.current);
+                            canvas.requestRenderAll();
+                            saveHistory();
+                            updateLayers();
+                        }
+                    }).catch(e => console.error(e));
+                });
+            }).catch(e => console.error(e));
+
+        } catch (err) {
+            console.error("Failed to insert AI collage", err);
+            throw err;
+        }
+    };
+
     // --- Toolbar Logic ---
 
     useImperativeHandle(ref, () => ({
         insertImageFromSrc: handleInsertImageFromSrc,
+        insertAiCollage: handleInsertAiCollage,
         clearCanvas: clearCanvas,
         confirmClearCanvas: confirmClearCanvas,
         getCanvasJSON: () => {

@@ -43,8 +43,8 @@ app.use((req, res, next) => {
     }
     next();
 });
-app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Identify Server Middleware & Body Debug
 app.use((req, res, next) => {
@@ -297,13 +297,18 @@ app.post('/api/ai/remove-bg', upload.single('image'), async (req, res) => {
             console.log(`[AI] Source: File Upload (${req.file.size} bytes)`);
             imageBuffer = req.file.buffer;
         }
-        // Case B: JSON Body with URL
+        // Case B: JSON Body with URL or Base64
         else if (req.body.imageUrl) {
-            console.log(`[AI] Source: URL (${req.body.imageUrl})`);
-            const fetchRes = await fetch(req.body.imageUrl);
-            if (!fetchRes.ok) throw new Error(`Failed to fetch image: ${fetchRes.statusText}`);
-            const arrayBuffer = await fetchRes.arrayBuffer();
-            imageBuffer = Buffer.from(arrayBuffer);
+            console.log(`[AI] Source: URL or Base64 (${req.body.imageUrl.substring(0, 30)}...)`);
+            if (req.body.imageUrl.startsWith('data:image')) {
+                const base64Data = req.body.imageUrl.split('base64,')[1];
+                imageBuffer = Buffer.from(base64Data, 'base64');
+            } else {
+                const fetchRes = await fetch(req.body.imageUrl);
+                if (!fetchRes.ok) throw new Error(`Failed to fetch image: ${fetchRes.statusText}`);
+                const arrayBuffer = await fetchRes.arrayBuffer();
+                imageBuffer = Buffer.from(arrayBuffer);
+            }
         }
 
         if (!imageBuffer) {
@@ -428,17 +433,17 @@ app.post('/api/ai/upscale', upload.single('image'), async (req, res) => {
 });
 
 // 2.6. AI Design Collage (Multi-Image Fusion with FLUX Kontext)
-app.post('/api/ai/design-collage', upload.array('images', 5), async (req, res) => {
+app.post('/api/ai/design-collage', express.json({ limit: '50mb' }), async (req, res) => {
     console.log(`[AI] HIT /api/ai/design-collage (ID: ${BUILD_ID})`);
     try {
         // --- Validate inputs ---
-        const files = req.files || [];
-        const { stylePrompt, widthMm, heightMm, dpi: inputDpi } = req.body;
+        const { images = [], stylePrompt, widthMm, heightMm, dpi: inputDpi, mode } = req.body || {};
+        const isBackgroundOnly = mode === 'background';
 
-        if (files.length === 0) {
+        if (!isBackgroundOnly && (!Array.isArray(images) || images.length === 0)) {
             return fail(res, '請至少上傳 1 張圖片', { errorCode: 'NO_IMAGES' });
         }
-        if (files.length > 5) {
+        if (images.length > 5) {
             return fail(res, '最多上傳 5 張圖片', { errorCode: 'TOO_MANY_IMAGES' });
         }
         if (!stylePrompt) {
@@ -450,12 +455,19 @@ app.post('/api/ai/design-collage', upload.array('images', 5), async (req, res) =
             return fail(res, 'Server configuration error (Missing API Key)', { errorCode: 'MISSING_ENV' });
         }
 
-        // --- Process all images to Base64 Data URIs ---
-        console.log(`[AI] Processing ${files.length} images for design collage...`);
+        // --- Process all images (which are now Base64 Data URIs) ---
+        console.log(`[AI] Processing ${images.length} images for design collage...`);
         const imageUris = [];
-        for (const file of files) {
+        for (const base64str of images) {
             try {
-                const uri = await processImage(file.buffer);
+                // Since processImage expects a buffer, we need to extract buffer from base64 string
+                // format can be: "data:image/jpeg;base64,/9j/4AAQ..." or just pure base64
+                let base64Data = base64str;
+                if (base64str.includes('base64,')) {
+                    base64Data = base64str.split('base64,')[1];
+                }
+                const buffer = Buffer.from(base64Data, 'base64');
+                const uri = await processImage(buffer);
                 imageUris.push(uri);
             } catch (imgErr) {
                 console.error('[AI] Image preprocessing failed:', imgErr);
@@ -469,45 +481,67 @@ app.post('/api/ai/design-collage', upload.array('images', 5), async (req, res) =
         const hMm = parseFloat(heightMm) || 0;
 
         let dimensionHint = '';
+        let aspectRatioStr = "9:16"; // Default standard phone case
         if (wMm > 0 && hMm > 0) {
+            const ratio = wMm / hMm;
+            if (ratio >= 1.5) aspectRatioStr = "16:9";
+            else if (ratio >= 1.2) aspectRatioStr = "3:2";
+            else if (ratio >= 0.8) aspectRatioStr = "1:1";
+            else if (ratio >= 0.6) aspectRatioStr = "2:3";
+            else aspectRatioStr = "9:16";
+
             const wPx = Math.round(wMm / 25.4 * dpi);
             const hPx = Math.round(hMm / 25.4 * dpi);
             dimensionHint = `Output image at ${wPx}x${hPx} pixels, print-ready quality at ${dpi} DPI, correct aspect ratio ${wMm}:${hMm}mm, high detail and sharp focus.`;
         }
 
-        const fullPrompt = [
-            `Create a beautiful, print-ready design collage using the provided ${files.length} photo(s).`,
-            `Style: ${stylePrompt}`,
-            `Layout: aesthetically balanced composition with seamless photo blending.`,
-            `Output: high quality, vibrant colors suitable for phone case printing.`,
-            `Keep all main subjects clearly visible.`,
-            `Place all key subjects and faces in the lower 70% of the composition, away from the camera cutout area at the top. Keep the upper area decorative with patterns rather than important elements.`,
-            dimensionHint,
-        ].filter(Boolean).join(' ');
+        const fullPrompt = isBackgroundOnly
+            ? [
+                `Create a beautiful, abstract background or scenery fitting for a phone case design.`,
+                `Style: ${stylePrompt}`,
+                `Do NOT include any people, character subjects, or text. Just a pure stylistic background that seamlessly blends.`,
+                dimensionHint,
+            ].filter(Boolean).join(' ')
+            : [
+                `Create a beautiful, print-ready design collage using the provided ${images.length} photo(s).`,
+                `Style: ${stylePrompt}`,
+                `Layout: aesthetically balanced composition with seamless photo blending.`,
+                `Output: high quality, vibrant colors suitable for phone case printing.`,
+                `Keep all main subjects clearly visible.`,
+                `Place all key subjects and faces in the lower 70% of the composition, away from the camera cutout area at the top. Keep the upper area decorative with patterns rather than important elements.`,
+                dimensionHint,
+            ].filter(Boolean).join(' ');
 
         console.log(`[AI] Prompt: ${fullPrompt.substring(0, 200)}...`);
 
         // --- Call Replicate ---
-        const model = "flux-kontext-apps/multi-image-list";
+        let actualModel = "flux-kontext-apps/multi-image-list";
         const input = {
             prompt: fullPrompt,
-            input_images: imageUris,
+            aspect_ratio: aspectRatioStr,
             output_format: "png",
         };
 
-        // If only 1-2 images, use the cheaper Pro model
-        let actualModel = model;
-        if (files.length <= 2) {
-            actualModel = "flux-kontext-apps/multi-image-kontext-pro";
-            // Pro model uses input_image_1 / input_image_2 instead of input_images array
-            delete input.input_images;
-            input.input_image_1 = imageUris[0];
-            if (imageUris[1]) {
-                input.input_image_2 = imageUris[1];
+        if (isBackgroundOnly) {
+            // Text to image model for pure background
+            actualModel = "black-forest-labs/flux-schnell";
+            // flux-schnell doesn't use input_images
+        } else {
+            input.input_images = imageUris;
+            
+            // If only 1-2 images, use the cheaper Pro model
+            if (images.length <= 2) {
+                actualModel = "flux-kontext-apps/multi-image-kontext-pro";
+                // Pro model uses input_image_1 / input_image_2 instead of input_images array
+                delete input.input_images;
+                input.input_image_1 = imageUris[0];
+                if (imageUris[1]) {
+                    input.input_image_2 = imageUris[1];
+                }
             }
         }
 
-        console.log(`[AI] Calling Model: ${actualModel} with ${files.length} image(s)`);
+        console.log(`[AI] Calling Model: ${actualModel} with ${images.length} image(s)`);
         const result = await replicate.run(actualModel, { input });
         console.log(`[AI] Replicate Output:`, result);
 

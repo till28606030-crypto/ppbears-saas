@@ -5,7 +5,7 @@ import { setCors } from '../_cors.js';
 export const config = {
   api: {
     bodyParser: {
-        sizeLimit: '4mb', // JSON body limit
+        sizeLimit: '50mb', // JSON body limit
     },
   },
 };
@@ -13,15 +13,22 @@ export const config = {
 // Helper: Process Image
 const MAX_DIMENSION = 2048;
 
-async function processImageFromUrl(imageUrl) {
+async function processImage(imageSource) {
     try {
-        // 1. Fetch Image
-        const response = await fetch(imageUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch image: ${response.statusText}`);
+        let buffer;
+        if (imageSource.startsWith('data:image')) {
+            // Raw base64 data URL
+            const base64Data = imageSource.split('base64,')[1];
+            buffer = Buffer.from(base64Data, 'base64');
+        } else {
+            // standard url
+            const response = await fetch(imageSource);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch image: ${response.statusText}`);
+            }
+            const arrayBuffer = await response.arrayBuffer();
+            buffer = Buffer.from(arrayBuffer);
         }
-        const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
 
         // 2. Resize/Convert
         const image = sharp(buffer);
@@ -125,7 +132,7 @@ export default async function handler(req, res) {
 
         // 6. Process Logic
         const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
-        const imageUri = await processImageFromUrl(imageUrl);
+        const imageUri = await processImage(imageUrl);
         
         const model = "851-labs/background-remover:a029dff38972b5fda4ec5d75d7d1cd25aeff621d2cf4946a41055d7db66b80bc";
         const input = { 

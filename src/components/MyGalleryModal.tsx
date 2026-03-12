@@ -90,7 +90,7 @@ export default function MyGalleryModal({ isOpen, onClose, onApply, maxSelection 
 
         if (files.length > 0) {
             if (selectedImageIds.length + files.length > maxSelection) {
-                alert(`最多一次只能選擇 ${maxSelection} 張！`);
+                alert(`最多一次只能 ${maxSelection} 張同時選擇！`);
                 // Process only up to the limit
                 const allowedCount = maxSelection - selectedImageIds.length;
                 if (allowedCount > 0) {

@@ -13,12 +13,13 @@ interface StylePreset {
 interface DesignCollageModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onResult: (imageUrl: string) => void;
+  onResult: (result: { bgUrl: string; cutoutUrls: string[] }) => void;
   productSpecs?: {
     width_mm?: number;
     height_mm?: number;
     dpi?: number;
   };
+  initialImages?: string[];
 }
 
 export default function DesignCollageModal({
@@ -26,6 +27,7 @@ export default function DesignCollageModal({
   onClose,
   onResult,
   productSpecs,
+  initialImages,
 }: DesignCollageModalProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
@@ -73,8 +75,12 @@ export default function DesignCollageModal({
       setSelectedStyle(null);
       setError(null);
       setIsGenerating(false);
+      
+      if (initialImages && initialImages.length > 0) {
+        handleGalleryApply(initialImages);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, initialImages]);
 
   const handleGalleryApply = async (src: string | string[]) => {
     try {
@@ -121,53 +127,66 @@ export default function DesignCollageModal({
     setError(null);
 
     try {
-      const formData = new FormData();
-      files.forEach(f => formData.append('images', f));
-      formData.append('stylePrompt', selectedStyle.prompt);
-      if (productSpecs?.width_mm) formData.append('widthMm', String(productSpecs.width_mm));
-      if (productSpecs?.height_mm) formData.append('heightMm', String(productSpecs.height_mm));
-      if (productSpecs?.dpi) formData.append('dpi', String(productSpecs.dpi));
+      // Convert Files to Base64
+      const getBase64 = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = error => reject(error);
+        });
+      };
+      
+      const base64Images = await Promise.all(files.map(getBase64));
 
       const apiOrigin = import.meta.env.VITE_API_ORIGIN || '';
 
-      const response = await fetch(`${apiOrigin}/api/ai/design-collage`, {
+      // 1. Generate stylized background
+      const bgPayload = {
+        mode: 'background',
+        stylePrompt: selectedStyle.prompt,
+        widthMm: productSpecs?.width_mm,
+        heightMm: productSpecs?.height_mm,
+        dpi: productSpecs?.dpi
+      };
+
+      const bgPromise = fetch(`${apiOrigin}/api/ai/design-collage`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bgPayload),
+      }).then(async r => {
+        if (!r.ok) {
+          let errData;
+          try { errData = await r.json(); } catch { errData = {}; }
+          throw new Error(errData.message || '背景生成失敗');
+        }
+        const data = await r.json();
+        if (!data.success || !data.url) throw new Error('背景生成無效');
+        return data.url;
       });
 
-      // Handle non-OK responses
-      if (!response.ok) {
-        // Try to parse error JSON, fallback to status text
-        let errMsg = `伺服器錯誤 (${response.status})`;
-        try {
-          const errData = await response.json();
-          errMsg = errData.message || errMsg;
-        } catch {
-          // Response body isn't JSON
-          if (response.status === 404) {
-            errMsg = 'API 端點不存在，請確認後端伺服器已重啟';
-          } else if (response.status === 413) {
-            errMsg = '圖片檔案太大，請縮小後再試';
+      // 2. Remove backgrounds for each character image
+      const cutoutPromises = base64Images.map(imgB64 =>
+        fetch(`${apiOrigin}/api/ai/remove-bg`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageUrl: imgB64 })
+        }).then(async r => {
+          if (!r.ok) {
+            let errData;
+            try { errData = await r.json(); } catch { errData = {}; }
+            throw new Error(errData.message || '去背處理失敗');
           }
-        }
-        throw new Error(errMsg);
-      }
+          const data = await r.json();
+          if (!data.success || !data.url) throw new Error('去背結果無效');
+          return data.url;
+        })
+      );
 
-      // Parse successful response
-      const text = await response.text();
-      if (!text) throw new Error('伺服器回傳空回應，請確認後端已重啟');
+      // Wait for all to finish
+      const [bgUrl, ...cutoutUrls] = await Promise.all([bgPromise, ...cutoutPromises]);
 
-      let data: any;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error('伺服器回傳非 JSON 格式，請確認後端已重啟');
-      }
-
-      if (!data.success) throw new Error(data.message || 'AI 生成失敗');
-      if (!data.url) throw new Error('未收到生成結果');
-
-      onResult(data.url);
+      onResult({ bgUrl, cutoutUrls });
       onClose();
     } catch (err: any) {
       console.error('Design collage failed:', err);
