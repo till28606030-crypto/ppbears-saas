@@ -12,3 +12,41 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* ReactQuill Frontend rendering support */
+.prose .ql-size-small { font-size: 0.75em; }
+.prose .ql-size-large { font-size: 1.5em; }
+.prose .ql-size-huge { font-size: 2em; }
+.prose .ql-align-center { text-align: center; }
+.prose .ql-align-right { text-align: right; }
+.prose .ql-align-justify { text-align: justify; }
+
+/* Handle Quill font color inline styles on Tailwind Prose */
+.prose [style*="color:"] {
+  color: revert;
+}
+.prose [style*="background-color:"] {
+  background-color: revert;
+}
+
+/* ReactQuill spacing resets to match editor */
+.prose p {
+  margin-top: 0;
+  margin-bottom: 0.1em;
+}
+.prose ul, .prose ol {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+}
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+  margin-top: 0.5em;
+  margin-bottom: 0.25em;
+  line-height: 1.2;
+  font-weight: bold;
+}
+.prose h1 { font-size: 2em; }
+.prose h2 { font-size: 1.5em; }
+.prose h3 { font-size: 1.17em; }
+.prose h4 { font-size: 1em; }
+.prose h5 { font-size: 0.83em; }
+.prose h6 { font-size: 0.67em; }

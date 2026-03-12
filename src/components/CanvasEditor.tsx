@@ -819,6 +819,7 @@ interface CanvasEditorProps {
         designs: boolean;
         aiCartoon: boolean;
         aiRemoveBg: boolean;
+        aiUpscale?: boolean;
     };
     mobileActions?: {
         onUpload: () => void;
@@ -829,6 +830,7 @@ interface CanvasEditorProps {
         onOpenFrames: () => void;
         onOpenDesigns?: () => void;
         onOpenAI?: () => void; // Deprecated in favor of separate actions
+        onAiUpscale?: () => void;
         onAiCartoon?: () => void;
         onAiRemoveBg?: () => void;
         onOpenProduct: () => void;
@@ -868,7 +870,7 @@ export interface CanvasEditorRef {
     removeUserObjects: (predicate?: (obj: any) => boolean) => void;
     upsertUserBg: (config: { type: 'color' | 'image', value: string }) => Promise<void>;
     toggleCropMode: () => void;
-    applyAiStyle: (styleId: "toon_mochi" | "toon_ink" | "toon_anime") => Promise<void>;
+    applyAiStyle: (styleId: "toon_mochi" | "toon_ink" | "toon_anime" | "upscale") => Promise<void>;
     removeBackgroundFromSelection: () => Promise<void>;
     setBackgroundImage: (url: string) => Promise<void> | void;
     insertImageFromSrc: (src: string) => Promise<void>;
@@ -930,7 +932,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         barcode: true,
         designs: true,
         aiCartoon: true,
-        aiRemoveBg: true
+        aiRemoveBg: true,
+        aiUpscale: true
     };
     const p = { ...DEFAULT_PERMS, ...(permissions || {}) };
 
@@ -3627,7 +3630,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             saveHistory();
         },
         // --- AI Integration ---
-        handleGenerateAI: async (styleId: "toon_mochi" | "toon_ink" | "toon_anime" | "remove_bg") => {
+        handleGenerateAI: async (styleId: "toon_mochi" | "toon_ink" | "toon_anime" | "remove_bg" | "upscale") => {
             const canvas = fabricCanvas.current;
             const activeObject = canvas?.getActiveObject();
             if (!canvas || !activeObject || activeObject.type !== 'image') {
@@ -3643,6 +3646,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             imageObj.set('opacity', 0.5);
             canvas.renderAll();
 
+            setIsGenerating(true); // Trigger loading animation
+
             try {
                 // console.log("Calling AI API...", styleId);
 
@@ -3651,13 +3656,13 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 const formData = new FormData();
                 formData.append('image', blob);
 
-                if (styleId !== 'remove_bg') {
+                if (styleId !== 'remove_bg' && styleId !== 'upscale') {
                     formData.append('meta', JSON.stringify({ styleId }));
                 }
 
-                const endpoint = styleId === 'remove_bg'
-                    ? `${import.meta.env.VITE_API_ORIGIN}/api/ai/remove-bg`
-                    : `${import.meta.env.VITE_API_ORIGIN}/api/ai/cartoon`;
+                let endpoint = `${import.meta.env.VITE_API_ORIGIN}/api/ai/cartoon`;
+                if (styleId === 'remove_bg') endpoint = `${import.meta.env.VITE_API_ORIGIN}/api/ai/remove-bg`;
+                if (styleId === 'upscale') endpoint = `${import.meta.env.VITE_API_ORIGIN}/api/ai/upscale`;
 
                 // console.log(`[AI] Fetching: ${endpoint}`);
 
@@ -3714,11 +3719,13 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 canvas.renderAll();
 
                 // [Task 4] Enhanced Error Message
-                const endpoint = styleId === 'remove_bg'
-                    ? `${import.meta.env.VITE_API_ORIGIN}/api/ai/remove-bg`
-                    : `${import.meta.env.VITE_API_ORIGIN}/api/ai/cartoon`;
+                let endpoint = `${import.meta.env.VITE_API_ORIGIN}/api/ai/cartoon`;
+                if (styleId === 'remove_bg') endpoint = `${import.meta.env.VITE_API_ORIGIN}/api/ai/remove-bg`;
+                if (styleId === 'upscale') endpoint = `${import.meta.env.VITE_API_ORIGIN}/api/ai/upscale`;
 
                 alert(`AI 處理失敗 (Connection Failed)\n\nEndpoint: ${endpoint}\nError: ${error.message}\n\n請檢查瀏覽器 Console (F12) 的 Network 分頁，確認 OPTIONS 是否回傳 204，POST 是否回傳 200。`);
+            } finally {
+                setIsGenerating(false);
             }
         },
 
@@ -3916,7 +3923,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 toggleCropModeRef.current();
             }
         },
-        applyAiStyle: async (styleId: "toon_mochi" | "toon_ink" | "toon_anime") => {
+        applyAiStyle: async (styleId: "toon_mochi" | "toon_ink" | "toon_anime" | "upscale") => {
             if (!p.aiCartoon) return;
             await handleGenerateAI(styleId);
         },
@@ -6414,6 +6421,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                         <span className="text-[9px] font-bold">{isCropping ? "解鎖" : "鎖定"}</span>
                                     </button>
                                 )}
+
+
                             </>
                         )}
                     </div>
@@ -6794,6 +6803,14 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                         <span className="text-[10px] font-medium">上傳照片</span>
                                     </button>
                                 )}
+                                {/* AI Tools: Upscale */}
+                                {mobileActions?.onAiUpscale && (
+                                    <button onClick={mobileActions?.onAiUpscale} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-emerald-600">
+                                        <Sparkles className="w-6 h-6" />
+                                        <span className="text-[10px] font-medium">數位修復</span>
+                                    </button>
+                                )}
+
                                 {/* AI Tools: Cartoonize */}
                                 {mobileActions?.onAiCartoon && (
                                     <button onClick={mobileActions?.onAiCartoon} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-purple-600">
@@ -7139,6 +7156,45 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                         </button>
                                     </div>
                                 </div>
+
+                                {/* 5. AI智能工具 (Only for Images) */}
+                                {selectedObject.type === 'image' && !(selectedObject as any).isStickerLayer && !(selectedObject as any).isBarcodeLayer && (p.aiUpscale || p.aiCartoon || p.aiRemoveBg) && (
+                                    <div className="space-y-2 pt-2 border-t border-gray-100 mt-2">
+                                        <label className="text-[11px] font-semibold text-gray-500 ml-1">AI 智能工具</label>
+                                        <div className="grid grid-cols-3 gap-2 mt-1">
+                                            {p.aiUpscale && (
+                                                <button
+                                                    onClick={() => { handleGenerateAI('upscale'); setActiveAdjust(null); }}
+                                                    className="flex flex-col items-center justify-center p-3 rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-all group shadow-sm active:scale-95"
+                                                    title="數位修復"
+                                                >
+                                                    <Sparkles className="w-6 h-6 mb-1.5 text-emerald-500 group-hover:scale-110 transition-transform" />
+                                                    <span className="text-[10px] font-bold text-emerald-700">數位修復</span>
+                                                </button>
+                                            )}
+                                            {p.aiCartoon && (
+                                                <button
+                                                    onClick={() => { handleGenerateAI('toon_ink'); setActiveAdjust(null); }}
+                                                    className="flex flex-col items-center justify-center p-3 rounded-xl border border-purple-100 bg-purple-50 text-purple-600 hover:bg-purple-100 transition-all group shadow-sm active:scale-95"
+                                                    title="卡通化"
+                                                >
+                                                    <Wand2 className="w-6 h-6 mb-1.5 text-purple-500 group-hover:scale-110 transition-transform" />
+                                                    <span className="text-[10px] font-bold text-purple-700">卡通化</span>
+                                                </button>
+                                            )}
+                                            {p.aiRemoveBg && (
+                                                <button
+                                                    onClick={() => { handleGenerateAI('remove_bg'); setActiveAdjust(null); }}
+                                                    className="flex flex-col items-center justify-center p-3 rounded-xl border border-red-100 bg-red-50 text-red-600 hover:bg-red-100 transition-all group shadow-sm active:scale-95"
+                                                    title="去背"
+                                                >
+                                                    <Scissors className="w-6 h-6 mb-1.5 text-red-500 group-hover:scale-110 transition-transform" />
+                                                    <span className="text-[10px] font-bold text-red-700">去背</span>
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ) : (

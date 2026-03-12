@@ -15,6 +15,7 @@ const defaultPermissions: ClientPermissions = {
     stickers: true,
     barcode: true,
     ai_cartoon: true,
+    ai_upscale: true,
     frames: true,
 };
 
@@ -37,6 +38,7 @@ const AttributeSettingsTab: React.FC<AttributeSettingsTabProps> = ({ draft, setD
         { key: 'stickers', label: '貼圖 (Stickers)' },
         { key: 'barcode', label: '條碼 (Barcode)' },
         { key: 'ai_cartoon', label: '卡通化 (AI Cartoon)' },
+        { key: 'ai_upscale', label: '數位修復 (AI Upscale)' },
         { key: 'frames', label: '相框 (Frames)' },
     ];
 

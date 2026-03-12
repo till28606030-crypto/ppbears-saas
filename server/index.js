@@ -354,6 +354,79 @@ app.post('/api/ai/remove-bg', upload.single('image'), async (req, res) => {
     }
 });
 
+// 2.5. Upscale / Enhance Image (Recraft Crisp Upscale)
+app.post('/api/ai/upscale', upload.single('image'), async (req, res) => {
+    console.log(`[AI] HIT /api/ai/upscale (ID: ${BUILD_ID})`);
+    try {
+        let imageBuffer = null;
+
+        // Case A: File Upload
+        if (req.file && req.file.buffer) {
+            console.log(`[AI] Source: File Upload (${req.file.size} bytes)`);
+            imageBuffer = req.file.buffer;
+        }
+        // Case B: JSON Body with URL
+        else if (req.body.imageUrl) {
+            console.log(`[AI] Source: URL (${req.body.imageUrl})`);
+            const fetchRes = await fetch(req.body.imageUrl);
+            if (!fetchRes.ok) throw new Error(`Failed to fetch image: ${fetchRes.statusText}`);
+            const arrayBuffer = await fetchRes.arrayBuffer();
+            imageBuffer = Buffer.from(arrayBuffer);
+        }
+
+        if (!imageBuffer) {
+            return fail(res, '未上傳圖片或無效的圖片連結', { errorCode: 'UPLOAD_FAILED' });
+        }
+
+        // Check API Key
+        if (!process.env.REPLICATE_API_TOKEN) {
+            return fail(res, 'Server configuration error (Missing API Key)', { errorCode: 'MISSING_ENV' });
+        }
+
+        // Process Image to Base64 (Standardization)
+        let imageUri;
+        try {
+            // Recraft may require high-res inputs or specific forms, but processImage restricts to 2048px which is safe and standard
+            imageUri = await processImage(imageBuffer);
+        } catch (imgErr) {
+            console.error('[AI] Image preprocessing failed:', imgErr);
+            return fail(res, '圖片預處理失敗', { errorCode: 'IMAGE_PROCESS_ERROR' });
+        }
+
+        const model = "recraft-ai/recraft-crisp-upscale";
+        const input = {
+            image: imageUri
+        };
+
+        console.log(`[AI] Calling Model: ${model}`);
+        const result = await replicate.run(model, { input });
+        console.log(`[AI] Replicate Output:`, result);
+
+        const url = await pickFirstUrl(result);
+
+        if (!url) {
+            const dbg = debugValue(result);
+            console.error('[AI] INVALID_OUTPUT debug:', dbg);
+            return fail(res, 'AI succeeded but missing url (backend bug)', {
+                errorCode: 'INVALID_OUTPUT',
+                endpoint: '/api/ai/upscale',
+                rawDebug: dbg
+            });
+        }
+
+        return ok(res, { url });
+
+    } catch (error) {
+        console.error('[AI] Error:', error);
+        return fail(res, 'AI upscale failed', {
+            errorCode: 'AI_ERROR',
+            endpoint: '/api/ai/upscale',
+            error: String(error?.message || error),
+            stack: error?.stack
+        });
+    }
+});
+
 // 3. Auto-Tag (Image Analysis for tagging using OpenAI GPT-4o-mini)
 const OpenAI = require('openai');
 const openai = new OpenAI({

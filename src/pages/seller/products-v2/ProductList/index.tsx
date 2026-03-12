@@ -109,10 +109,10 @@ const SortableRow: React.FC<SortableRowProps> = ({ product, isSelected, onToggle
         {(() => {
           const permissions = (product as any).client_permissions || {
             text: true, background: true, designs: true, ai_remove_bg: true,
-            stickers: true, barcode: true, ai_cartoon: true, frames: true,
+            stickers: true, barcode: true, ai_cartoon: true, ai_upscale: true, frames: true,
           };
           const enabledCount = Object.values(permissions).filter(Boolean).length;
-          const isAllEnabled = enabledCount === 8;
+          const isAllEnabled = enabledCount === 9;
 
           return (
             <button
@@ -231,7 +231,7 @@ const ProductListV2: React.FC = () => {
   const [filterPermissions, setFilterPermissions] = useState<'all' | 'full' | 'partial' | 'specific'>('all');
   const [selectedPermissions, setSelectedPermissions] = useState<Record<string, boolean>>({
     text: false, background: false, designs: false, ai_remove_bg: false,
-    stickers: false, barcode: false, ai_cartoon: false, frames: false,
+    stickers: false, barcode: false, ai_cartoon: false, ai_upscale: false, frames: false,
   });
 
   // Option Groups Data
@@ -298,11 +298,11 @@ const ProductListV2: React.FC = () => {
       if (filterPermissions !== 'all') {
         const perms = (product as any).client_permissions || {
           text: true, background: true, designs: true, ai_remove_bg: true,
-          stickers: true, barcode: true, ai_cartoon: true, frames: true,
+          stickers: true, barcode: true, ai_cartoon: true, ai_upscale: true, frames: true,
         };
         const enabledCount = Object.values(perms).filter(Boolean).length;
-        if (filterPermissions === 'full' && enabledCount !== 8) return false;
-        if (filterPermissions === 'partial' && enabledCount === 8) return false;
+        if (filterPermissions === 'full' && enabledCount !== 9) return false;
+        if (filterPermissions === 'partial' && enabledCount === 9) return false;
         if (filterPermissions === 'specific') {
           const requiredKeys = Object.entries(selectedPermissions).filter(([_, v]) => v).map(([k]) => k);
           if (requiredKeys.length > 0) {
@@ -646,6 +646,7 @@ const ProductListV2: React.FC = () => {
                         { key: 'stickers', label: '貼圖 (Stickers)' },
                         { key: 'barcode', label: '條碼 (Barcode)' },
                         { key: 'ai_cartoon', label: '卡通化 (AI Cartoon)' },
+                        { key: 'ai_upscale', label: '數位修復 (AI Upscale)' },
                         { key: 'frames', label: '相框 (Frames)' }
                       ].map(perm => (
                         <label key={perm.key} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 p-1.5 rounded">

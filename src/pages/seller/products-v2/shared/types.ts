@@ -32,6 +32,7 @@ export interface ClientPermissions {
   background: boolean;
   designs: boolean;
   ai_remove_bg: boolean;
+  ai_upscale: boolean;
   stickers: boolean;
   barcode: boolean;
   ai_cartoon: boolean;

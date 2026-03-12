@@ -45,6 +45,7 @@ const DEFAULT_PERMS = {
     designs: true,
     aiCartoon: true,
     aiRemoveBg: true,
+    aiUpscale: true,
     frames: true
 };
 
@@ -120,6 +121,7 @@ export default function Home() {
                 designs: cp.designs !== false,
                 aiCartoon: cp.ai_cartoon !== false,
                 aiRemoveBg: cp.ai_remove_bg !== false,
+                aiUpscale: cp.ai_upscale !== false,
                 frames: cp.frames !== false
             };
         }
@@ -357,7 +359,7 @@ export default function Home() {
         if (!canvasRef.current) return;
 
         // Check Daily Usage Limit first for "Generation" actions
-        const isGenerationAction = ['toon_mochi', 'toon_ink', 'toon_anime', 'remove_bg'].includes(action);
+        const isGenerationAction = ['toon_mochi', 'toon_ink', 'toon_anime', 'remove_bg', 'upscale'].includes(action);
 
         if (isGenerationAction) {
             const today = new Date().toISOString().split('T')[0];
@@ -391,6 +393,9 @@ export default function Home() {
                     break;
                 case 'toon_anime':
                     await canvasRef.current.applyAiStyle('toon_anime');
+                    break;
+                case 'upscale':
+                    await canvasRef.current.applyAiStyle('upscale');
                     break;
                 case 'remove_bg':
                     await canvasRef.current.removeBackgroundFromSelection();
@@ -1650,41 +1655,6 @@ export default function Home() {
                         </span>
                     </button>
                 )}
-
-                {/* Tool: Cartoonize (Ink) - Direct Action */}
-                {perms.aiCartoon && (
-                    <button
-                        onClick={() => {
-                            handleAiAction('toon_ink');
-                            setActivePanel('none');
-                        }}
-                        className="group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl text-gray-500 hover:bg-purple-50 hover:text-purple-600 transition-all duration-200 border border-transparent hover:border-purple-200"
-                        title="卡通化"
-                    >
-                        <Wand2 className="w-6 h-6 mb-1" />
-                        <span className="text-xs font-medium">
-                            卡通化
-                        </span>
-                    </button>
-                )}
-
-                {/* Tool: Remove BG - Direct Action */}
-                {perms.aiRemoveBg && (
-                    <button
-                        onClick={() => {
-                            handleAiAction('remove_bg');
-                            setActivePanel('none');
-                        }}
-                        className="group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl text-gray-500 hover:bg-red-50 hover:text-red-600 transition-all duration-200 border border-transparent hover:border-red-200"
-                        title="一鍵去背"
-                    >
-                        <Scissors className="w-6 h-6 mb-1" />
-                        <span className="text-xs font-medium">
-                            去背
-                        </span>
-                    </button>
-                )}
-
             </aside>
 
             {/* Center - Canvas Area */}
@@ -2366,6 +2336,7 @@ export default function Home() {
                         onToolUsed={() => setActiveTool(null)}
                         previewConfig={productConfig || undefined}
                         currentProduct={currentProduct}
+                        permissions={perms}
                         onCropModeChange={setIsCropping}
                         onTemplateLoadingChange={setIsTemplateLoading}
                         onImageLayerChange={setCanvasHasUserImage}
@@ -2382,6 +2353,7 @@ export default function Home() {
                             onOpenFrames: perms.frames ? () => handleToolClick('Frames') : undefined,
                             onOpenDesigns: perms.designs ? () => handleToolClick('Designs') : undefined,
                             // Split AI Actions for Mobile
+                            onAiUpscale: perms.aiUpscale ? () => { handleAiAction('upscale'); setActivePanel('none'); } : undefined,
                             onAiCartoon: perms.aiCartoon ? () => { handleAiAction('toon_ink'); setActivePanel('none'); } : undefined,
                             onAiRemoveBg: perms.aiRemoveBg ? () => { handleAiAction('remove_bg'); setActivePanel('none'); } : undefined,
                             onOpenProduct: () => handleToolClick('Product')
