@@ -36,6 +36,7 @@ export interface ClientPermissions {
   stickers: boolean;
   barcode: boolean;
   ai_cartoon: boolean;
+  ai_design_collage: boolean;
   frames: boolean;
 }
 

@@ -820,6 +820,7 @@ interface CanvasEditorProps {
         aiCartoon: boolean;
         aiRemoveBg: boolean;
         aiUpscale?: boolean;
+        aiDesignCollage?: boolean;
     };
     mobileActions?: {
         onUpload: () => void;
@@ -833,6 +834,7 @@ interface CanvasEditorProps {
         onAiUpscale?: () => void;
         onAiCartoon?: () => void;
         onAiRemoveBg?: () => void;
+        onAiDesignCollage?: () => void;
         onOpenProduct: () => void;
     };
     onImageLayerChange?: (hasImage: boolean) => void;
@@ -6827,6 +6829,14 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     </button>
                                 )}
 
+                                {/* AI Tools: Design Collage */}
+                                {mobileActions?.onAiDesignCollage && (
+                                    <button onClick={mobileActions?.onAiDesignCollage} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-indigo-600">
+                                        <Sparkles className="w-6 h-6" />
+                                        <span className="text-[10px] font-medium">AI設計</span>
+                                    </button>
+                                )}
+
                                 {/* 相框 Button - shown when image is selected */}
                                 {mobileActions?.onOpenFrames && !(selectedObject as any).isFrameLayer && (
                                     <button onClick={mobileActions?.onOpenFrames} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-amber-600">
@@ -6967,6 +6977,18 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 >
                                     <LayoutTemplate className="w-6 h-6" />
                                     <span className="text-[10px] font-medium">設計</span>
+                                </button>
+                            )}
+
+                            {/* AI Design Collage */}
+                            {mobileActions?.onAiDesignCollage && (
+                                <button
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={mobileActions?.onAiDesignCollage}
+                                    className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-indigo-500 active:text-indigo-700"
+                                >
+                                    <Sparkles className="w-6 h-6" />
+                                    <span className="text-[10px] font-medium">AI設計</span>
                                 </button>
                             )}
 

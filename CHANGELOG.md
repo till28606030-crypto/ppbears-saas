@@ -4,6 +4,36 @@
 
 ---
 
+## v4.8 — 2026-03-12（AI 設計拼貼功能）
+
+### 修改內容
+- **新增 AI 設計拼貼 (Design Collage) 功能**:
+  - 客戶可上傳 1-5 張照片，選擇 6 種預設風格（偶像應援、旅遊紀念、寵物專屬、節日慶典、日本動漫、情侶愛情），AI 自動融合生成精美拼貼設計圖，直接插入畫布。
+  - 後端新增 `/api/ai/design-collage` 路由，智慧選用模型：1-2 張圖用 `multi-image-kontext-pro`（較省），3-5 張用 `multi-image-list`（支援多圖融合）。
+  - Prompt 自動嵌入商品尺寸（寬高 mm、DPI）並引導 AI 避開遮罩區域，確保印刷品質。
+- **新增後台 AI 風格管理頁面 (`/admin/ai-styles`)**:
+  - 商家可新增、編輯、停用、拖曳排序風格預設，編輯 Emoji 圖標和核心 Prompt 關鍵字。
+  - 風格資料存於 Supabase `ai_style_presets` 資料表，前端動態讀取。
+- **新增 `ai_design_collage` 權限開關**:
+  - ProductEditor 後台可獨立控管每個商品是否開放 AI 設計拼貼功能。
+- **前端入口整合**:
+  - PC 左側欄新增「AI設計」按鈕，手機底部工具列同步新增。
+  - 精美 Modal 含照片上傳、縮圖預覽、風格選擇、AI 生成中動畫。
+
+### 影響檔案
+- `server/index.js` — 後端 API 路由
+- `src/components/DesignCollageModal.tsx` — [新增] 設計拼貼 Modal
+- `src/pages/admin/AiStylePresets.tsx` — [新增] 後台風格管理
+- `src/pages/Home.tsx` — 前端入口按鈕 + Modal 掛載
+- `src/components/CanvasEditor.tsx` — 手機工具列按鈕
+- `src/pages/seller/products-v2/shared/types.ts` — 權限類型
+- `src/pages/seller/products-v2/ProductEditor/tabs/AttributeSettingsTab.tsx` — 權限 UI
+- `scripts/create_ai_style_presets.sql` — [新增] SQL 遷移腳本
+- `src/App.tsx` — 路由
+- `src/layouts/AdminLayout.tsx` — 側邊欄
+
+---
+
 ## v4.7 — 2026-03-12（AI 數位修復功能與介面優化）
 
 ### 修改內容

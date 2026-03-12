@@ -1,7 +1,7 @@
 import { useState } from 'react';
 const APP_VERSION = __APP_VERSION__;
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { ShoppingBag, Image as ImageIcon, LayoutDashboard, LogOut, Menu, X, ArrowLeft, Palette, Shapes, Settings, FolderTree } from 'lucide-react';
+import { ShoppingBag, Image as ImageIcon, LayoutDashboard, LogOut, Menu, X, ArrowLeft, Palette, Shapes, Settings, FolderTree, Sparkles } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { USE_PRODUCTS_V2 } from '@/config';
 
@@ -22,6 +22,7 @@ export default function AdminLayout() {
     if (path.includes('/admin/designs')) return 'designs';
     if (path.includes('/admin/media')) return 'media';
     if (path.includes('/admin/settings')) return 'settings';
+    if (path.includes('/admin/ai-styles')) return 'ai-styles';
     return 'orders'; // Default or /admin/orders
   };
 
@@ -137,6 +138,15 @@ export default function AdminLayout() {
           >
             <ImageIcon className="w-5 h-5" />
             媒體庫 (全域儲存空間)
+          </button>
+
+          {/* NEW: AI Style Presets */}
+          <button
+            onClick={() => handleNavigation('/admin/ai-styles')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${activeTab === 'ai-styles' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            <Sparkles className="w-5 h-5" />
+            AI 風格管理
           </button>
 
           {/* NEW: System Settings */}

@@ -427,6 +427,115 @@ app.post('/api/ai/upscale', upload.single('image'), async (req, res) => {
     }
 });
 
+// 2.6. AI Design Collage (Multi-Image Fusion with FLUX Kontext)
+app.post('/api/ai/design-collage', upload.array('images', 5), async (req, res) => {
+    console.log(`[AI] HIT /api/ai/design-collage (ID: ${BUILD_ID})`);
+    try {
+        // --- Validate inputs ---
+        const files = req.files || [];
+        const { stylePrompt, widthMm, heightMm, dpi: inputDpi } = req.body;
+
+        if (files.length === 0) {
+            return fail(res, '請至少上傳 1 張圖片', { errorCode: 'NO_IMAGES' });
+        }
+        if (files.length > 5) {
+            return fail(res, '最多上傳 5 張圖片', { errorCode: 'TOO_MANY_IMAGES' });
+        }
+        if (!stylePrompt) {
+            return fail(res, '請選擇設計風格', { errorCode: 'NO_STYLE' });
+        }
+
+        // Check API Key
+        if (!process.env.REPLICATE_API_TOKEN) {
+            return fail(res, 'Server configuration error (Missing API Key)', { errorCode: 'MISSING_ENV' });
+        }
+
+        // --- Process all images to Base64 Data URIs ---
+        console.log(`[AI] Processing ${files.length} images for design collage...`);
+        const imageUris = [];
+        for (const file of files) {
+            try {
+                const uri = await processImage(file.buffer);
+                imageUris.push(uri);
+            } catch (imgErr) {
+                console.error('[AI] Image preprocessing failed:', imgErr);
+                return fail(res, `圖片預處理失敗: ${imgErr.message}`, { errorCode: 'IMAGE_PROCESS_ERROR' });
+            }
+        }
+
+        // --- Build the prompt with product dimensions & mask awareness ---
+        const dpi = parseInt(inputDpi) || 300;
+        const wMm = parseFloat(widthMm) || 0;
+        const hMm = parseFloat(heightMm) || 0;
+
+        let dimensionHint = '';
+        if (wMm > 0 && hMm > 0) {
+            const wPx = Math.round(wMm / 25.4 * dpi);
+            const hPx = Math.round(hMm / 25.4 * dpi);
+            dimensionHint = `Output image at ${wPx}x${hPx} pixels, print-ready quality at ${dpi} DPI, correct aspect ratio ${wMm}:${hMm}mm, high detail and sharp focus.`;
+        }
+
+        const fullPrompt = [
+            `Create a beautiful, print-ready design collage using the provided ${files.length} photo(s).`,
+            `Style: ${stylePrompt}`,
+            `Layout: aesthetically balanced composition with seamless photo blending.`,
+            `Output: high quality, vibrant colors suitable for phone case printing.`,
+            `Keep all main subjects clearly visible.`,
+            `Place all key subjects and faces in the lower 70% of the composition, away from the camera cutout area at the top. Keep the upper area decorative with patterns rather than important elements.`,
+            dimensionHint,
+        ].filter(Boolean).join(' ');
+
+        console.log(`[AI] Prompt: ${fullPrompt.substring(0, 200)}...`);
+
+        // --- Call Replicate ---
+        const model = "flux-kontext-apps/multi-image-list";
+        const input = {
+            prompt: fullPrompt,
+            input_images: imageUris,
+            output_format: "png",
+        };
+
+        // If only 1-2 images, use the cheaper Pro model
+        let actualModel = model;
+        if (files.length <= 2) {
+            actualModel = "flux-kontext-apps/multi-image-kontext-pro";
+            // Pro model uses input_image_1 / input_image_2 instead of input_images array
+            delete input.input_images;
+            input.input_image_1 = imageUris[0];
+            if (imageUris[1]) {
+                input.input_image_2 = imageUris[1];
+            }
+        }
+
+        console.log(`[AI] Calling Model: ${actualModel} with ${files.length} image(s)`);
+        const result = await replicate.run(actualModel, { input });
+        console.log(`[AI] Replicate Output:`, result);
+
+        const url = await pickFirstUrl(result);
+
+        if (!url) {
+            const dbg = debugValue(result);
+            console.error('[AI] INVALID_OUTPUT debug:', dbg);
+            return fail(res, 'AI succeeded but missing url (backend bug)', {
+                errorCode: 'INVALID_OUTPUT',
+                endpoint: '/api/ai/design-collage',
+                rawDebug: dbg
+            });
+        }
+
+        return ok(res, { url });
+
+    } catch (error) {
+        console.error('[AI] Design Collage Error:', error);
+        return fail(res, 'AI 設計拼貼生成失敗', {
+            errorCode: 'AI_ERROR',
+            endpoint: '/api/ai/design-collage',
+            error: String(error?.message || error),
+            stack: error?.stack
+        });
+    }
+});
+
 // 3. Auto-Tag (Image Analysis for tagging using OpenAI GPT-4o-mini)
 const OpenAI = require('openai');
 const openai = new OpenAI({

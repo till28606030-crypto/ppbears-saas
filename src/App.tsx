@@ -13,6 +13,7 @@ import ModelDetail from "@/pages/admin/ModelDetail";
 import AdminCategories from "@/pages/admin/Categories";
 import MediaLibrary from "@/pages/admin/MediaLibrary";
 import SystemSettings from "@/pages/admin/SystemSettings";
+import AiStylePresets from "@/pages/admin/AiStylePresets";
 import ProductListV2 from "@/pages/seller/products-v2/ProductList";
 import ProductEditorV2 from "@/pages/seller/products-v2/ProductEditor";
 import FrameList from "@/pages/seller/FrameList";
@@ -61,6 +62,7 @@ export default function App() {
               <Route path="/admin/categories" element={<AdminCategories />} />
               <Route path="/admin/media" element={<MediaLibrary />} />
               <Route path="/admin/settings" element={<SystemSettings />} />
+              <Route path="/admin/ai-styles" element={<AiStylePresets />} />
 
               {/* Model Detail Route (Requested Feature) */}
               <Route path="/admin/models/:id" element={<ModelDetail />} />

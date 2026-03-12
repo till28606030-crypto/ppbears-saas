@@ -21,6 +21,7 @@ import CanvasEditor, { CanvasEditorRef } from '../components/CanvasEditor';
 import SaveDesignModal from '../components/SaveDesignModal';
 import MyGalleryModal from '../components/MyGalleryModal';
 import FontPicker from '../components/FontPicker';
+import DesignCollageModal from '../components/DesignCollageModal';
 
 import { DEFAULT_STICKERS, DEFAULT_BACKGROUNDS, DEFAULT_FRAMES } from '../data/mockAssets';
 import { AssetItem, Category } from '@/types';
@@ -46,6 +47,7 @@ const DEFAULT_PERMS = {
     aiCartoon: true,
     aiRemoveBg: true,
     aiUpscale: true,
+    aiDesignCollage: true,
     frames: true
 };
 
@@ -122,6 +124,7 @@ export default function Home() {
                 aiCartoon: cp.ai_cartoon !== false,
                 aiRemoveBg: cp.ai_remove_bg !== false,
                 aiUpscale: cp.ai_upscale !== false,
+                aiDesignCollage: cp.ai_design_collage !== false,
                 frames: cp.frames !== false
             };
         }
@@ -353,13 +356,14 @@ export default function Home() {
 
     const [showAiDisclaimer, setShowAiDisclaimer] = useState(false);
     const [aiProcessingAction, setAiProcessingAction] = useState<{ action: string, payload?: any } | null>(null);
+    const [showDesignCollageModal, setShowDesignCollageModal] = useState(false);
 
     // AI Action Handler
     const handleAiAction = async (action: string, payload?: any, skipDisclaimer = false) => {
         if (!canvasRef.current) return;
 
         // Check Daily Usage Limit first for "Generation" actions
-        const isGenerationAction = ['toon_mochi', 'toon_ink', 'toon_anime', 'remove_bg', 'upscale'].includes(action);
+        const isGenerationAction = ['toon_mochi', 'toon_ink', 'toon_anime', 'remove_bg', 'upscale', 'design_collage'].includes(action);
 
         if (isGenerationAction) {
             const today = new Date().toISOString().split('T')[0];
@@ -405,6 +409,9 @@ export default function Home() {
                         currentBgRef.current = payload;
                         await canvasRef.current.setCanvasBgImage(payload);
                     }
+                    break;
+                case 'design_collage':
+                    setShowDesignCollageModal(true);
                     break;
             }
         } catch (error: any) {
@@ -1655,6 +1662,20 @@ export default function Home() {
                         </span>
                     </button>
                 )}
+
+                {/* Tool: AI Design Collage */}
+                {perms.aiDesignCollage && (
+                    <button
+                        onClick={() => handleAiAction('design_collage')}
+                        className="group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-indigo-200 text-indigo-500 hover:bg-indigo-50 hover:text-indigo-600"
+                        title="AI 設計拼貼"
+                    >
+                        <Sparkles className="w-6 h-6 mb-1" />
+                        <span className="text-xs font-medium">
+                            AI設計
+                        </span>
+                    </button>
+                )}
             </aside>
 
             {/* Center - Canvas Area */}
@@ -2356,7 +2377,8 @@ export default function Home() {
                             onAiUpscale: perms.aiUpscale ? () => { handleAiAction('upscale'); setActivePanel('none'); } : undefined,
                             onAiCartoon: perms.aiCartoon ? () => { handleAiAction('toon_ink'); setActivePanel('none'); } : undefined,
                             onAiRemoveBg: perms.aiRemoveBg ? () => { handleAiAction('remove_bg'); setActivePanel('none'); } : undefined,
-                            onOpenProduct: () => handleToolClick('Product')
+                            onOpenProduct: () => handleToolClick('Product'),
+                            onAiDesignCollage: perms.aiDesignCollage ? () => { handleAiAction('design_collage'); } : undefined,
                         }}
                     />
                 </div>
@@ -2469,6 +2491,21 @@ export default function Home() {
                     </div>
                 )
             }
+            {/* AI Design Collage Modal */}
+            <DesignCollageModal
+                isOpen={showDesignCollageModal}
+                onClose={() => setShowDesignCollageModal(false)}
+                onResult={(url) => {
+                    if (canvasRef.current) {
+                        canvasRef.current.insertImageFromSrc(url);
+                    }
+                }}
+                productSpecs={{
+                    width_mm: currentProduct?.specs?.width_mm,
+                    height_mm: currentProduct?.specs?.height_mm,
+                    dpi: currentProduct?.specs?.dpi || 300,
+                }}
+            />
         </div >
     );
 }
