@@ -22,6 +22,7 @@ import SaveDesignModal from '../components/SaveDesignModal';
 import MyGalleryModal from '../components/MyGalleryModal';
 import FontPicker from '../components/FontPicker';
 import DesignCollageModal from '../components/DesignCollageModal';
+import { AiUsageLimitModal } from '../components/AiUsageLimitModal';
 
 import { DEFAULT_STICKERS, DEFAULT_BACKGROUNDS, DEFAULT_FRAMES } from '../data/mockAssets';
 import { AssetItem, Category } from '@/types';
@@ -360,6 +361,7 @@ export default function Home() {
     const [aiProcessingAction, setAiProcessingAction] = useState<{ action: string, payload?: any } | null>(null);
     const [showDesignCollageModal, setShowDesignCollageModal] = useState(false);
     const [aiCollageInitialImages, setAiCollageInitialImages] = useState<string[]>([]);
+    const [showAiLimitModal, setShowAiLimitModal] = useState(false);
 
     // AI Action Handler
     const handleAiAction = async (action: string, payload?: any, skipDisclaimer = false) => {
@@ -375,7 +377,7 @@ export default function Home() {
             const limit = currentProduct?.specs?.ai_usage_limit ?? 10;
 
             if (currentUsage >= limit) {
-                alert(`您的免費 AI 生成次數已用盡。為了提供更好的服務，若需無限次修改並確保最佳印刷品質，請於結帳購物車加購【專業設計師精修去背】服務。`);
+                setShowAiLimitModal(true);
                 return;
             }
 
@@ -2511,6 +2513,13 @@ export default function Home() {
                     dpi: currentProduct?.specs?.dpi || 300,
                 }}
             />
+
+            {/* AI Limit Modal */}
+            <AiUsageLimitModal 
+                isOpen={showAiLimitModal}
+                onClose={() => setShowAiLimitModal(false)}
+            />
+
         </div >
     );
 }
