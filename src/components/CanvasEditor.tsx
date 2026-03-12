@@ -3088,7 +3088,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     originY: 'center',
                     left: targetLeft,
                     top: targetTop,
-                    id: `ai-bg-${Date.now()}`
+                    id: `ai-bg-${Date.now()}`,
+                    name: 'ai-bg',
+                    data: { kind: 'user_upload' }
                 });
                 
                 canvas.add(bgImg);
@@ -3130,7 +3132,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                             originY: 'bottom',
                             left: targetLeft + offsetX,
                             top: targetTop + offsetY,
-                            id: `ai-cutout-${Date.now()}-${idx}`
+                            id: `ai-cutout-${Date.now()}-${idx}`,
+                            name: 'ai-cutout',
+                            data: { kind: 'user_upload' }
                         });
                         
                         canvas.add(cutoutImg);
