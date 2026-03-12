@@ -13,16 +13,17 @@ interface GalleryImage {
 interface MyGalleryModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onApply: (src: string) => void;
+    onApply: (src: string | string[]) => void;
+    maxSelection?: number; // Added to support multiple selection
 }
 
 const STORAGE_KEY = 'ppbears_gallery_v1';
 const MAX_HISTORY = 20;
 
-export default function MyGalleryModal({ isOpen, onClose, onApply }: MyGalleryModalProps) {
+export default function MyGalleryModal({ isOpen, onClose, onApply, maxSelection = 1 }: MyGalleryModalProps) {
     const [activeTab, setActiveTab] = useState<'computer' | 'history'>('computer');
     const [historyImages, setHistoryImages] = useState<GalleryImage[]>([]);
-    const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+    const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Load history on mount (Migrate from LocalStorage to IndexedDB if needed)
@@ -78,20 +79,26 @@ export default function MyGalleryModal({ isOpen, onClose, onApply }: MyGalleryMo
     // Reset selection when opening
     useEffect(() => {
         if (isOpen) {
-            setSelectedImageId(null);
-            // Default to computer tab if no history, otherwise maybe stay on last tab? 
-            // Let's reset to computer tab for simplicity unless user prefers otherwise
-            // setActiveTab('computer'); 
+            setSelectedImageIds([]);
         }
     }, [isOpen]);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
+        const files = Array.from(e.target.files || []);
         // Clear input value to allow re-selecting same file
         e.target.value = '';
 
-        if (file) {
-            processFile(file);
+        if (files.length > 0) {
+            if (selectedImageIds.length + files.length > maxSelection) {
+                alert(`最多一次只能選擇 ${maxSelection} 張！`);
+                // Process only up to the limit
+                const allowedCount = maxSelection - selectedImageIds.length;
+                if (allowedCount > 0) {
+                    files.slice(0, allowedCount).forEach(processFile);
+                }
+            } else {
+                files.forEach(processFile);
+            }
         }
     };
 
@@ -111,8 +118,13 @@ export default function MyGalleryModal({ isOpen, onClose, onApply }: MyGalleryMo
                     return updated;
                 });
 
-                // Auto select the new image
-                setSelectedImageId(newImage.id);
+                // Auto select the new image if under limit
+                setSelectedImageIds(prev => {
+                    if (prev.length < maxSelection) {
+                        return [...prev, newImage.id];
+                    }
+                    return prev;
+                });
 
                 // Switch to history tab to show it's added? Or just show preview in upload tab?
                 // The requirement says: "Auto select the new image (allow user to apply directly)"
@@ -128,24 +140,39 @@ export default function MyGalleryModal({ isOpen, onClose, onApply }: MyGalleryMo
     };
 
     const handleApply = () => {
-        const selected = historyImages.find(img => img.id === selectedImageId);
-        if (selected) {
-            onApply(selected.src);
+        const selected = historyImages.filter(img => selectedImageIds.includes(img.id));
+        if (selected.length > 0) {
+            if (maxSelection === 1) {
+                onApply(selected[0].src);
+            } else {
+                onApply(selected.map(img => img.src));
+            }
             onClose();
         }
     };
 
     const handleDelete = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        setHistoryImages(prev => {
-            const next = prev.filter(img => img.id !== id);
-            // set(STORAGE_KEY, next); // useEffect will handle save, but we can do it here too if needed for immediate consistency
-            // Actually relying on useEffect is safer to avoid race conditions with state updates
-            return next;
+        setHistoryImages(prev => prev.filter(img => img.id !== id));
+        setSelectedImageIds(prev => prev.filter(selectedId => selectedId !== id));
+    };
+
+    const toggleSelection = (id: string) => {
+        setSelectedImageIds(prev => {
+            if (prev.includes(id)) {
+                return prev.filter(selectedId => selectedId !== id);
+            } else {
+                if (prev.length >= maxSelection) {
+                    alert(`最多一次只能選擇 ${maxSelection} 張！`);
+                    return prev;
+                }
+                // For single selection, replace instead of append
+                if (maxSelection === 1) {
+                    return [id];
+                }
+                return [...prev, id];
+            }
         });
-        if (selectedImageId === id) {
-            setSelectedImageId(null);
-        }
     };
 
     if (!isOpen) return null;
@@ -219,6 +246,7 @@ export default function MyGalleryModal({ isOpen, onClose, onApply }: MyGalleryMo
                                 ref={fileInputRef}
                                 type="file"
                                 accept="image/*"
+                                multiple={maxSelection > 1}
                                 className="hidden"
                                 onChange={handleFileSelect}
                             />
@@ -237,14 +265,14 @@ export default function MyGalleryModal({ isOpen, onClose, onApply }: MyGalleryMo
                                     {historyImages.map((img) => (
                                         <div
                                             key={img.id}
-                                            onClick={() => setSelectedImageId(img.id)}
-                                            className={`aspect-square rounded-lg overflow-hidden cursor-pointer relative group border-2 transition-all ${selectedImageId === img.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300'
+                                            onClick={() => toggleSelection(img.id)}
+                                            className={`aspect-square rounded-lg overflow-hidden cursor-pointer relative group border-2 transition-all ${selectedImageIds.includes(img.id) ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200 hover:border-blue-300'
                                                 }`}
                                         >
                                             <img src={img.src} alt={img.name} className="w-full h-full object-cover" />
 
                                             {/* Selected Indicator */}
-                                            {selectedImageId === img.id && (
+                                            {selectedImageIds.includes(img.id) && (
                                                 <div className="absolute top-1 right-1 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center shadow-sm z-10">
                                                     <Check className="w-3 h-3 text-white" />
                                                 </div>
@@ -270,7 +298,7 @@ export default function MyGalleryModal({ isOpen, onClose, onApply }: MyGalleryMo
                 <div className="p-4 border-t border-gray-100 bg-white flex justify-between items-center">
                     <div className="text-sm text-gray-500">
                         {activeTab === 'history' && (
-                            <span>已選擇: {selectedImageId ? '1' : '0'} 張，共 {historyImages.length} 張</span>
+                            <span>已選擇: {selectedImageIds.length} 張，共 {historyImages.length} 張</span>
                         )}
                     </div>
                     <div className="flex gap-3">
@@ -282,10 +310,10 @@ export default function MyGalleryModal({ isOpen, onClose, onApply }: MyGalleryMo
                         </button>
                         <button
                             onClick={handleApply}
-                            disabled={!selectedImageId}
+                            disabled={selectedImageIds.length === 0}
                             className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            套用
+                            套用 {selectedImageIds.length > 0 ? `(${selectedImageIds.length})` : ''}
                         </button>
                     </div>
                 </div>

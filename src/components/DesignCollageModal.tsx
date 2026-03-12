@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { X, Upload, Sparkles, Loader2, Trash2, RefreshCw, ImagePlus } from 'lucide-react';
+import { X, Sparkles, Loader2, Trash2, ImagePlus } from 'lucide-react';
+import MyGalleryModal from './MyGalleryModal';
 
 interface StylePreset {
   id: string;
@@ -33,7 +34,7 @@ export default function DesignCollageModal({
   const [isGenerating, setIsGenerating] = useState(false);
   const [loadingStyles, setLoadingStyles] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showGallery, setShowGallery] = useState(false);
 
   // Load styles from Supabase
   useEffect(() => {
@@ -75,21 +76,37 @@ export default function DesignCollageModal({
     }
   }, [isOpen]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newFiles = Array.from(e.target.files || []);
-    if (files.length + newFiles.length > 5) {
-      setError('最多上傳 5 張照片');
-      return;
+  const handleGalleryApply = async (src: string | string[]) => {
+    try {
+      const srcArray = Array.isArray(src) ? src : [src];
+      
+      if (files.length + srcArray.length > 5) {
+        setError('最多上傳 5 張照片');
+        return; // Alternatively, we could just slice the array, but rejecting is safer
+      }
+
+      // Convert all base64 dataURLs back to Files
+      const newFiles = await Promise.all(
+        srcArray.map(async (dataUrl, index) => {
+          const res = await fetch(dataUrl);
+          const blob = await res.blob();
+          return new File([blob], `gallery_image_${Date.now()}_${index}.png`, { type: blob.type });
+        })
+      );
+
+      const combined = [...files, ...newFiles].slice(0, 5);
+      setFiles(combined);
+
+      // Generate local previews
+      const newPreviews = combined.map(f => URL.createObjectURL(f));
+      previews.forEach(url => URL.revokeObjectURL(url));
+      setPreviews(newPreviews);
+      
+      setError(null);
+    } catch (err) {
+      console.error('Failed to process gallery image:', err);
+      setError('無法處理選擇的圖片');
     }
-    setError(null);
-    const combined = [...files, ...newFiles].slice(0, 5);
-    setFiles(combined);
-    // Generate local previews
-    const newPreviews = combined.map(f => URL.createObjectURL(f));
-    previews.forEach(url => URL.revokeObjectURL(url));
-    setPreviews(newPreviews);
-    // Clear input so same file can be re-added
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const removeFile = (index: number) => {
@@ -198,7 +215,7 @@ export default function DesignCollageModal({
               ))}
               {files.length < 5 && (
                 <button
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => setShowGallery(true)}
                   disabled={isGenerating}
                   className="aspect-square rounded-lg border-2 border-dashed border-gray-300 hover:border-purple-400 flex flex-col items-center justify-center text-gray-400 hover:text-purple-500 transition-colors disabled:opacity-50"
                 >
@@ -207,16 +224,8 @@ export default function DesignCollageModal({
                 </button>
               )}
             </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              multiple
-              onChange={handleFileChange}
-              className="hidden"
-            />
             <p className="text-[11px] text-gray-400">
-              支援 JPG / PNG / WebP，已選 {files.length} / 5 張
+              已選 {files.length} / 5 張
             </p>
           </div>
 
@@ -301,6 +310,13 @@ export default function DesignCollageModal({
           </div>
         )}
       </div>
+
+      <MyGalleryModal
+        isOpen={showGallery}
+        onClose={() => setShowGallery(false)}
+        onApply={handleGalleryApply}
+        maxSelection={5 - files.length}
+      />
     </div>
   );
 }
