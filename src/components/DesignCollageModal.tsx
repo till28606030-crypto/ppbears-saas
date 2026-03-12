@@ -220,7 +220,7 @@ export default function DesignCollageModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col mr-auto ml-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
           <h3 className="font-bold text-gray-900 flex items-center gap-2 text-lg">
