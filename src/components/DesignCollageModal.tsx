@@ -8,6 +8,7 @@ interface StylePreset {
   label: string;
   emoji: string;
   prompt: string;
+  max_photos: number;
 }
 
 interface DesignCollageModalProps {
@@ -46,7 +47,7 @@ export default function DesignCollageModal({
       try {
         const { data, error } = await supabase
           .from('ai_style_presets')
-          .select('id, label, emoji, prompt')
+          .select('id, label, emoji, prompt, max_photos')
           .eq('is_active', true)
           .order('sort_order', { ascending: true });
         if (error) throw error;
@@ -86,8 +87,9 @@ export default function DesignCollageModal({
     try {
       const srcArray = Array.isArray(src) ? src : [src];
       
-      if (files.length + srcArray.length > 5) {
-        setError('最多上傳 5 張照片');
+      const limit = selectedStyle?.max_photos ?? (styles.length > 0 ? styles[0].max_photos : 3);
+      if (files.length + srcArray.length > limit) {
+        setError(`最多上傳 ${limit} 張照片`);
         return; // Alternatively, we could just slice the array, but rejecting is safer
       }
 
@@ -100,7 +102,8 @@ export default function DesignCollageModal({
         })
       );
 
-      const combined = [...files, ...newFiles].slice(0, 5);
+      const combinedLimit = selectedStyle?.max_photos ?? (styles.length > 0 ? styles[0].max_photos : 3);
+      const combined = [...files, ...newFiles].slice(0, combinedLimit);
       setFiles(combined);
 
       // Generate local previews
@@ -205,7 +208,7 @@ export default function DesignCollageModal({
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
           <h3 className="font-bold text-gray-900 flex items-center gap-2 text-lg">
             <Sparkles className="w-5 h-5 text-purple-600" />
-            AI 設計生成
+            AI 創意生成
           </h3>
           <button onClick={onClose} disabled={isGenerating} className="text-gray-400 hover:text-gray-600 disabled:opacity-50">
             <X className="w-5 h-5" />
@@ -217,7 +220,7 @@ export default function DesignCollageModal({
           {/* Step 1: Upload Photos */}
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-2">
-              📸 上傳照片（1-5 張）
+              📸 上傳照片（1-{selectedStyle?.max_photos ?? (styles.length > 0 ? styles[0].max_photos : 3)} 張）
             </label>
             <div className="grid grid-cols-5 gap-2 mb-2">
               {previews.map((src, i) => (
@@ -232,7 +235,7 @@ export default function DesignCollageModal({
                   </button>
                 </div>
               ))}
-              {files.length < 5 && (
+              {files.length < (selectedStyle?.max_photos ?? (styles.length > 0 ? styles[0].max_photos : 3)) && (
                 <button
                   onClick={() => setShowGallery(true)}
                   disabled={isGenerating}
@@ -244,7 +247,7 @@ export default function DesignCollageModal({
               )}
             </div>
             <p className="text-[11px] text-gray-400">
-              已選 {files.length} / 5 張
+              已選 {files.length} / {selectedStyle?.max_photos ?? (styles.length > 0 ? styles[0].max_photos : 3)} 張
             </p>
           </div>
 
@@ -259,21 +262,38 @@ export default function DesignCollageModal({
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
-                {styles.map(style => (
+                {styles.map(style => {
+                  const isSelected = selectedStyle?.id === style.id;
+                  const isExceeding = files.length > (style.max_photos || 3);
+                  return (
                   <button
                     key={style.id}
-                    onClick={() => setSelectedStyle(style)}
-                    disabled={isGenerating}
+                    onClick={() => {
+                        if (isExceeding) {
+                            setError(`切換至 ${style.label} 失敗：該風格最多允許 ${style.max_photos || 3} 張照片`);
+                            return;
+                        }
+                        setSelectedStyle(style);
+                        setError(null);
+                    }}
+                    disabled={isGenerating || isExceeding}
                     className={`p-3 rounded-xl border-2 text-center transition-all ${
-                      selectedStyle?.id === style.id
+                      isSelected
                         ? 'border-purple-500 bg-purple-50 shadow-sm scale-[1.02]'
-                        : 'border-gray-200 hover:border-purple-300 hover:bg-purple-50/50'
-                    } disabled:opacity-50`}
+                        : isExceeding 
+                          ? 'border-gray-200 opacity-40 cursor-not-allowed'
+                          : 'border-gray-200 hover:border-purple-300 hover:bg-purple-50/50'
+                    } disabled:opacity-50 relative`}
                   >
                     <span className="text-2xl block mb-1">{style.emoji}</span>
                     <span className="text-xs font-bold text-gray-700">{style.label}</span>
+                    {isExceeding && (
+                      <div className="absolute inset-0 bg-white/50 flex items-center justify-center rounded-xl">
+                        <span className="text-[10px] bg-red-100 text-red-600 px-1 py-0.5 rounded font-bold">上限 {style.max_photos||5} 張</span>
+                      </div>
+                    )}
                   </button>
-                ))}
+                )})}
               </div>
             )}
           </div>
@@ -334,7 +354,7 @@ export default function DesignCollageModal({
         isOpen={showGallery}
         onClose={() => setShowGallery(false)}
         onApply={handleGalleryApply}
-        maxSelection={5 - files.length}
+        maxSelection={(selectedStyle?.max_photos ?? (styles.length > 0 ? styles[0].max_photos : 3)) - files.length}
       />
     </div>
   );

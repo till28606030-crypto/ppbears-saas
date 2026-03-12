@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { ProductRow } from '../shared/types';
 import { useProductEditor } from '../hooks/useProductEditor';
-import { Loader2, Plus, AlertCircle, CheckCircle2, XCircle, Copy, Trash2, Share2, ExternalLink, Search, Filter, ChevronDown, ChevronRight } from 'lucide-react';
+import { Loader2, Plus, AlertCircle, CheckCircle2, XCircle, Copy, Trash2, Share2, ExternalLink, Search, Filter, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
 import { buildDesignShareUrl, copyToClipboard } from '../shared/shareLink';
 import { Category } from '@/types';
 import { buildCategoryTree } from '@/utils/categoryTree';
@@ -11,6 +11,7 @@ import CategorySelect from '@/components/CategorySelect';
 import BulkAttributeModal from './BulkAttributeModal';
 import SingleAttributeModal from './SingleAttributeModal';
 import PermissionModal from './PermissionModal';
+import BulkAiUsageLimitModal from './BulkAiUsageLimitModal';
 import {
   DndContext,
   closestCenter,
@@ -211,6 +212,7 @@ const ProductListV2: React.FC = () => {
   // Bulk / Single Selection State
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [showBulkModal, setShowBulkModal] = useState(false);
+  const [showBulkAiLimitModal, setShowBulkAiLimitModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Partial<ProductRow> | null>(null);
 
   // Permission Modal State
@@ -505,6 +507,17 @@ const ProductListV2: React.FC = () => {
           fetchProducts();
         }}
       />
+      <BulkAiUsageLimitModal
+        isOpen={showBulkAiLimitModal}
+        onClose={() => setShowBulkAiLimitModal(false)}
+        selectedProducts={products
+          .filter(p => selectedProductIds.includes(p.id!))
+          .map(p => ({ id: p.id!, name: p.name || '未命名產品' }))}
+        onSuccess={() => {
+          setSelectedProductIds([]);
+          fetchProducts();
+        }}
+      />
 
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">產品管理 V2</h1>
@@ -770,6 +783,15 @@ const ProductListV2: React.FC = () => {
             className="px-5 py-2 bg-purple-600 text-white rounded-lg font-medium text-sm hover:bg-purple-700 shadow-md transition-all flex items-center gap-2"
           >
             批次設定權限
+          </button>
+          <button
+            onClick={() => {
+              setShowBulkAiLimitModal(true);
+            }}
+            className="px-5 py-2 bg-amber-500 text-white rounded-lg font-medium text-sm hover:bg-amber-600 shadow-md transition-all flex items-center gap-2"
+          >
+            <Sparkles className="w-4 h-4" />
+            批次設定 AI 上限
           </button>
           <button
             onClick={() => setSelectedProductIds([])}

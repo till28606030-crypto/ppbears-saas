@@ -25,6 +25,7 @@ interface StylePreset {
   prompt: string;
   is_active: boolean;
   sort_order: number;
+  max_photos: number;
 }
 
 // -- Sortable Row Component --
@@ -63,6 +64,7 @@ function SortableStyleRow({
         <div>
           <div className="font-bold text-gray-800">{style.label}</div>
           <div className="text-[10px] text-gray-400">排序: {style.sort_order}</div>
+          <div className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded w-fit mt-0.5 font-medium">最多 {style.max_photos ?? 3} 張照</div>
         </div>
       </div>
 
@@ -116,6 +118,7 @@ export default function AiStylePresets() {
   const [formLabel, setFormLabel] = useState('');
   const [formEmoji, setFormEmoji] = useState('✨');
   const [formPrompt, setFormPrompt] = useState('');
+  const [formMaxPhotos, setFormMaxPhotos] = useState(3);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -152,11 +155,13 @@ export default function AiStylePresets() {
         emoji: formEmoji,
         prompt: formPrompt.trim(),
         sort_order: maxOrder + 1,
+        max_photos: formMaxPhotos,
       });
       if (error) throw error;
       setFormLabel('');
       setFormEmoji('✨');
       setFormPrompt('');
+      setFormMaxPhotos(3);
       setIsCreating(false);
       await loadStyles();
     } catch (err) {
@@ -178,6 +183,7 @@ export default function AiStylePresets() {
           label: editingStyle.label,
           emoji: editingStyle.emoji,
           prompt: editingStyle.prompt,
+          max_photos: editingStyle.max_photos,
         })
         .eq('id', editingStyle.id);
       if (error) throw error;
@@ -247,7 +253,7 @@ export default function AiStylePresets() {
       <header className="h-16 bg-white border-b border-gray-200 flex items-center px-8 shadow-sm">
         <div className="flex items-center gap-3">
           <Sparkles className="w-6 h-6 text-purple-600" />
-          <h1 className="text-xl font-semibold text-gray-800">AI 風格管理</h1>
+          <h1 className="text-xl font-semibold text-gray-800">AI 創意管理</h1>
         </div>
       </header>
 
@@ -255,7 +261,7 @@ export default function AiStylePresets() {
         {/* Description */}
         <div className="mb-6 p-4 bg-purple-50 border border-purple-100 rounded-xl">
           <p className="text-sm text-purple-800">
-            管理 AI 設計拼貼功能的風格選單。客戶在前台可選擇一種風格，AI 會根據此處設定的 Prompt 關鍵字來生成設計圖。您可以隨時新增、編輯、停用或拖曳排序。
+            管理 AI 創意功能的風格選單。客戶在前台可選擇一種風格，AI 會根據此處設定的 Prompt 關鍵字來生成設計圖。您可以隨時新增、編輯、停用或拖曳排序。
           </p>
         </div>
 
@@ -307,7 +313,7 @@ export default function AiStylePresets() {
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <Plus className="w-5 h-5 text-purple-600" />
-                新增 AI 設計風格
+                新增 AI 創意風格
               </h3>
               <button onClick={() => setIsCreating(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
@@ -350,6 +356,18 @@ export default function AiStylePresets() {
                   placeholder="例如：idol fan art, kpop aesthetic, vibrant neon colors, sparkles..."
                 />
                 <p className="text-xs text-gray-400 mt-1">用英文逗號分隔的關鍵字，AI 將根據這些關鍵字生成對應風格的設計圖。</p>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">上傳照片數量上限</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={formMaxPhotos}
+                  onChange={e => setFormMaxPhotos(parseInt(e.target.value) || 1)}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-400 mt-1">限制使用者最多能上傳幾張照片進行合成（建議 1-3 張）。</p>
               </div>
             </div>
             <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3">
@@ -413,6 +431,17 @@ export default function AiStylePresets() {
                   onChange={e => setEditingStyle({ ...editingStyle, prompt: e.target.value })}
                   rows={4}
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">上傳照片數量上限</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={editingStyle.max_photos ?? 3}
+                  onChange={e => setEditingStyle({ ...editingStyle, max_photos: parseInt(e.target.value) || 1 })}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
             </div>

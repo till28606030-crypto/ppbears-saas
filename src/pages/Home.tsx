@@ -351,20 +351,14 @@ export default function Home() {
     const handleGalleryApply = (src: string | string[]) => {
         const srcs = Array.isArray(src) ? src : [src];
         
-        if (galleryMode === 'ai_collage') {
-            setAiCollageInitialImages(srcs);
-            setShowDesignCollageModal(true);
-        } else if (canvasRef.current) {
+        if (canvasRef.current) {
             srcs.forEach(s => canvasRef.current!.insertImageFromSrc(s));
         }
-        
-        setGalleryMode('normal'); // Reset mode
     };
 
     const [showAiDisclaimer, setShowAiDisclaimer] = useState(false);
     const [aiProcessingAction, setAiProcessingAction] = useState<{ action: string, payload?: any } | null>(null);
     const [showDesignCollageModal, setShowDesignCollageModal] = useState(false);
-    const [galleryMode, setGalleryMode] = useState<'normal' | 'ai_collage'>('normal');
     const [aiCollageInitialImages, setAiCollageInitialImages] = useState<string[]>([]);
 
     // AI Action Handler
@@ -420,8 +414,7 @@ export default function Home() {
                     }
                     break;
                 case 'design_collage':
-                    setGalleryMode('ai_collage');
-                    setShowGalleryModal(true);
+                    setShowDesignCollageModal(true);
                     break;
             }
         } catch (error: any) {
@@ -1683,7 +1676,7 @@ export default function Home() {
                     >
                         <Sparkles className="w-6 h-6 mb-1" />
                         <span className="text-xs font-medium">
-                            AI設計
+                            AI創意
                         </span>
                     </button>
                 )}
