@@ -396,6 +396,8 @@ import {
     AlignLeft, AlignRight, ChevronDown, PaintBucket, Baseline, Smartphone, Ban, Frame, LayoutTemplate, SlidersHorizontal, Wand2, Eraser, Sun, ImagePlus
 } from 'lucide-react';
 import FontPicker from './FontPicker';
+import AiUsageBadge from './AiUsageBadge';
+import AiActionConfirmModal from './AiActionConfirmModal';
 import JsBarcode from 'jsbarcode';
 import { get } from 'idb-keyval';
 import {
@@ -851,6 +853,14 @@ interface CanvasEditorProps {
     disableDraft?: boolean;
     readOnly?: boolean;
     disableFrameUpload?: boolean;
+    /** Product ID 供 AI 點數徽章顯示 */
+    productId?: string | null;
+    /** 打開 AI創意 Modal（右面板 AI創意按鈕回呼） */
+    onAiDesignCollage?: () => void;
+    /** badge 更新觸發器 */
+    aiUsageRefreshTrigger?: number;
+    /** 使用 AI 前先檢查並扣除點數，回傳 false 表示已達上限（由父層顯示錯誤）*/
+    onCheckAndIncrementUsage?: () => Promise<boolean> | boolean;
 }
 
 export interface CanvasEditorRef {
@@ -952,6 +962,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const [selectedObject, setSelectedObject] = useState<FabricObject | null>(null);
     const [textValue, setTextValue] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
+    const [aiConfirmAction, setAiConfirmAction] = useState<'toon_ink' | 'remove_bg' | null>(null);
     const [isCropping, setIsCropping] = useState(false);
     const [showCropMenu, setShowCropMenu] = useState(false); // Mobile crop sub-menu state
     const [showMobileTextInput, setShowMobileTextInput] = useState(false); // Mobile text input modal
@@ -3413,11 +3424,33 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         obj.setCoords();
                     });
 
-                    // 5. Enforce proper ordering
-                    const oldBase = baseLayerRef.current;
-                    const oldMask = maskLayerRef.current;
-                    if (oldBase) canvas.sendObjectToBack(oldBase);
-                    if (oldMask) canvas.bringObjectToFront(oldMask);
+                    // 5. Enforce proper z-ordering — robust against async race condition
+                    //    Refs may be null if syncLayers hasn't finished loading images yet.
+                    //    Always search by identity flags as primary, refs as secondary.
+                    const enforceZOrder = () => {
+                        if (!fabricCanvas.current) return;
+                        const c = fabricCanvas.current;
+                        const baseObj = baseLayerRef.current ||
+                            c.getObjects().find(o => (o as any).isBaseLayer || (o as any).data?.kind === 'product_base') as FabricImage | undefined;
+                        const maskObj = maskLayerRef.current ||
+                            c.getObjects().find(o => (o as any).isMaskLayer || (o as any).data?.kind === 'product_overlay') as FabricImage | undefined;
+                        if (baseObj) {
+                            c.sendObjectToBack(baseObj);
+                            baseLayerRef.current = baseObj as any;
+                        }
+                        if (maskObj) {
+                            c.bringObjectToFront(maskObj);
+                            maskLayerRef.current = maskObj as any;
+                        }
+                        // Keep background layer right above base
+                        const bgObj = c.getObjects().find(o => (o as any).isUserBackground || (o as any).data?.role === 'design_bg');
+                        if (bgObj && baseObj) moveToDesignBgLayer(c, bgObj);
+                    };
+
+                    enforceZOrder();
+                    // Deferred passes: catches async base/mask image loading completing after restore
+                    setTimeout(enforceZOrder, 150);
+                    setTimeout(() => { enforceZOrder(); canvas.requestRenderAll(); }, 700);
 
                     canvas.requestRenderAll();
                     console.log(`[CanvasEditor] ${enlivenedObjects.length} objects restored successfully.`);
@@ -3747,6 +3780,12 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             if (!canvas || !activeObject || activeObject.type !== 'image') {
                 alert("請先選擇一張圖片");
                 return;
+            }
+
+            // ─── 使用次數檢查 ───
+            if (props.onCheckAndIncrementUsage) {
+                const allowed = await props.onCheckAndIncrementUsage();
+                if (!allowed) return; // 上層已顯示錯誤 Modal
             }
 
             const imageObj = activeObject as FabricImage;
@@ -5364,6 +5403,13 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             alert("請先選取一張圖片");
             return;
         }
+
+        // ─── 使用次數檢查 (扣除點數 / 上限警告) ───
+        if (props.onCheckAndIncrementUsage) {
+            const allowed = await props.onCheckAndIncrementUsage();
+            if (!allowed) return; // 上層已顯示限制 Modal
+        }
+
         setIsGenerating(true);
         try {
             // 1. Convert Canvas Object to Blob (Auto-handles HEIC -> PNG conversion)
@@ -6235,8 +6281,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     };
 
     return (
-        <div className="relative h-full w-full flex flex-col md:flex-row overflow-hidden">
-            {/* Clear Confirm Modal */}
+        <>
+            <div className="relative h-full w-full flex flex-col md:flex-row overflow-hidden">
             {showClearConfirm && (
                 <div className="absolute inset-0 z-[200] bg-black/50 flex flex-col items-center justify-center backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
@@ -6914,35 +6960,19 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                         <span className="text-[10px] font-medium">上傳照片</span>
                                     </button>
                                 )}
-                                {/* AI Tools: Upscale */}
-                                {mobileActions?.onAiUpscale && (
-                                    <button onClick={mobileActions?.onAiUpscale} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-emerald-600">
-                                        <Sparkles className="w-6 h-6" />
-                                        <span className="text-[10px] font-medium">數位修復</span>
-                                    </button>
-                                )}
-
-                                {/* AI Tools: Cartoonize */}
+                                {/* AI Tools: Cartoonize (mobile) */}
                                 {mobileActions?.onAiCartoon && (
-                                    <button onClick={mobileActions?.onAiCartoon} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-purple-600">
+                                    <button onClick={() => setAiConfirmAction('toon_ink')} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-purple-600">
                                         <Wand2 className="w-6 h-6" />
                                         <span className="text-[10px] font-medium">卡通化</span>
                                     </button>
                                 )}
 
-                                {/* AI Tools: Remove BG */}
+                                {/* AI Tools: Remove BG (mobile) */}
                                 {mobileActions?.onAiRemoveBg && (
-                                    <button onClick={mobileActions?.onAiRemoveBg} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-red-600">
+                                    <button onClick={() => setAiConfirmAction('remove_bg')} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-red-600">
                                         <Scissors className="w-6 h-6" />
                                         <span className="text-[10px] font-medium">去背</span>
-                                    </button>
-                                )}
-
-                                {/* AI Tools: Design Collage */}
-                                {mobileActions?.onAiDesignCollage && (
-                                    <button onClick={mobileActions?.onAiDesignCollage} className="flex flex-col items-center gap-1 p-2 min-w-[4rem] text-indigo-600">
-                                        <Sparkles className="w-6 h-6" />
-                                        <span className="text-[10px] font-medium">AI設計</span>
                                     </button>
                                 )}
 
@@ -7134,15 +7164,6 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 <div className="hidden md:flex flex-col border-b border-gray-200 bg-white">
                     {selectedObject ? (
                         <div className="flex flex-col animate-in fade-in duration-200">
-                            {/* Header */}
-                            <div className="px-3 py-2 bg-gray-50/50 border-b border-gray-100 flex items-center justify-between">
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-                                    {(selectedObject.type === 'i-text' || selectedObject.type === 'text') ? <><Type className="w-3 h-3" /> 文字設定</> : <><ImageIcon className="w-3 h-3" /> 物件設定</>}
-                                </span>
-                                <button onClick={() => { fabricCanvas.current?.discardActiveObject(); fabricCanvas.current?.requestRenderAll(); setSelectedObject(null); }} className="p-1 hover:bg-gray-200 rounded-full text-gray-400">
-                                    <X className="w-3 h-3" />
-                                </button>
-                            </div>
 
                             <div className="p-3 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
                                 {/* 1. Text Content Input */}
@@ -7288,24 +7309,16 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     </div>
                                 </div>
 
-                                {/* 5. AI智能工具 (Only for Images) */}
-                                {selectedObject.type === 'image' && !(selectedObject as any).isStickerLayer && !(selectedObject as any).isBarcodeLayer && (p.aiUpscale || p.aiCartoon || p.aiRemoveBg) && (
+                                {/* 5. AI智能工具 — 卡通化 / 去背 / AI創意 三合一 */}
+                                {((selectedObject.type === 'image' && !(selectedObject as any).isStickerLayer && !(selectedObject as any).isBarcodeLayer && (p.aiCartoon || p.aiRemoveBg)) || p.aiDesignCollage) && (
                                     <div className="space-y-2 pt-2 border-t border-gray-100 mt-2">
                                         <label className="text-[11px] font-semibold text-gray-500 ml-1">AI 智能工具</label>
-                                        <div className="grid grid-cols-3 gap-2 mt-1">
-                                            {p.aiUpscale && (
+                                        {/* AI 今日點數徽章 */}
+                                        <AiUsageBadge productId={props.productId} refreshTrigger={props.aiUsageRefreshTrigger ?? 0} />
+                                        <div className="grid grid-cols-2 gap-2 mt-1">
+                                            {p.aiCartoon && selectedObject.type === 'image' && !(selectedObject as any).isStickerLayer && !(selectedObject as any).isBarcodeLayer && (
                                                 <button
-                                                    onClick={() => { handleGenerateAI('upscale'); setActiveAdjust(null); }}
-                                                    className="flex flex-col items-center justify-center p-3 rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-all group shadow-sm active:scale-95"
-                                                    title="數位修復"
-                                                >
-                                                    <Sparkles className="w-6 h-6 mb-1.5 text-emerald-500 group-hover:scale-110 transition-transform" />
-                                                    <span className="text-[10px] font-bold text-emerald-700">數位修復</span>
-                                                </button>
-                                            )}
-                                            {p.aiCartoon && (
-                                                <button
-                                                    onClick={() => { handleGenerateAI('toon_ink'); setActiveAdjust(null); }}
+                                                    onClick={() => { setAiConfirmAction('toon_ink'); setActiveAdjust(null); }}
                                                     className="flex flex-col items-center justify-center p-3 rounded-xl border border-purple-100 bg-purple-50 text-purple-600 hover:bg-purple-100 transition-all group shadow-sm active:scale-95"
                                                     title="卡通化"
                                                 >
@@ -7313,9 +7326,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                     <span className="text-[10px] font-bold text-purple-700">卡通化</span>
                                                 </button>
                                             )}
-                                            {p.aiRemoveBg && (
+                                            {p.aiRemoveBg && selectedObject.type === 'image' && !(selectedObject as any).isStickerLayer && !(selectedObject as any).isBarcodeLayer && (
                                                 <button
-                                                    onClick={() => { handleGenerateAI('remove_bg'); setActiveAdjust(null); }}
+                                                    onClick={() => { setAiConfirmAction('remove_bg'); setActiveAdjust(null); }}
                                                     className="flex flex-col items-center justify-center p-3 rounded-xl border border-red-100 bg-red-50 text-red-600 hover:bg-red-100 transition-all group shadow-sm active:scale-95"
                                                     title="去背"
                                                 >
@@ -7323,6 +7336,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                                     <span className="text-[10px] font-bold text-red-700">去背</span>
                                                 </button>
                                             )}
+
                                         </div>
                                     </div>
                                 )}
@@ -7448,6 +7462,25 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 )
             }
         </div >
+
+        {/* AI Confirm Modal — shared between PC and mobile */}
+        <AiActionConfirmModal
+            action={aiConfirmAction}
+            onCancel={() => setAiConfirmAction(null)}
+            onConfirm={() => {
+                const action = aiConfirmAction;
+                setAiConfirmAction(null);
+                if (!action) return;
+                if (action === 'toon_ink' && mobileActions?.onAiCartoon) {
+                    mobileActions.onAiCartoon();
+                } else if (action === 'remove_bg' && mobileActions?.onAiRemoveBg) {
+                    mobileActions.onAiRemoveBg();
+                } else {
+                    handleGenerateAI(action);
+                }
+            }}
+        />
+        </>
     );
 });
 

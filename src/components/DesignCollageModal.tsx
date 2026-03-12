@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { X, Sparkles, Loader2, Trash2, ImagePlus } from 'lucide-react';
 import MyGalleryModal from './MyGalleryModal';
+import AiUsageBadge from './AiUsageBadge';
 
 interface StylePreset {
   id: string;
@@ -21,6 +22,12 @@ interface DesignCollageModalProps {
     dpi?: number;
   };
   initialImages?: string[];
+  /** 呼叫前先檢查使用次數，若已到上限回傳 false 並自動顯示限制 Modal */
+  onCheckAndIncrementUsage?: () => Promise<boolean> | boolean;
+  /** 傳入 product ID 供 badge 顯示當日點數 */
+  productId?: string | null;
+  /** 外部觸發 badge 更新 */
+  usageRefreshTrigger?: number;
 }
 
 export default function DesignCollageModal({
@@ -29,6 +36,9 @@ export default function DesignCollageModal({
   onResult,
   productSpecs,
   initialImages,
+  onCheckAndIncrementUsage,
+  productId,
+  usageRefreshTrigger = 0,
 }: DesignCollageModalProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
@@ -126,6 +136,13 @@ export default function DesignCollageModal({
 
   const handleGenerate = async () => {
     if (files.length === 0 || !selectedStyle) return;
+
+    // Check & increment daily AI usage limit before generating
+    if (onCheckAndIncrementUsage) {
+      const allowed = await onCheckAndIncrementUsage();
+      if (!allowed) return; // limit reached, modal already shown by parent
+    }
+
     setIsGenerating(true);
     setError(null);
 
@@ -203,7 +220,7 @@ export default function DesignCollageModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col mr-auto ml-4">
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
           <h3 className="font-bold text-gray-900 flex items-center gap-2 text-lg">
@@ -214,6 +231,9 @@ export default function DesignCollageModal({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* AI 點數徽章 */}
+        <AiUsageBadge productId={productId} refreshTrigger={usageRefreshTrigger} />
 
         {/* Body - scrollable */}
         <div className="p-6 space-y-5 overflow-y-auto flex-1">

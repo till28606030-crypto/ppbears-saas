@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
       __APP_VERSION__: JSON.stringify(pkg.version),
     },
     build: {
-      sourcemap: false, // 關閉 sourcemap 以節省空間且減少上傳負擔
+      sourcemap: false, // ?��? sourcemap 以�??�空?��?減�?上傳負�?
     },
     resolve: {
       dedupe: [
@@ -65,4 +65,4 @@ export default defineConfig(({ mode }) => {
   }
 })
 
-// Trigger dev server restart for version update (v5.5)
+// Trigger dev server restart for version update (v5.6)

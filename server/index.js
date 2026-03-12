@@ -383,28 +383,33 @@ app.post('/api/ai/upscale', upload.single('image'), async (req, res) => {
             return fail(res, '未上傳圖片或無效的圖片連結', { errorCode: 'UPLOAD_FAILED' });
         }
 
-        // Check API Key
-        if (!process.env.REPLICATE_API_TOKEN) {
+        // Use dedicated upscale API token
+        const upscaleToken = process.env.REPLICATE_API_TOKEN_UPSCALE || process.env.REPLICATE_API_TOKEN;
+        if (!upscaleToken) {
             return fail(res, 'Server configuration error (Missing API Key)', { errorCode: 'MISSING_ENV' });
         }
+        const replicateUpscale = new Replicate({ auth: upscaleToken });
 
         // Process Image to Base64 (Standardization)
         let imageUri;
         try {
-            // Recraft may require high-res inputs or specific forms, but processImage restricts to 2048px which is safe and standard
             imageUri = await processImage(imageBuffer);
         } catch (imgErr) {
             console.error('[AI] Image preprocessing failed:', imgErr);
             return fail(res, '圖片預處理失敗', { errorCode: 'IMAGE_PROCESS_ERROR' });
         }
 
-        const model = "recraft-ai/recraft-crisp-upscale";
+        const model = "sczhou/codeformer:cc4956dd26fa5a7185d5660cc9100fab1b8070a1d1654a8bb5eb6d443b020bb2";
         const input = {
-            image: imageUri
+            image: imageUri,
+            codeformer_fidelity: 0.7,
+            background_enhance: true,
+            face_upsample: true,
+            upscale: 2
         };
 
-        console.log(`[AI] Calling Model: ${model}`);
-        const result = await replicate.run(model, { input });
+        console.log(`[AI] Calling Model: ${model} (codeformer / 數位修復)`);
+        const result = await replicateUpscale.run(model, { input });
         console.log(`[AI] Replicate Output:`, result);
 
         const url = await pickFirstUrl(result);
@@ -431,6 +436,7 @@ app.post('/api/ai/upscale', upload.single('image'), async (req, res) => {
         });
     }
 });
+
 
 // 2.6. AI Design Collage (Multi-Image Fusion with FLUX Kontext)
 app.post('/api/ai/design-collage', express.json({ limit: '50mb' }), async (req, res) => {
@@ -567,6 +573,148 @@ app.post('/api/ai/design-collage', express.json({ limit: '50mb' }), async (req, 
             error: String(error?.message || error),
             stack: error?.stack
         });
+    }
+});
+
+// ─── AI Usage Tracking (IP-based, Supabase-backed) ───────────────────────────
+
+// Helper: get client IP from request
+function getClientIp(req) {
+    return (
+        req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+        req.headers['x-real-ip'] ||
+        req.socket?.remoteAddress ||
+        'unknown'
+    );
+}
+
+// Helper: fetch/create usage row for ip+date, returns { count, limit }
+async function getUsageRow(ip, productId) {
+    const today = new Date().toISOString().split('T')[0];
+
+    // Try to get existing row
+    const { data, error } = await supabaseAdmin
+        .from('ai_usage_log')
+        .select('count')
+        .eq('ip', ip)
+        .eq('usage_date', today)
+        .maybeSingle();
+
+    if (error) throw error;
+    return { count: data?.count ?? 0, date: today };
+}
+
+// GET /api/ai/usage-status?product_id=xxx
+// Returns { count, limit, remaining, resetAt }
+app.get('/api/ai/usage-status', async (req, res) => {
+    try {
+        const ip = getClientIp(req);
+        const productId = req.query.product_id || null;
+
+        let limit = 10; // default
+        if (productId) {
+            const { data: prodData } = await supabaseAdmin
+                .from('products')
+                .select('specs')
+                .eq('id', productId)
+                .maybeSingle();
+            if (prodData?.specs?.ai_usage_limit != null) {
+                limit = prodData.specs.ai_usage_limit;
+            }
+        }
+
+        const { count } = await getUsageRow(ip, productId);
+        const remaining = Math.max(0, limit - count);
+
+        // Reset at midnight local server time (Taiwan UTC+8)
+        const now = new Date();
+        const tomorrowMidnight = new Date(now);
+        tomorrowMidnight.setUTCHours(16, 0, 0, 0); // UTC 16:00 = Taiwan 00:00
+        if (tomorrowMidnight <= now) {
+            tomorrowMidnight.setUTCDate(tomorrowMidnight.getUTCDate() + 1);
+        }
+
+        return res.json({
+            success: true,
+            count,
+            limit,
+            remaining,
+            resetAt: tomorrowMidnight.toISOString(),
+            ip: ip.replace(/\.\d+$/, '.xxx'), // Partially mask for privacy
+        });
+    } catch (err) {
+        console.error('[Usage] GET usage-status error:', err);
+        return res.status(500).json({ success: false, message: String(err.message) });
+    }
+});
+
+// POST /api/ai/usage-check-increment
+// Body: { product_id? }
+// Returns { allowed: true, count, remaining } or { allowed: false, limitExceeded: true }
+app.post('/api/ai/usage-check-increment', express.json(), async (req, res) => {
+    try {
+        const ip = getClientIp(req);
+        const productId = req.body?.product_id || null;
+        const today = new Date().toISOString().split('T')[0];
+
+        let limit = 10;
+        if (productId) {
+            const { data: prodData } = await supabaseAdmin
+                .from('products')
+                .select('specs')
+                .eq('id', productId)
+                .maybeSingle();
+            if (prodData?.specs?.ai_usage_limit != null) {
+                limit = prodData.specs.ai_usage_limit;
+            }
+        }
+
+        // Upsert: increment count by 1 (but only if under limit)
+        // First read current count
+        const { data: existing } = await supabaseAdmin
+            .from('ai_usage_log')
+            .select('id, count')
+            .eq('ip', ip)
+            .eq('usage_date', today)
+            .maybeSingle();
+
+        const currentCount = existing?.count ?? 0;
+
+        if (currentCount >= limit) {
+            return res.json({
+                success: true,
+                allowed: false,
+                limitExceeded: true,
+                count: currentCount,
+                limit,
+                remaining: 0,
+            });
+        }
+
+        // Atomically increment
+        if (existing) {
+            await supabaseAdmin
+                .from('ai_usage_log')
+                .update({ count: currentCount + 1, updated_at: new Date().toISOString() })
+                .eq('id', existing.id);
+        } else {
+            await supabaseAdmin
+                .from('ai_usage_log')
+                .insert({ ip, usage_date: today, product_id: productId, count: 1 });
+        }
+
+        const newCount = currentCount + 1;
+        return res.json({
+            success: true,
+            allowed: true,
+            count: newCount,
+            limit,
+            remaining: Math.max(0, limit - newCount),
+        });
+    } catch (err) {
+        console.error('[Usage] POST usage-check-increment error:', err);
+        // On server error, allow (fail open - don't block user due to DB issue)
+        return res.json({ success: false, allowed: true, error: String(err.message) });
     }
 });
 

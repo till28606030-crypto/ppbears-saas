@@ -23,6 +23,7 @@ import MyGalleryModal from '../components/MyGalleryModal';
 import FontPicker from '../components/FontPicker';
 import DesignCollageModal from '../components/DesignCollageModal';
 import { AiUsageLimitModal } from '../components/AiUsageLimitModal';
+import AiUsageBadge from '../components/AiUsageBadge';
 
 import { DEFAULT_STICKERS, DEFAULT_BACKGROUNDS, DEFAULT_FRAMES } from '../data/mockAssets';
 import { AssetItem, Category } from '@/types';
@@ -362,23 +363,47 @@ export default function Home() {
     const [showDesignCollageModal, setShowDesignCollageModal] = useState(false);
     const [aiCollageInitialImages, setAiCollageInitialImages] = useState<string[]>([]);
     const [showAiLimitModal, setShowAiLimitModal] = useState(false);
+    const [aiUsageRefreshTrigger, setAiUsageRefreshTrigger] = useState(0);
 
     // AI Action Handler
     const handleAiAction = async (action: string, payload?: any, skipDisclaimer = false) => {
         if (!canvasRef.current) return;
 
         // Check Daily Usage Limit first for "Generation" actions
-        const isGenerationAction = ['toon_mochi', 'toon_ink', 'toon_anime', 'remove_bg', 'upscale', 'design_collage'].includes(action);
+        // Note: 'design_collage' is now counted inside DesignCollageModal at actual generate time
+        const isGenerationAction = ['toon_mochi', 'toon_ink', 'toon_anime', 'remove_bg', 'upscale'].includes(action);
 
         if (isGenerationAction) {
-            const today = new Date().toISOString().split('T')[0];
-            const usageKey = `ppbears_ai_usage_${today}`;
-            const currentUsage = Number(localStorage.getItem(usageKey) || '0');
-            const limit = currentProduct?.specs?.ai_usage_limit ?? 10;
+            // ── Server-side check (IP-based, incognito-proof) ──
+            try {
+                const apiOrigin = (import.meta as any).env?.VITE_API_ORIGIN || '';
+                const productId = currentProduct?.id || null;
+                const checkRes = await fetch(`${apiOrigin}/api/ai/usage-check-increment`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ product_id: productId }),
+                });
+                const checkData = await checkRes.json();
 
-            if (currentUsage >= limit) {
-                setShowAiLimitModal(true);
-                return;
+                if (!checkData.allowed) {
+                    setShowAiLimitModal(true);
+                    return;
+                }
+                // Also sync localStorage for badge fallback
+                const today = new Date().toISOString().split('T')[0];
+                const usageKey = `ppbears_ai_usage_${today}`;
+                localStorage.setItem(usageKey, String(checkData.count ?? 0));
+            } catch {
+                // Server unavailable → fallback to localStorage
+                const today = new Date().toISOString().split('T')[0];
+                const usageKey = `ppbears_ai_usage_${today}`;
+                const currentUsage = Number(localStorage.getItem(usageKey) || '0');
+                const limit = currentProduct?.specs?.ai_usage_limit ?? 10;
+                if (currentUsage >= limit) {
+                    setShowAiLimitModal(true);
+                    return;
+                }
+                localStorage.setItem(usageKey, (currentUsage + 1).toString());
             }
 
             // Defense Line 1: Background Removal Disclaimer
@@ -387,9 +412,6 @@ export default function Home() {
                 setShowAiDisclaimer(true);
                 return;
             }
-
-            // Increment usage
-            localStorage.setItem(usageKey, (currentUsage + 1).toString());
         }
 
         try {
@@ -418,6 +440,10 @@ export default function Home() {
                 case 'design_collage':
                     setShowDesignCollageModal(true);
                     break;
+            }
+            // Refresh usage badge after successful generation
+            if (['toon_mochi', 'toon_ink', 'toon_anime', 'remove_bg', 'upscale'].includes(action)) {
+                setAiUsageRefreshTrigger(prev => prev + 1);
             }
         } catch (error: any) {
             console.error("AI Action failed:", error);
@@ -1875,7 +1901,15 @@ export default function Home() {
                                 </button>
                             </div>
                         ) : activePanel === 'ai' ? (
-                            <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+                            <div className="flex flex-col flex-1 overflow-y-auto">
+                                {/* AI Usage Badge */}
+                                <div className="pt-3 px-0">
+                                    <AiUsageBadge
+                                        productId={currentProduct?.id}
+                                        refreshTrigger={aiUsageRefreshTrigger}
+                                    />
+                                </div>
+                                <div className="p-6 space-y-6">
                                 {/* Cartoonize Section */}
                                 {perms.aiCartoon && (
                                     <div className="space-y-3">
@@ -1932,6 +1966,7 @@ export default function Home() {
                                         </button>
                                     </div>
                                 )}
+                                </div>
                             </div>
                         ) : (
                             <div className="flex flex-col flex-1 min-h-0 bg-white relative">
@@ -2371,6 +2406,42 @@ export default function Home() {
                             setHasClipPath(!!obj?.clipPath);
                             setIsImageSelected(obj?.type === 'image' && !obj?.isStickerLayer && !obj?.isBarcodeLayer);
                         }}
+                        productId={currentProduct?.id}
+                        onAiDesignCollage={perms.aiDesignCollage ? () => handleAiAction('design_collage') : undefined}
+                        aiUsageRefreshTrigger={aiUsageRefreshTrigger}
+                        onCheckAndIncrementUsage={async () => {
+                            try {
+                                const apiOrigin = (import.meta as any).env?.VITE_API_ORIGIN || '';
+                                const checkRes = await fetch(`${apiOrigin}/api/ai/usage-check-increment`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ product_id: currentProduct?.id || null }),
+                                });
+                                const checkData = await checkRes.json();
+                                if (!checkData.allowed) {
+                                    setShowAiLimitModal(true);
+                                    return false;
+                                }
+                                // Sync localStorage + refresh badge
+                                const today = new Date().toISOString().split('T')[0];
+                                localStorage.setItem(`ppbears_ai_usage_${today}`, String(checkData.count ?? 0));
+                                setAiUsageRefreshTrigger(prev => prev + 1);
+                                return true;
+                            } catch {
+                                // Fallback to localStorage
+                                const today = new Date().toISOString().split('T')[0];
+                                const usageKey = `ppbears_ai_usage_${today}`;
+                                const currentUsage = Number(localStorage.getItem(usageKey) || '0');
+                                const limit = currentProduct?.specs?.ai_usage_limit ?? 10;
+                                if (currentUsage >= limit) {
+                                    setShowAiLimitModal(true);
+                                    return false;
+                                }
+                                localStorage.setItem(usageKey, (currentUsage + 1).toString());
+                                setAiUsageRefreshTrigger(prev => prev + 1);
+                                return true;
+                            }
+                        }}
                         mobileActions={{
                             onUpload: () => setShowGalleryModal(true),
                             onAddText: perms.text ? () => handleToolClick('Text') : undefined,
@@ -2502,6 +2573,8 @@ export default function Home() {
                 isOpen={showDesignCollageModal}
                 onClose={() => setShowDesignCollageModal(false)}
                 initialImages={aiCollageInitialImages}
+                productId={currentProduct?.id}
+                usageRefreshTrigger={aiUsageRefreshTrigger}
                 onResult={(payload) => {
                     if (canvasRef.current && canvasRef.current.insertAiCollage) {
                         canvasRef.current.insertAiCollage(payload);
@@ -2512,6 +2585,40 @@ export default function Home() {
                     height_mm: currentProduct?.specs?.height_mm,
                     dpi: currentProduct?.specs?.dpi || 300,
                 }}
+                onCheckAndIncrementUsage={async () => {
+                    try {
+                        const apiOrigin = (import.meta as any).env?.VITE_API_ORIGIN || '';
+                        const checkRes = await fetch(`${apiOrigin}/api/ai/usage-check-increment`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ product_id: currentProduct?.id || null }),
+                        });
+                        const checkData = await checkRes.json();
+                        if (!checkData.allowed) {
+                            setShowAiLimitModal(true);
+                            return false;
+                        }
+                        // Sync localStorage + refresh badge
+                        const today = new Date().toISOString().split('T')[0];
+                        localStorage.setItem(`ppbears_ai_usage_${today}`, String(checkData.count ?? 0));
+                        setAiUsageRefreshTrigger(prev => prev + 1);
+                        return true;
+                    } catch {
+                        // Fallback to localStorage
+                        const today = new Date().toISOString().split('T')[0];
+                        const usageKey = `ppbears_ai_usage_${today}`;
+                        const currentUsage = Number(localStorage.getItem(usageKey) || '0');
+                        const limit = currentProduct?.specs?.ai_usage_limit ?? 10;
+                        if (currentUsage >= limit) {
+                            setShowAiLimitModal(true);
+                            return false;
+                        }
+                        localStorage.setItem(usageKey, (currentUsage + 1).toString());
+                        setAiUsageRefreshTrigger(prev => prev + 1);
+                        return true;
+                    }
+                }}
+
             />
 
             {/* AI Limit Modal */}

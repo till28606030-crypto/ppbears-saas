@@ -4,6 +4,26 @@
 
 ---
 
+## v5.6 — 2026-03-13（AI 智能工具面板整合 + 精美確認視窗）
+
+### 修改內容
+- **AI 智能工具面板重構**：移除「數位修復 (upscale)」按鈕，右側面板改為「卡通化 / 去背」二欄佈局；移除 PC 版 AI創意按鈕（獨立保留在左側選單）。
+- **手機版 AI 工具列簡化**：移除底部列「數位修復」與「AI設計」按鈕，僅保留卡通化、去背。
+- **移除「物件設定」header 列**：選取物件時右側面板不再顯示多餘的 header。
+- **全新 AI 確認視窗 (AiActionConfirmModal)**：新建 `AiActionConfirmModal.tsx`，PC 版與手機版點擊卡通化/去背均會彈出精美 Modal — 含 AI 今日點數動畫進度條、工具說明、專業印刷建議框，以及風格化確認/取消按鈕。
+- **AI 點數扣除修復**：修正卡通化/去背未正確扣除每日 AI 點數的問題，將 `onCheckAndIncrementUsage` 回呼加入正確的 standalone `handleGenerateAI` 函式（第 5396 行）。
+- **DesignCollageModal 縮小**：視窗從 `max-w-lg` 縮小為 `max-w-sm` 並靠左顯示，不再遮擋右側工具列。
+- **Replicate API 更新**：數位修復 endpoint 改串接 `sczhou/codeformer`（`codeformer_fidelity: 0.7`）。
+
+### 影響檔案
+- `src/components/CanvasEditor.tsx` — AI 面板重構、點數扣除修復、AiActionConfirmModal 整合
+- `src/components/AiActionConfirmModal.tsx` — [NEW] 精美 AI 確認視窗元件
+- `src/components/DesignCollageModal.tsx` — 視窗縮小
+- `src/pages/Home.tsx` — `onCheckAndIncrementUsage` callback 傳入 CanvasEditor
+- `server/index.js` — 數位修復改用 sczhou/codeformer
+
+---
+
 ## v5.5 — 2026-03-13（AI 每日上限警示視窗 Apple 風格重設計）
 
 ### 修改內容
