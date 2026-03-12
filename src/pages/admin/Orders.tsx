@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { ShoppingBag, Download, Clock, Search, Trash2, ExternalLink, RefreshCw, CheckSquare, Square, Copy, Image as ImageIcon, Settings, Save, Loader2 } from 'lucide-react';
+import { ShoppingBag, Download, Clock, Search, Trash2, ExternalLink, RefreshCw, CheckSquare, Square, Copy, Image as ImageIcon, Settings, Save, Loader2, RefreshCcw } from 'lucide-react';
 
 interface Design {
     id: string;
@@ -15,6 +15,7 @@ interface Design {
     print_image: string | null; // 透明背景的高清印刷稿
     spec_image_url: string | null; // 客戶上傳的 AI 辨識截圖
     created_at: string;
+    // canvas_json intentionally not fetched upfront; fetched on demand for regen
 }
 
 export default function AdminOrders() {
@@ -23,6 +24,7 @@ export default function AdminOrders() {
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
 
     const [deleteTarget, setDeleteTarget] = useState<'bulk' | string | null>(null);
 
@@ -177,6 +179,114 @@ export default function AdminOrders() {
     const handleBulkDelete = () => {
         if (selectedIds.size === 0) return;
         setDeleteTarget('bulk');
+    };
+
+    // --- Regenerate Print File (Admin) ---
+    const handleRegenPrintFile = async (design: Design) => {
+        setRegeneratingId(design.design_id);
+        try {
+            // 1. Fetch canvas_json on demand (not loaded upfront to save bandwidth)
+            const { data: designData, error: fetchError } = await supabase
+                .from('custom_designs')
+                .select('canvas_json')
+                .eq('design_id', design.design_id)
+                .single();
+
+            if (fetchError || !designData?.canvas_json) {
+                alert('此設計沒有 canvas_json 資料，無法重新生成印刷稿。\n（可能是舊版設計）');
+                return;
+            }
+
+            const json: any = typeof designData.canvas_json === 'string'
+                ? JSON.parse(designData.canvas_json)
+                : designData.canvas_json;
+
+            // 2. Derive REAL_WIDTH / REAL_HEIGHT from template_meta
+            //    Base layer: scaleX = REAL_WIDTH / base_img.width  →  REAL_WIDTH = scaleX * width
+            const meta = json.template_meta;
+            let rw = 0, rh = 0;
+            if (meta?.scaleX && meta?.width) {
+                rw = Math.round(meta.scaleX * meta.width);
+                rh = Math.round(meta.scaleY * meta.height);
+            } else if (meta?.left && meta?.top) {
+                // Fallback: base layer centered at REAL_WIDTH/2
+                rw = Math.round(meta.left * 2);
+                rh = Math.round(meta.top * 2);
+            }
+
+            if (!rw || !rh) {
+                alert('無法從設計資料推算畫布尺寸，請改用「開啟編輯 → 儲存」方式重新生成。');
+                return;
+            }
+
+            // 3. Create offscreen Fabric canvas at REAL_WIDTH × REAL_HEIGHT
+            const { Canvas, util } = await import('fabric');
+            const el = document.createElement('canvas');
+            el.width = rw;
+            el.height = rh;
+            // Must be temporarily in DOM for Fabric.js initialisation
+            el.style.position = 'fixed';
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+            el.style.top = '-9999px';
+            document.body.appendChild(el);
+
+            const fc = new Canvas(el, {
+                width: rw,
+                height: rh,
+                backgroundColor: 'transparent',
+                renderOnAddRemove: false,
+            });
+
+            try {
+                // 4. Enliven user objects (system layers already stripped in getCanvasJSON)
+                const objects: any[] = json.objects || [];
+                if (objects.length > 0) {
+                    const enlivened = await util.enlivenObjects(objects);
+                    (enlivened as any[]).forEach((obj: any) => fc.add(obj));
+                }
+
+                if (json.backgroundColor) {
+                    fc.backgroundColor = json.backgroundColor;
+                }
+
+                fc.renderAll();
+
+                // 5. Export at 3x resolution (300 DPI)
+                const dataUrl = fc.toDataURL({
+                    format: 'png',
+                    multiplier: 3,
+                    enableRetinaScaling: false,
+                });
+
+                // 6. Convert to Blob
+                const parts = dataUrl.split(',');
+                const byteStr = atob(parts[1]);
+                const ab = new ArrayBuffer(byteStr.length);
+                const ia = new Uint8Array(ab);
+                for (let i = 0; i < byteStr.length; i++) ia[i] = byteStr.charCodeAt(i);
+                const blob = new Blob([ab], { type: 'image/png' });
+
+                // 7. Upload (overwrite) to Supabase Storage
+                const { error: uploadError } = await supabase.storage
+                    .from('design-previews')
+                    .upload(`${design.design_id}/print.png`, blob, { upsert: true, contentType: 'image/png' });
+
+                if (uploadError) throw uploadError;
+
+                alert(`✅ 印刷稿已重新生成！\n設計 ID: ${design.design_id}\n\n請重新下載確認。`);
+
+            } finally {
+                fc.dispose();
+                document.body.removeChild(el);
+            }
+
+        } catch (err: any) {
+            console.error('[RegenPrint] Failed:', err);
+            alert('重新生成失敗：' + (err.message || String(err)));
+        } finally {
+            setRegeneratingId(null);
+        }
     };
 
     const handleDownload = async (design: Design, type: 'PREVIEW' | 'PRINT' = 'PREVIEW') => {
@@ -638,6 +748,18 @@ CREATE POLICY "public insert custom_designs"
                                                         開啟編輯
                                                     </a>
                                                 )}
+                                                {/* Regenerate Print File */}
+                                                <button
+                                                    onClick={() => handleRegenPrintFile(design)}
+                                                    disabled={regeneratingId === design.design_id}
+                                                    className="flex items-center gap-2 px-3 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium transition-colors shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    title="重新生成印刷稿（修正舊版裁切問題）"
+                                                >
+                                                    {regeneratingId === design.design_id
+                                                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                                                        : <RefreshCcw className="w-4 h-4" />}
+                                                    重製印刷稿
+                                                </button>
                                                 {/* Download Print */}
                                                 <button
                                                     onClick={() => handleDownload(design, 'PRINT')}

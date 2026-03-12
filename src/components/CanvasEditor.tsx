@@ -3457,9 +3457,11 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             const originalBaseVisible = baseLayer ? baseLayer.visible : true;
             const originalMaskVisible = maskLayer ? maskLayer.visible : true;
 
-            // Save original viewport
+            // Save original viewport and canvas CSS dimensions
             const originalVpt = canvas.viewportTransform ? canvas.viewportTransform.slice() : [1, 0, 0, 1, 0, 0];
-            
+            const originalCssWidth = canvas.width;
+            const originalCssHeight = canvas.height;
+
             // Temporarily disable object caching to fix bounding box clipping on high-res exports
             const cacheStates: boolean[] = [];
             canvas.getObjects().forEach(obj => {
@@ -3471,24 +3473,27 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             if (baseLayer) baseLayer.visible = false;
             if (maskLayer) maskLayer.visible = false;
 
-            // Reset viewport to 1:1 scale before export
+            // CRITICAL FIX: Reset viewport to 1:1 AND expand canvas CSS dimensions to REAL_WIDTH × REAL_HEIGHT.
+            // When zoom is reset to 1, objects remain at their design-space coordinates (REAL_WIDTH range).
+            // The canvas CSS size was the shrunken display size (e.g. 500px), so toDataURL with
+            // width: REAL_WIDTH would crop only a tiny top-left corner and then scale it up 3x,
+            // resulting in the "zoomed-in, cropped" bug. By making CSS dimensions match REAL_WIDTH,
+            // all objects are within the canvas bounds and toDataURL captures the full design.
             canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+            canvas.setDimensions({ width: REAL_WIDTH, height: REAL_HEIGHT });
             canvas.renderAll();
 
-            // 3.0 for 300 DPI professional print quality (relative to REAL_WIDTH which is already 300dpi, so this makes it ultra-high-res as originally intended)
+            // 3.0 for 300 DPI professional print quality
             const multiplier = 3;
 
             const dataUrl = canvas.toDataURL({
                 format: 'png',
-                left: 0,
-                top: 0,
-                width: REAL_WIDTH,
-                height: REAL_HEIGHT,
                 multiplier: multiplier,
                 enableRetinaScaling: false // Prevent huge output on mobile retina displays causing memory crash
             });
 
-            // Restore state
+            // Restore canvas CSS dimensions, viewport, visibility, and caching
+            canvas.setDimensions({ width: originalCssWidth, height: originalCssHeight });
             canvas.setViewportTransform(originalVpt as [number, number, number, number, number, number]);
             canvas.backgroundColor = originalBg;
             if (baseLayer) baseLayer.visible = originalBaseVisible;
