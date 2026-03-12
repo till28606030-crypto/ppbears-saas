@@ -3480,6 +3480,10 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
             const dataUrl = canvas.toDataURL({
                 format: 'png',
+                left: 0,
+                top: 0,
+                width: REAL_WIDTH,
+                height: REAL_HEIGHT,
                 multiplier: multiplier,
                 enableRetinaScaling: false // Prevent huge output on mobile retina displays causing memory crash
             });
