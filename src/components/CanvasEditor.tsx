@@ -7309,8 +7309,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     </div>
                                 </div>
 
-                                {/* 5. AI智能工具 — 卡通化 / 去背 / AI創意 三合一 */}
-                                {((selectedObject.type === 'image' && !(selectedObject as any).isStickerLayer && !(selectedObject as any).isBarcodeLayer && (p.aiCartoon || p.aiRemoveBg)) || p.aiDesignCollage) && (
+                                {/* 5. AI智能工具 — 卡通化 / 去背（僅圖片物件顯示，文字不顯示） */}
+                                {selectedObject.type === 'image' && !(selectedObject as any).isStickerLayer && !(selectedObject as any).isBarcodeLayer && (p.aiCartoon || p.aiRemoveBg) && (
                                     <div className="space-y-2 pt-2 border-t border-gray-100 mt-2">
                                         <label className="text-[11px] font-semibold text-gray-500 ml-1">AI 智能工具</label>
                                         {/* AI 今日點數徽章 */}

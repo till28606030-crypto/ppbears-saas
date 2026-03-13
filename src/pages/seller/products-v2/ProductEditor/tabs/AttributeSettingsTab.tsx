@@ -16,7 +16,6 @@ const defaultPermissions: ClientPermissions = {
     barcode: true,
     ai_cartoon: true,
     ai_design_collage: true,
-    ai_upscale: true,
     frames: true,
 };
 
@@ -40,7 +39,6 @@ const AttributeSettingsTab: React.FC<AttributeSettingsTabProps> = ({ draft, setD
         { key: 'barcode', label: '條碼 (Barcode)' },
         { key: 'ai_cartoon', label: '卡通化 (AI Cartoon)' },
         { key: 'ai_design_collage', label: 'AI 設計拼貼 (AI Design Collage)' },
-        { key: 'ai_upscale', label: '數位修復 (AI Upscale)' },
         { key: 'frames', label: '相框 (Frames)' },
     ];
 
