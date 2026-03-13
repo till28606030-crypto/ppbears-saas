@@ -920,7 +920,7 @@ app.post('/api/ai/recognize-product', express.json({ limit: '10mb' }), async (re
 - 若截圖中看不到某欄位，就不要包含在 specs 裡`;
 
         const response = await openai.chat.completions.create({
-            model: 'gpt-4o',
+            model: 'gpt-4o-mini',
             messages: [
                 { role: 'system', content: promptText },
                 {
