@@ -415,10 +415,12 @@ export default function Home() {
             try {
                 const apiOrigin = (import.meta as any).env?.VITE_API_ORIGIN || '';
                 const productId = currentProduct?.id || null;
+                // v6.0: tiered cost — 卡通化=5點, 去背=1點
+                const actionCost = ['toon_mochi', 'toon_ink', 'toon_anime'].includes(action) ? 5 : 1;
                 const checkRes = await fetch(`${apiOrigin}/api/ai/usage-check-increment`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ product_id: productId }),
+                    body: JSON.stringify({ product_id: productId, cost: actionCost }),
                 });
                 const checkData = await checkRes.json();
 
@@ -435,12 +437,13 @@ export default function Home() {
                 const today = new Date().toISOString().split('T')[0];
                 const usageKey = `ppbears_ai_usage_${today}`;
                 const currentUsage = Number(localStorage.getItem(usageKey) || '0');
-                const limit = currentProduct?.specs?.ai_usage_limit ?? 10;
-                if (currentUsage >= limit) {
+                const limit = currentProduct?.specs?.ai_usage_limit ?? 20; // v6.0: default 20
+                const actionCost = ['toon_mochi', 'toon_ink', 'toon_anime'].includes(action) ? 5 : 1;
+                if (currentUsage + actionCost > limit) {
                     setShowAiLimitModal(true);
                     return;
                 }
-                localStorage.setItem(usageKey, (currentUsage + 1).toString());
+                localStorage.setItem(usageKey, (currentUsage + actionCost).toString());
             }
 
             // Defense Line 1: Background Removal Disclaimer
@@ -2460,13 +2463,13 @@ export default function Home() {
                         productId={currentProduct?.id}
                         onAiDesignCollage={perms.aiDesignCollage ? () => handleAiAction('design_collage') : undefined}
                         aiUsageRefreshTrigger={aiUsageRefreshTrigger}
-                        onCheckAndIncrementUsage={async () => {
+                        onCheckAndIncrementUsage={async (cost = 1) => {
                             try {
                                 const apiOrigin = (import.meta as any).env?.VITE_API_ORIGIN || '';
                                 const checkRes = await fetch(`${apiOrigin}/api/ai/usage-check-increment`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ product_id: currentProduct?.id || null }),
+                                    body: JSON.stringify({ product_id: currentProduct?.id || null, cost }),
                                 });
                                 const checkData = await checkRes.json();
                                 if (!checkData.allowed) {
@@ -2483,12 +2486,12 @@ export default function Home() {
                                 const today = new Date().toISOString().split('T')[0];
                                 const usageKey = `ppbears_ai_usage_${today}`;
                                 const currentUsage = Number(localStorage.getItem(usageKey) || '0');
-                                const limit = currentProduct?.specs?.ai_usage_limit ?? 10;
-                                if (currentUsage >= limit) {
+                                const limit = currentProduct?.specs?.ai_usage_limit ?? 20; // v6.0
+                                if (currentUsage + cost > limit) {
                                     setShowAiLimitModal(true);
                                     return false;
                                 }
-                                localStorage.setItem(usageKey, (currentUsage + 1).toString());
+                                localStorage.setItem(usageKey, (currentUsage + cost).toString());
                                 setAiUsageRefreshTrigger(prev => prev + 1);
                                 return true;
                             }

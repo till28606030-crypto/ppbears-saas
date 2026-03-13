@@ -4,6 +4,26 @@
 
 ---
 
+## v6.0 — 2026-03-13（AI 點數差異化定價系統）
+
+### 修改內容
+- **AI 功能差異化點數消耗**：每個 AI 功能根據成本設定不同點數消耗：
+  - 去背 (AI Remove BG)：**1 點**（成本極低 ~NT$0.016/次）
+  - AI 創意 (Design Collage)：**3 點**（中等成本 ~NT$0.19/次）
+  - 卡通化 (AI Cartoon)：**5 點**（最高成本 ~NT$0.3–0.6/次）
+- **每日點數上限 10 → 20**：支援多樣化使用，同時成本上限每人每天約 NT$1–2（混合使用）
+- **AI 確認視窗顯示消耗點數**：`AiActionConfirmModal` 顯示本次動作消耗幾點，點數不足時按鈕自動 disabled
+- **Server API 支援 cost 參數**：`/api/ai/usage-check-increment` 接受 `cost` 欄位，一次扣多點
+
+### 影響檔案
+- `server/index.js` — usage-check-increment 支援 cost 參數，預設 limit 10→20
+- `src/pages/Home.tsx` — handleAiAction 傳入 cost，onCheckAndIncrementUsage 傳入 cost
+- `src/components/DesignCollageModal.tsx` — onCheckAndIncrementUsage 傳入 cost=3
+- `src/components/AiActionConfirmModal.tsx` — LIMIT 10→20，顯示每次消耗點數，不足時 disabled
+- `src/components/AiUsageBadge.tsx` — 初始 localStorage fallback limit 10→20
+
+---
+
 ## v5.8 — 2026-03-13（行動版體驗優化 + AI 大圖支援 + 素材面板提速）
 
 ### 修改內容

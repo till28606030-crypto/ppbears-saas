@@ -28,7 +28,7 @@ function getLocalStorageUsage(limit: number): AiUsageData {
 
 export default function AiUsageBadge({ productId, refreshTrigger = 0 }: AiUsageBadgeProps) {
     // Immediately show localStorage data — no loading flicker
-    const [usage, setUsage] = useState<AiUsageData>(() => getLocalStorageUsage(10));
+    const [usage, setUsage] = useState<AiUsageData>(() => getLocalStorageUsage(20)); // v6.0: default 20
     const [countdown, setCountdown] = useState('');
 
     const fetchFromServer = useCallback(async () => {

@@ -611,7 +611,7 @@ app.get('/api/ai/usage-status', async (req, res) => {
         const ip = getClientIp(req);
         const productId = req.query.product_id || null;
 
-        let limit = 10; // default
+        let limit = 20; // v6.0: raised from 10 to 20
         if (productId) {
             const { data: prodData } = await supabaseAdmin
                 .from('products')
@@ -655,9 +655,10 @@ app.post('/api/ai/usage-check-increment', express.json(), async (req, res) => {
     try {
         const ip = getClientIp(req);
         const productId = req.body?.product_id || null;
+        const cost = Math.max(1, parseInt(req.body?.cost ?? '1') || 1); // points consumed per action
         const today = new Date().toISOString().split('T')[0];
 
-        let limit = 10;
+        let limit = 20; // v6.0: raised from 10 to 20
         if (productId) {
             const { data: prodData } = await supabaseAdmin
                 .from('products')
@@ -680,7 +681,7 @@ app.post('/api/ai/usage-check-increment', express.json(), async (req, res) => {
 
         const currentCount = existing?.count ?? 0;
 
-        if (currentCount >= limit) {
+        if (currentCount + cost > limit) {
             return res.json({
                 success: true,
                 allowed: false,
@@ -695,15 +696,15 @@ app.post('/api/ai/usage-check-increment', express.json(), async (req, res) => {
         if (existing) {
             await supabaseAdmin
                 .from('ai_usage_log')
-                .update({ count: currentCount + 1, updated_at: new Date().toISOString() })
+                .update({ count: currentCount + cost, updated_at: new Date().toISOString() })
                 .eq('id', existing.id);
         } else {
             await supabaseAdmin
                 .from('ai_usage_log')
-                .insert({ ip, usage_date: today, product_id: productId, count: 1 });
+                .insert({ ip, usage_date: today, product_id: productId, count: cost });
         }
 
-        const newCount = currentCount + 1;
+        const newCount = currentCount + cost;
         return res.json({
             success: true,
             allowed: true,

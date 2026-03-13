@@ -23,7 +23,7 @@ interface DesignCollageModalProps {
   };
   initialImages?: string[];
   /** 呼叫前先檢查使用次數，若已到上限回傳 false 並自動顯示限制 Modal */
-  onCheckAndIncrementUsage?: () => Promise<boolean> | boolean;
+  onCheckAndIncrementUsage?: (cost?: number) => Promise<boolean> | boolean;
   /** 傳入 product ID 供 badge 顯示當日點數 */
   productId?: string | null;
   /** 外部觸發 badge 更新 */
@@ -139,7 +139,8 @@ export default function DesignCollageModal({
 
     // Check & increment daily AI usage limit before generating
     if (onCheckAndIncrementUsage) {
-      const allowed = await onCheckAndIncrementUsage();
+      // v6.0: AI創意 costs 3 points
+      const allowed = await onCheckAndIncrementUsage(3);
       if (!allowed) return;
     }
 

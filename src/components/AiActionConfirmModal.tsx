@@ -35,7 +35,8 @@ const ACTION_CONFIG = {
 export default function AiActionConfirmModal({ action, onConfirm, onCancel }: AiActionConfirmModalProps) {
   const [usageCount, setUsageCount] = useState(0);
   const [animated, setAnimated] = useState(false);
-  const LIMIT = 10;
+  const LIMIT = 20; // v6.0: raised from 10 to 20
+  const COST = action === 'toon_ink' ? 5 : 1; // 卡通化=5點，去背=1點
 
   useEffect(() => {
     if (!action) return;
@@ -51,8 +52,9 @@ export default function AiActionConfirmModal({ action, onConfirm, onCancel }: Ai
 
   const cfg = ACTION_CONFIG[action];
   const remaining = Math.max(0, LIMIT - usageCount);
+  const canUse = remaining >= COST;
   const pct = Math.min(100, (usageCount / LIMIT) * 100);
-  const barColor = remaining <= 2 ? 'bg-orange-400' : 'bg-blue-500';
+  const barColor = remaining <= 4 ? 'bg-orange-400' : 'bg-blue-500';
 
   return (
     <div
@@ -89,8 +91,8 @@ export default function AiActionConfirmModal({ action, onConfirm, onCancel }: Ai
                 <Sparkles className="w-3.5 h-3.5 text-blue-500" />
                 AI 今日點數
               </span>
-              <span className={`text-xs font-bold ${remaining === 0 ? 'text-orange-500' : 'text-gray-700'}`}>
-                {remaining === 0 ? '已用盡' : `剩餘 ${remaining} / ${LIMIT}`}
+              <span className={`text-xs font-bold ${!canUse ? 'text-orange-500' : 'text-gray-700'}`}>
+                {!canUse ? `點數不足` : `剩餘 ${remaining} / ${LIMIT}`}
               </span>
             </div>
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -100,7 +102,7 @@ export default function AiActionConfirmModal({ action, onConfirm, onCancel }: Ai
               />
             </div>
             <p className="text-[10px] text-gray-500 mt-1">
-              {remaining === 0 ? '今日免費次數已用盡，明日重置' : `執行後將消耗 1 點，剩餘 ${remaining - 1} 點`}
+              {!canUse ? `今日點數不足（需 ${COST} 點，剩餘 ${remaining} 點）` : `執行後將消耗 ${COST} 點，剩餘 ${remaining - COST} 點`}
             </p>
           </div>
 
@@ -117,7 +119,8 @@ export default function AiActionConfirmModal({ action, onConfirm, onCancel }: Ai
         <div className="px-5 pb-5 space-y-2 pt-1">
           <button
             onClick={onConfirm}
-            className={`w-full py-3 rounded-xl text-white text-sm font-bold transition-all active:scale-95 shadow-sm ${cfg.confirmColor}`}
+            disabled={!canUse}
+            className={`w-full py-3 rounded-xl text-white text-sm font-bold transition-all active:scale-95 shadow-sm ${cfg.confirmColor} disabled:opacity-40 disabled:cursor-not-allowed`}
           >
             {cfg.confirmLabel}
           </button>
