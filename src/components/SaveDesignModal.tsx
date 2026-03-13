@@ -2501,6 +2501,22 @@ export default function SaveDesignModal({
                                     </details>
                                 </div>
                             </div>
+                            
+                            {/* 全畫面 Loading 遮罩 (當按下加入購物車時顯示) */}
+                            {isSubmitting && (
+                                <div className="absolute inset-0 z-[100] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center rounded-2xl animate-in fade-in duration-300">
+                                    <div className="bg-white p-6 rounded-2xl shadow-xl flex flex-col items-center gap-4 border border-blue-100">
+                                        <div className="relative">
+                                            <div className="w-12 h-12 rounded-full border-4 border-blue-100"></div>
+                                            <div className="w-12 h-12 rounded-full border-4 border-blue-600 border-t-transparent animate-spin absolute inset-0"></div>
+                                        </div>
+                                        <div className="text-center">
+                                            <p className="text-lg font-bold text-gray-800">正在加入購物車...</p>
+                                            <p className="text-sm text-gray-500 mt-1">請稍候，即將為您跳轉</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Navigation */}
                             <div className="relative shrink-0 border-t border-gray-100 bg-white md:bg-gray-50 px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] md:shadow-none">
