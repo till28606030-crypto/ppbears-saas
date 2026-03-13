@@ -11,6 +11,8 @@ interface AiUsageData {
 interface AiUsageBadgeProps {
     productId?: string | null;
     refreshTrigger?: number;
+    /** When provided, shows cost hint in the footer alongside reset countdown (e.g. for AI創意 = 3) */
+    costHint?: number;
 }
 
 function getLocalStorageUsage(limit: number): AiUsageData {
@@ -26,7 +28,7 @@ function getLocalStorageUsage(limit: number): AiUsageData {
     };
 }
 
-export default function AiUsageBadge({ productId, refreshTrigger = 0 }: AiUsageBadgeProps) {
+export default function AiUsageBadge({ productId, refreshTrigger = 0, costHint }: AiUsageBadgeProps) {
     // Immediately show localStorage data — no loading flicker
     const [usage, setUsage] = useState<AiUsageData>(() => getLocalStorageUsage(20)); // v6.0: default 20
     const [countdown, setCountdown] = useState('');
@@ -132,19 +134,33 @@ export default function AiUsageBadge({ productId, refreshTrigger = 0 }: AiUsageB
 
             {/* Footer */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 10, color: '#9ca3af' }}>
-                    {isEmpty ? '⏱' : '🔄'} 重置於 {countdown}
+                {costHint != null ? (
+                    // When costHint is provided: show "消耗 X 點，剩餘 Y 點" left + "🔄 重置於 countdown" right
+                    <span style={{ fontSize: 10, color: '#9ca3af' }}>
+                        {usage.remaining >= costHint
+                            ? `執行後將消耗 ${costHint} 點，剩餘 ${usage.remaining - costHint} 點`
+                            : `點數不足（需 ${costHint} 點，剩餘 ${usage.remaining} 點）`}
+                    </span>
+                ) : (
+                    <span style={{ fontSize: 10, color: '#9ca3af' }}>
+                        {isEmpty ? '⏱' : '🔄'} 重置於 {countdown}
+                    </span>
+                )}
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#9ca3af' }}>
+                    {costHint != null && <><RefreshCw size={9} /> 重置於 {countdown}</>}
+                    {costHint == null && (
+                        <button
+                            onClick={() => {
+                                setUsage(prev => getLocalStorageUsage(prev.limit));
+                                fetchFromServer();
+                            }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                            title="重新整理"
+                        >
+                            <RefreshCw size={10} />
+                        </button>
+                    )}
                 </span>
-                <button
-                    onClick={() => {
-                        setUsage(prev => getLocalStorageUsage(prev.limit));
-                        fetchFromServer();
-                    }}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center' }}
-                    title="重新整理"
-                >
-                    <RefreshCw size={10} />
-                </button>
             </div>
         </div>
     );

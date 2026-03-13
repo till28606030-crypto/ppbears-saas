@@ -7309,37 +7309,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                     </div>
                                 </div>
 
-                                {/* 5. AI智能工具 — 卡通化 / 去背（僅圖片物件顯示，文字不顯示） */}
-                                {selectedObject.type === 'image' && !(selectedObject as any).isStickerLayer && !(selectedObject as any).isBarcodeLayer && (p.aiCartoon || p.aiRemoveBg) && (
-                                    <div className="space-y-2 pt-2 border-t border-gray-100 mt-2">
-                                        <label className="text-[11px] font-semibold text-gray-500 ml-1">AI 智能工具</label>
-                                        {/* AI 今日點數徽章 */}
-                                        <AiUsageBadge productId={props.productId} refreshTrigger={props.aiUsageRefreshTrigger ?? 0} />
-                                        <div className="grid grid-cols-2 gap-2 mt-1">
-                                            {p.aiCartoon && selectedObject.type === 'image' && !(selectedObject as any).isStickerLayer && !(selectedObject as any).isBarcodeLayer && (
-                                                <button
-                                                    onClick={() => { setAiConfirmAction('toon_ink'); setActiveAdjust(null); }}
-                                                    className="flex flex-col items-center justify-center p-3 rounded-xl border border-purple-100 bg-purple-50 text-purple-600 hover:bg-purple-100 transition-all group shadow-sm active:scale-95"
-                                                    title="卡通化"
-                                                >
-                                                    <Wand2 className="w-6 h-6 mb-1.5 text-purple-500 group-hover:scale-110 transition-transform" />
-                                                    <span className="text-[10px] font-bold text-purple-700">卡通化</span>
-                                                </button>
-                                            )}
-                                            {p.aiRemoveBg && selectedObject.type === 'image' && !(selectedObject as any).isStickerLayer && !(selectedObject as any).isBarcodeLayer && (
-                                                <button
-                                                    onClick={() => { setAiConfirmAction('remove_bg'); setActiveAdjust(null); }}
-                                                    className="flex flex-col items-center justify-center p-3 rounded-xl border border-red-100 bg-red-50 text-red-600 hover:bg-red-100 transition-all group shadow-sm active:scale-95"
-                                                    title="去背"
-                                                >
-                                                    <Scissors className="w-6 h-6 mb-1.5 text-red-500 group-hover:scale-110 transition-transform" />
-                                                    <span className="text-[10px] font-bold text-red-700">去背</span>
-                                                </button>
-                                            )}
 
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                         </div>
                     ) : (

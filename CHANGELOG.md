@@ -4,6 +4,19 @@
 
 ---
 
+## v6.2 — 2026-03-13（PC 右側面板清理 + AI 創意點數顯示修正）
+
+### 修改內容
+- **移除 PC 右側面板 AI 智能工具區塊**：選取圖片時不再顯示右側「AI 智能工具」（卡通化/去背）— 這些功能已在頂部工具列提供，不需重複
+- **AI 創意點數視窗統一化**：新增 `AiUsageBadge` `costHint` prop；AI 創意視窗現在顯示「執行後將消耗 3 點，剩餘 Y 點 ｜ 🔄 重置於 countdown」— 與卡通化/去背提醒視窗完全一致
+
+### 影響檔案
+- `src/components/CanvasEditor.tsx` — 移除 AI 智能工具 block
+- `src/components/AiUsageBadge.tsx` — 新增 `costHint` prop，footer 改為雙欄顯示
+- `src/components/DesignCollageModal.tsx` — 傳入 `costHint={3}`
+
+---
+
 ## v6.1 — 2026-03-13（AI 功能提醒視窗統一化）
 
 ### 修改內容
