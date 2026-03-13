@@ -1346,7 +1346,7 @@ export default function Home() {
 
             // Task: Database Save
             const dbTask = (async () => {
-                const canvasJson = canvasRef.current?.getCanvasJSON?.() || null;
+                // Step 1: 先做不含 canvas_json 的快速 upsert（避免大型 JSON 造成 DB statement timeout）
                 const { error } = await supabase
                     .from('custom_designs')
                     .upsert({
@@ -1356,13 +1356,25 @@ export default function Home() {
                         phone_model: currentProduct?.name || 'Unknown',
                         price: finalPrice,
                         options: finalOptions,
-                        canvas_json: canvasJson,
                         preview_image: previewUrl,
                         print_image: printUrl,
                         spec_image_url: specImageUrl,
                     }, { onConflict: 'design_id' });
                 if (error) throw new Error(`無法保存設計: ${error.message}`);
                 console.log('[Cart] DB Save success');
+
+                // Step 2: 非同步背景更新 canvas_json（體積大，不阻塞結帳流程）
+                const canvasJson = canvasRef.current?.getCanvasJSON?.() || null;
+                if (canvasJson) {
+                    supabase
+                        .from('custom_designs')
+                        .update({ canvas_json: canvasJson })
+                        .eq('design_id', designId)
+                        .then(({ error: jsonErr }) => {
+                            if (jsonErr) console.warn('[Cart] canvas_json background update failed:', jsonErr.message);
+                            else console.log('[Cart] canvas_json background update success');
+                        });
+                }
             })();
 
             // Task: IndexedDB update (for local reference)
