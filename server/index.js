@@ -32,7 +32,25 @@ const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
 const MAX_DIMENSION = 2048;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: function (origin, callback) {
+        const allowedOrigins = [
+            'https://ppbears.com',
+            'https://www.ppbears.com',
+            'http://localhost:5173',
+            'http://127.0.0.1:5173',
+        ];
+        // Allow requests with no origin (mobile apps, Postman in dev, server-to-server)
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            console.warn(`[CORS] Blocked request from origin: ${origin}`);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    credentials: true,
+}));
 app.use((req, res, next) => {
     // Debug Log for Content-Type
     if (req.path.startsWith('/api/ai')) {
@@ -57,6 +75,22 @@ app.use((req, res, next) => {
     }
     next();
 });
+
+// AI Endpoint Authentication Middleware
+// Requires X-AI-Token header matching AI_ENDPOINT_SECRET env var
+const AI_SECRET = process.env.AI_ENDPOINT_SECRET;
+function requireAiAuth(req, res, next) {
+    // Skip auth in development mode for convenience
+    if (process.env.NODE_ENV === 'development' && !AI_SECRET) {
+        return next();
+    }
+    const token = req.headers['x-ai-token'];
+    if (!AI_SECRET || token !== AI_SECRET) {
+        console.warn(`[AUTH] Unauthorized AI request from ${getClientIp(req)} to ${req.path}`);
+        return res.status(401).json({ success: false, message: 'Unauthorized: invalid or missing AI token' });
+    }
+    next();
+}
 
 // Initialize Replicate
 if (!process.env.REPLICATE_API_TOKEN) {
@@ -201,7 +235,7 @@ async function fetchImageBuffer(url) {
 }
 
 // 1. Cartoonize
-app.post('/api/ai/cartoon', upload.single('image'), async (req, res) => {
+app.post('/api/ai/cartoon', requireAiAuth, upload.single('image'), async (req, res) => {
     console.log(`[AI] HIT /api/ai/cartoon (ID: ${BUILD_ID})`);
     try {
         let imageBuffer = null;
@@ -281,13 +315,12 @@ app.post('/api/ai/cartoon', upload.single('image'), async (req, res) => {
             errorCode: 'AI_ERROR',
             endpoint: '/api/ai/cartoon',
             error: String(error?.message || error),
-            stack: error?.stack
         });
     }
 });
 
 // 2. Remove Background
-app.post('/api/ai/remove-bg', upload.single('image'), async (req, res) => {
+app.post('/api/ai/remove-bg', requireAiAuth, upload.single('image'), async (req, res) => {
     console.log(`[AI] HIT /api/ai/remove-bg (ID: ${BUILD_ID})`);
     try {
         let imageBuffer = null;
@@ -354,13 +387,12 @@ app.post('/api/ai/remove-bg', upload.single('image'), async (req, res) => {
             errorCode: 'AI_ERROR',
             endpoint: '/api/ai/remove-bg',
             error: String(error?.message || error),
-            stack: error?.stack
         });
     }
 });
 
 // 2.5. Upscale / Enhance Image (Recraft Crisp Upscale)
-app.post('/api/ai/upscale', upload.single('image'), async (req, res) => {
+app.post('/api/ai/upscale', requireAiAuth, upload.single('image'), async (req, res) => {
     console.log(`[AI] HIT /api/ai/upscale (ID: ${BUILD_ID})`);
     try {
         let imageBuffer = null;
@@ -432,14 +464,13 @@ app.post('/api/ai/upscale', upload.single('image'), async (req, res) => {
             errorCode: 'AI_ERROR',
             endpoint: '/api/ai/upscale',
             error: String(error?.message || error),
-            stack: error?.stack
         });
     }
 });
 
 
 // 2.6. AI Design Collage (Multi-Image Fusion with FLUX Kontext)
-app.post('/api/ai/design-collage', express.json({ limit: '50mb' }), async (req, res) => {
+app.post('/api/ai/design-collage', requireAiAuth, express.json({ limit: '50mb' }), async (req, res) => {
     console.log(`[AI] HIT /api/ai/design-collage (ID: ${BUILD_ID})`);
     try {
         // --- Validate inputs ---
@@ -571,7 +602,6 @@ app.post('/api/ai/design-collage', express.json({ limit: '50mb' }), async (req, 
             errorCode: 'AI_ERROR',
             endpoint: '/api/ai/design-collage',
             error: String(error?.message || error),
-            stack: error?.stack
         });
     }
 });

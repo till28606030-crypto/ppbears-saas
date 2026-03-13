@@ -191,7 +191,7 @@ export default function DesignCollageModal({
 
       const bgPromise = fetch(`${apiOrigin}/api/ai/design-collage`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-AI-Token': import.meta.env.VITE_AI_TOKEN || '' },
         body: JSON.stringify(bgPayload),
       }).then(async r => {
         if (!r.ok) {
@@ -210,7 +210,7 @@ export default function DesignCollageModal({
       for (const b64 of base64Images) {
         const r = await fetch(`${apiOrigin}/api/ai/remove-bg`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-AI-Token': import.meta.env.VITE_AI_TOKEN || '' },
           body: JSON.stringify({ imageUrl: b64 })
         });
         if (!r.ok) {

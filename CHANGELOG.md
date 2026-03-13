@@ -4,6 +4,21 @@
 
 ---
 
+## [6.7] - 2026-03-13
+### Security
+- 核心安全修復 (Critical Security Fixes)
+- 移除前端洩露的 OpenAI API Key (VITE_OPENAI_API_KEY)
+- 為 AI API 端點實例化 `X-AI-Token` 認證機制 (Cartoon, Remove-bg, Upscale, Design-collage)
+- 限縮 CORS 來源，僅允許 `ppbears.com` 與本地端存取
+- 移除 API 錯誤回應中的 Stack Trace 洩露
+- 更正 Supabase `service_role` 金鑰權限標記
+
+### Infrastructure
+- 全面更新環境變數設定 (.env / .env.local / .env.production)
+- 強化前端對 AI 端點的請求標頭安全性
+
+---
+
 ## v6.6 — 2026-03-13（全新設計查詢頁面與商店功能優化）
 
 ### 修改內容

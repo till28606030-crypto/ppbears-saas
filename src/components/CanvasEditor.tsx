@@ -3819,6 +3819,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 const response = await fetch(endpoint, {
                     method: 'POST',
                     body: formData,
+                    headers: { 'X-AI-Token': import.meta.env.VITE_AI_TOKEN || '' },
                     mode: 'cors', // Essential for CORS
                     credentials: 'omit' // Essential for public API without cookies
                 });
@@ -5545,6 +5546,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-AI-Token': import.meta.env.VITE_AI_TOKEN || '',
                     },
                     body: JSON.stringify(payload),
                     credentials: 'omit',
