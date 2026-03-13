@@ -20,6 +20,7 @@ import FrameList from "@/pages/seller/FrameList";
 import FrameEditor from "@/pages/seller/FrameEditor";
 import SellerShop from "@/pages/shop/SellerShop";
 import PublicTemplate from "@/pages/public/PublicTemplate";
+import DesignLookup from "@/pages/public/DesignLookup";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 
 // Protected Route Component
@@ -90,6 +91,7 @@ export default function App() {
 
           {/* Buyer Shop Routes */}
           <Route path="/shop" element={<SellerShop />} />
+          <Route path="/lookup" element={<DesignLookup />} />
         </Routes>
       </Router>
     </AuthProvider>
