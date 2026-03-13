@@ -866,38 +866,10 @@ app.post('/api/ai/auto-tag', express.json({ limit: '1mb' }), async (req, res) =>
     }
 });
 
-// 4. Recognize Product Specs from Screenshot (OpenAI GPT-4o Vision)
-// This replaces the previous direct frontend call that used VITE_OPENAI_API_KEY
-app.post('/api/ai/recognize-product', express.json({ limit: '10mb' }), async (req, res) => {
-    console.log(`[AI] HIT /api/ai/recognize-product (ID: ${BUILD_ID})`);
-    try {
-        const { imageBase64, mimeType = 'image/jpeg' } = req.body || {};
+// 4. Recognize Product Specs from Screenshot (Gemini 2.0 Flash Vision)
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-        if (!imageBase64) {
-            return fail(res, '缺少 imageBase64 參數', { errorCode: 'MISSING_PARAM' });
-        }
-
-        if (!process.env.OPENAI_API_KEY) {
-            return fail(res, 'Server configuration error (Missing OpenAI API Key)', { errorCode: 'MISSING_ENV' });
-        }
-
-        // Compress image using sharp (convert base64 → buffer → compress → base64)
-        let imageDataUri;
-        try {
-            const inputBuffer = Buffer.from(imageBase64, 'base64');
-            const compressed = await sharp(inputBuffer)
-                .resize(1280, 1280, { fit: 'inside', withoutEnlargement: true })
-                .jpeg({ quality: 80 })
-                .toBuffer();
-            imageDataUri = `data:image/jpeg;base64,${compressed.toString('base64')}`;
-            console.log(`[AI] recognize-product: image compressed to ${Math.round(compressed.length / 1024)}KB`);
-        } catch (imgErr) {
-            // If compression fails, use original
-            console.warn('[AI] Image compression failed, using original:', imgErr.message);
-            imageDataUri = `data:${mimeType};base64,${imageBase64}`;
-        }
-
-        const promptText = `你是手機殼商品規格辨識專家，專門處理 Devilcase 官網截圖。
+const RECOGNIZE_PROMPT = `你是手機殼商品規格辨識專家，專門處理 Devilcase 官網截圖。
 請從截圖中提取：
 1. 手機型號（如 Apple - iPhone 17 Pro Max）
 2. 殼種款式名稱（如 惡魔防摔殼 PRO 3 磁吸版、惡魔防摔殼 標準版 等）
@@ -919,28 +891,54 @@ app.post('/api/ai/recognize-product', express.json({ limit: '10mb' }), async (re
 - 動作按鍵和相機按鍵是不同的欄位，請分開辨識
 - 若截圖中看不到某欄位，就不要包含在 specs 裡`;
 
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o',
-            messages: [
-                { role: 'system', content: promptText },
-                {
-                    role: 'user',
-                    content: [
-                        { type: 'text', text: '請辨識這張截圖中的商品規格。請確保嚴格逐字照抄，不可有任何自行猜測修改的字眼。' },
-                        { type: 'image_url', image_url: { url: imageDataUri } }
-                    ]
-                }
-            ],
-            max_tokens: 800,
-            temperature: 0.1
-        });
+app.post('/api/ai/recognize-product', express.json({ limit: '10mb' }), async (req, res) => {
+    console.log(`[AI] HIT /api/ai/recognize-product (ID: ${BUILD_ID})`);
+    try {
+        const { imageBase64, mimeType = 'image/jpeg' } = req.body || {};
 
-        const content = response.choices?.[0]?.message?.content;
-        if (!content) {
-            return fail(res, 'No content received from OpenAI', { errorCode: 'EMPTY_RESPONSE' });
+        if (!imageBase64) {
+            return fail(res, '缺少 imageBase64 參數', { errorCode: 'MISSING_PARAM' });
         }
 
-        // Extract JSON from response (may be wrapped in code blocks)
+        if (!process.env.GEMINI_API_KEY) {
+            return fail(res, 'Server configuration error (Missing GEMINI_API_KEY)', { errorCode: 'MISSING_ENV' });
+        }
+
+        // Compress image using sharp
+        let compressedBase64;
+        let finalMimeType = 'image/jpeg';
+        try {
+            const inputBuffer = Buffer.from(imageBase64, 'base64');
+            const compressed = await sharp(inputBuffer)
+                .resize(1280, 1280, { fit: 'inside', withoutEnlargement: true })
+                .jpeg({ quality: 80 })
+                .toBuffer();
+            compressedBase64 = compressed.toString('base64');
+            console.log(`[AI] recognize-product: image compressed to ${Math.round(compressed.length / 1024)}KB`);
+        } catch (imgErr) {
+            console.warn('[AI] Image compression failed, using original:', imgErr.message);
+            compressedBase64 = imageBase64;
+            finalMimeType = mimeType;
+        }
+
+        // Call Gemini 2.0 Flash
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+        const result = await model.generateContent([
+            RECOGNIZE_PROMPT,
+            { inlineData: { mimeType: finalMimeType, data: compressedBase64 } },
+            '請辨識這張截圖中的商品規格。請確保嚴格逐字照抄，不可有任何自行猜測修改的字眼。',
+        ]);
+
+        const content = result.response.text();
+        console.log('[AI] Gemini output:', content?.slice(0, 300));
+
+        if (!content) {
+            return fail(res, 'No content from Gemini', { errorCode: 'EMPTY_RESPONSE' });
+        }
+
+        // Extract JSON
         let jsonStr = content.trim();
         const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
         if (codeBlockMatch) jsonStr = codeBlockMatch[1];
@@ -965,6 +963,7 @@ app.post('/api/ai/recognize-product', express.json({ limit: '10mb' }), async (re
         });
     }
 });
+
 
 // --- Existing Template Routes (LowDB) ---
 app.get('/api/templates', (req, res) => {
