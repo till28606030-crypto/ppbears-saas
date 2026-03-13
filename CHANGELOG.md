@@ -4,6 +4,20 @@
 
 ---
 
+## v6.1 — 2026-03-13（AI 功能提醒視窗統一化）
+
+### 修改內容
+- **統一三個 AI 功能的點數提醒**：
+  - 卡通化 / 去背（`AiActionConfirmModal`）：加入重置時間倒計時（「重置於 Xh XXm XXs」）
+  - AI 創意（`DesignCollageModal`）：加入「本次 AI 創意生成消耗 3 點」提示文字
+  - 全部皆同時顯示：消耗點數 + 重置時間
+
+### 影響檔案
+- `src/components/AiActionConfirmModal.tsx` — 新增倒計時 useEffect、 `RefreshCw` 圖示、重置時間顯示
+- `src/components/DesignCollageModal.tsx` — AiUsageBadge 下方新增消耗點數提示
+
+---
+
 ## v6.0 — 2026-03-13（AI 點數差異化定價系統）
 
 ### 修改內容

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Wand2, Scissors, X, Sparkles, ShieldAlert } from 'lucide-react';
+import { Wand2, Scissors, X, Sparkles, ShieldAlert, RefreshCw } from 'lucide-react';
 
 interface AiActionConfirmModalProps {
   action: 'toon_ink' | 'remove_bg' | null;
@@ -35,6 +35,7 @@ const ACTION_CONFIG = {
 export default function AiActionConfirmModal({ action, onConfirm, onCancel }: AiActionConfirmModalProps) {
   const [usageCount, setUsageCount] = useState(0);
   const [animated, setAnimated] = useState(false);
+  const [countdown, setCountdown] = useState('');
   const LIMIT = 20; // v6.0: raised from 10 to 20
   const COST = action === 'toon_ink' ? 5 : 1; // 卡通化=5點，去背=1點
 
@@ -47,6 +48,24 @@ export default function AiActionConfirmModal({ action, onConfirm, onCancel }: Ai
     const t = setTimeout(() => setAnimated(true), 80);
     return () => clearTimeout(t);
   }, [action]);
+
+  // Countdown to midnight Taiwan (UTC+8)
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      const reset = new Date();
+      reset.setUTCHours(16, 0, 0, 0); // UTC 16:00 = Taiwan 00:00
+      if (reset <= now) reset.setUTCDate(reset.getUTCDate() + 1);
+      const diff = reset.getTime() - now.getTime();
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setCountdown(`${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`);
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   if (!action) return null;
 
@@ -101,8 +120,11 @@ export default function AiActionConfirmModal({ action, onConfirm, onCancel }: Ai
                 style={{ width: animated ? `${pct}%` : '0%' }}
               />
             </div>
-            <p className="text-[10px] text-gray-500 mt-1">
-              {!canUse ? `今日點數不足（需 ${COST} 點，剩餘 ${remaining} 點）` : `執行後將消耗 ${COST} 點，剩餘 ${remaining - COST} 點`}
+            <p className="text-[10px] text-gray-500 mt-1 flex items-center justify-between">
+              <span>{!canUse ? `今日點數不足（需 ${COST} 點，剩餘 ${remaining} 點）` : `執行後將消耗 ${COST} 點，剩餘 ${remaining - COST} 點`}</span>
+              <span className="flex items-center gap-1 text-gray-400">
+                <RefreshCw size={9} /> 重置於 {countdown}
+              </span>
             </p>
           </div>
 

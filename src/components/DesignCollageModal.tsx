@@ -242,8 +242,11 @@ export default function DesignCollageModal({
           </button>
         </div>
 
-        {/* AI 點數徽章 */}
-        <AiUsageBadge productId={productId} refreshTrigger={usageRefreshTrigger} />
+        {/* AI 點數徽章 + 消耗提示 */}
+        <div>
+          <AiUsageBadge productId={productId} refreshTrigger={usageRefreshTrigger} />
+          <p className="text-[10px] text-gray-500 px-3 pb-2 -mt-1">✨ 本次 AI 創意生成消耗 <strong>3 點</strong></p>
+        </div>
 
         {/* Body - scrollable */}
         <div className="p-6 space-y-5 overflow-y-auto flex-1">
