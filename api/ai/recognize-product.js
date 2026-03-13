@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 import sharp from 'sharp';
 import { setCors } from '../_cors.js';
 
@@ -10,7 +10,58 @@ export const config = {
   },
 };
 
-const PROMPT_TEXT = `你是手機殼商品規格辨識專家，專門處理 Devilcase 官網截圖。
+export default async function handler(req, res) {
+  // 1. Always set CORS first
+  setCors(req, res);
+
+  // 2. Handle OPTIONS preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
+  // 3. Require POST
+  if (req.method !== 'POST') {
+    return res.status(405).json({ success: false, message: 'Only POST method is allowed' });
+  }
+
+  // 4. Auth check (X-AI-Token)
+  const expectedToken = process.env.AI_ENDPOINT_SECRET;
+  const receivedToken = req.headers['x-ai-token'];
+  if (expectedToken && receivedToken !== expectedToken) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    // 5. Check env
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ success: false, message: 'Server configuration error (Missing OpenAI API Key)', errorCode: 'MISSING_ENV' });
+    }
+
+    // 6. Parse body
+    const { imageBase64, mimeType = 'image/jpeg' } = req.body || {};
+    if (!imageBase64) {
+      return res.status(400).json({ success: false, message: '缺少 imageBase64 參數', errorCode: 'MISSING_PARAM' });
+    }
+
+    // 7. Compress image using sharp
+    let imageDataUri;
+    try {
+      const inputBuffer = Buffer.from(imageBase64, 'base64');
+      const compressed = await sharp(inputBuffer)
+        .resize(1280, 1280, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 80 })
+        .toBuffer();
+      imageDataUri = `data:image/jpeg;base64,${compressed.toString('base64')}`;
+      console.log(`[AI] recognize-product: image compressed to ${Math.round(compressed.length / 1024)}KB`);
+    } catch (imgErr) {
+      console.warn('[AI] Image compression failed, using original:', imgErr.message);
+      imageDataUri = `data:${mimeType};base64,${imageBase64}`;
+    }
+
+    // 8. Call OpenAI GPT-4o Vision
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const promptText = `你是手機殼商品規格辨識專家，專門處理 Devilcase 官網截圖。
 請從截圖中提取：
 1. 手機型號（如 Apple - iPhone 17 Pro Max）
 2. 殼種款式名稱（如 惡魔防摔殼 PRO 3 磁吸版、惡魔防摔殼 標準版 等）
@@ -32,76 +83,25 @@ const PROMPT_TEXT = `你是手機殼商品規格辨識專家，專門處理 Devi
 - 動作按鍵和相機按鍵是不同的欄位，請分開辨識
 - 若截圖中看不到某欄位，就不要包含在 specs 裡`;
 
-export default async function handler(req, res) {
-  // 1. CORS
-  setCors(req, res);
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: promptText },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: '請辨識這張截圖中的商品規格。請確保嚴格逐字照抄，不可有任何自行猜測修改的字眼。' },
+            { type: 'image_url', image_url: { url: imageDataUri } }
+          ]
+        }
+      ],
+      max_tokens: 800,
+      temperature: 0.1
+    });
 
-  // 2. OPTIONS preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(204).end();
-  }
-
-  // 3. POST only
-  if (req.method !== 'POST') {
-    return res.status(405).json({ success: false, message: 'Only POST method is allowed' });
-  }
-
-  // 4. Auth check (X-AI-Token)
-  const expectedToken = process.env.AI_ENDPOINT_SECRET;
-  const receivedToken = req.headers['x-ai-token'];
-  if (expectedToken && receivedToken !== expectedToken) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
-  }
-
-  try {
-    // 5. Check env
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ success: false, message: 'Server configuration error (Missing GEMINI_API_KEY)', errorCode: 'MISSING_ENV' });
-    }
-
-    // 6. Parse body
-    const { imageBase64, mimeType = 'image/jpeg' } = req.body || {};
-    if (!imageBase64) {
-      return res.status(400).json({ success: false, message: '缺少 imageBase64 參數', errorCode: 'MISSING_PARAM' });
-    }
-
-    // 7. Compress image using sharp
-    let compressedBase64;
-    let finalMimeType = 'image/jpeg';
-    try {
-      const inputBuffer = Buffer.from(imageBase64, 'base64');
-      const compressed = await sharp(inputBuffer)
-        .resize(1280, 1280, { fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 80 })
-        .toBuffer();
-      compressedBase64 = compressed.toString('base64');
-      console.log(`[AI] recognize-product: compressed to ${Math.round(compressed.length / 1024)}KB`);
-    } catch (imgErr) {
-      console.warn('[AI] Compression failed, using original:', imgErr.message);
-      compressedBase64 = imageBase64;
-      finalMimeType = mimeType;
-    }
-
-    // 8. Call Gemini 2.0 Flash
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
-    const result = await model.generateContent([
-      PROMPT_TEXT,
-      {
-        inlineData: {
-          mimeType: finalMimeType,
-          data: compressedBase64,
-        },
-      },
-      '請辨識這張截圖中的商品規格。請確保嚴格逐字照抄，不可有任何自行猜測修改的字眼。',
-    ]);
-
-    const content = result.response.text();
-    console.log('[AI] Gemini output:', content?.slice(0, 300));
-
+    const content = response.choices?.[0]?.message?.content;
     if (!content) {
-      return res.status(502).json({ success: false, message: 'No content from Gemini', errorCode: 'EMPTY_RESPONSE' });
+      return res.status(502).json({ success: false, message: 'No content from OpenAI', errorCode: 'EMPTY_RESPONSE' });
     }
 
     // 9. Extract JSON from response
@@ -113,7 +113,7 @@ export default async function handler(req, res) {
     try {
       productInfo = JSON.parse(jsonStr);
     } catch (parseErr) {
-      console.error('[AI] JSON parse error:', parseErr.message, 'Raw:', content.slice(0, 200));
+      console.error('[AI] recognize-product JSON parse error:', parseErr.message, 'Raw:', content.slice(0, 200));
       return res.status(502).json({ success: false, message: 'AI 辨識結果格式錯誤，請重試', errorCode: 'PARSE_ERROR' });
     }
 

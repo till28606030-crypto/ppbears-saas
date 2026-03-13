@@ -4,12 +4,6 @@
 
 ---
 
-## [7.0] - 2026-03-13
-### Changed
-- AI 商品規格辨識模型從 GPT-4o 切換至 Gemini 2.0 Flash（節省約 96% 費用）
-- 新增 `@google/generative-ai` SDK 至根目錄及伺服器端依賴
-
----
 
 ## [6.9] - 2026-03-13
 ### Fixed
