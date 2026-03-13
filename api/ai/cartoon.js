@@ -5,7 +5,7 @@ import { setCors } from '../_cors.js';
 export const config = {
   api: {
     bodyParser: {
-        sizeLimit: '4mb', // JSON body limit
+        sizeLimit: '20mb', // JSON body limit (前端已壓縮至 2000px，此保險上限)
     },
   },
 };

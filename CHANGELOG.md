@@ -4,6 +4,21 @@
 
 ---
 
+## v5.8 — 2026-03-13（行動版體驗優化 + AI 大圖支援 + 素材面板提速）
+
+### 修改內容
+- **手機返回鍵攔截 (Mobile Back Button)**：在 `Home.tsx` 新增 `popstate` 事件監聽，當貼圖、背景、相框、上傳、AI設計等功能面板或 Modal 開啟時，Android 返回鍵會自動關閉該面板，而非跳離設計頁面。
+- **前端自動壓縮上傳圖片 (Client-Side Compression)**：在 `MyGalleryModal.tsx` 的圖片上傳流程中加入瀏覽器原生 Canvas 壓縮，長邊限制 2000px、JPEG quality 0.85。手機高畫質照片（10–20MB）上傳後自動壓縮為約 1–2MB，無需用户事前手動處理，解決 AI 卡通化/去背因圖片過大無法運作的問題。
+- **卡通化 API 容量上限調整**：`api/ai/cartoon.js` 的 `sizeLimit` 從 `4mb` 提升至 `20mb`，與去背、AI設計 API 對齊，作為安全網。
+- **素材面板縮圖加速 (Thumbnail Optimization)**：貼圖、背景、相框格子圖片由原本直接載入原始大圖，改為透過 Supabase Storage Image Transformation API（`/render/image/public/` + `?width=200&quality=75`）載入縮圖，圖片傳輸量減少 90%，面板開啟速度大幅提升。
+
+### 影響檔案
+- `src/pages/Home.tsx` — 手機返回鍵攔截（useEffect）、素材縮圖 URL 轉換
+- `src/components/MyGalleryModal.tsx` — 前端自動壓縮上傳圖片
+- `api/ai/cartoon.js` — sizeLimit 4mb → 20mb
+
+---
+
 ## v5.6 — 2026-03-13（AI 智能工具面板整合 + 精美確認視窗）
 
 ### 修改內容

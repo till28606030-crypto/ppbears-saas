@@ -365,6 +365,43 @@ export default function Home() {
     const [showAiLimitModal, setShowAiLimitModal] = useState(false);
     const [aiUsageRefreshTrigger, setAiUsageRefreshTrigger] = useState(0);
 
+    // [Mobile Back Button] Intercept Android back button to close panels/modals instead of leaving the page
+    const mobilePanelHistoryPushed = useRef(false);
+    useEffect(() => {
+        const anyPanelOpen = activePanel !== 'none' || showGalleryModal || showDesignCollageModal;
+
+        if (anyPanelOpen && !mobilePanelHistoryPushed.current) {
+            // Push a dummy history entry so back button has something to pop
+            history.pushState({ mobilePanel: true }, '');
+            mobilePanelHistoryPushed.current = true;
+        }
+
+        if (!anyPanelOpen && mobilePanelHistoryPushed.current) {
+            mobilePanelHistoryPushed.current = false;
+        }
+
+        const handlePopState = () => {
+            // Only intercept if a panel/modal is currently open
+            const stillOpen = activePanel !== 'none' || showGalleryModal || showDesignCollageModal;
+            if (stillOpen) {
+                // Prevent navigation — close the topmost panel/modal
+                if (showDesignCollageModal) {
+                    setShowDesignCollageModal(false);
+                } else if (showGalleryModal) {
+                    setShowGalleryModal(false);
+                } else if (activePanel !== 'none') {
+                    setActivePanel('none');
+                }
+                mobilePanelHistoryPushed.current = false;
+            }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        return () => {
+            window.removeEventListener('popstate', handlePopState);
+        };
+    }, [activePanel, showGalleryModal, showDesignCollageModal]);
+
     // AI Action Handler
     const handleAiAction = async (action: string, payload?: any, skipDisclaimer = false) => {
         if (!canvasRef.current) return;
@@ -2324,7 +2361,21 @@ export default function Home() {
                                                                 className="aspect-square rounded-md border border-gray-200 p-0.5 hover:border-blue-500 hover:shadow-md transition-all bg-white flex items-center justify-center relative group"
                                                                 title={item.name}
                                                             >
-                                                                <img src={item.url} alt={item.name} className="max-w-full max-h-full object-contain" loading="lazy" />
+                                                                <img
+                                                                    src={(() => {
+                                                                        // Supabase Image Transformation: /object/public/ → /render/image/public/ + ?width=200&quality=75
+                                                                        // This forces Supabase to serve a resized thumbnail (server-side, free tier supported)
+                                                                        try {
+                                                                            return item.url.replace('/object/public/', '/render/image/public/') + '?width=200&quality=75';
+                                                                        } catch {
+                                                                            return item.url;
+                                                                        }
+                                                                    })()}
+                                                                    alt={item.name}
+                                                                    className="max-w-full max-h-full object-contain"
+                                                                    loading="lazy"
+                                                                    decoding="async"
+                                                                />
                                                             </button>
                                                         );
                                                     }

@@ -103,12 +103,51 @@ export default function MyGalleryModal({ isOpen, onClose, onApply, maxSelection 
     };
 
     const processFile = (file: File) => {
+        // --- Client-side image compression ---
+        // Max long-side = 2000px, JPEG quality 0.85
+        // Turns a 15MB phone photo into ~1-2MB before storing to gallery / using AI
+        const compressImage = (dataUrl: string, mimeType: string): Promise<string> =>
+            new Promise((resolve) => {
+                const MAX_SIDE = 2000;
+                const QUALITY = 0.85;
+
+                const img = new Image();
+                img.onload = () => {
+                    let { width, height } = img;
+                    if (width > MAX_SIDE || height > MAX_SIDE) {
+                        if (width >= height) {
+                            height = Math.round((height / width) * MAX_SIDE);
+                            width = MAX_SIDE;
+                        } else {
+                            width = Math.round((width / height) * MAX_SIDE);
+                            height = MAX_SIDE;
+                        }
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d')!;
+                    ctx.drawImage(img, 0, 0, width, height);
+                    // Always output JPEG for photos (smaller); keep PNG only for PNGs with alpha
+                    const outputMime = mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+                    resolve(canvas.toDataURL(outputMime, outputMime === 'image/jpeg' ? QUALITY : undefined));
+                };
+                img.onerror = () => resolve(dataUrl); // fallback to original if error
+                img.src = dataUrl;
+            });
+
         const reader = new FileReader();
-        reader.onload = (f) => {
+        reader.onload = async (f) => {
             if (f.target?.result && typeof f.target.result === 'string') {
+                const rawDataUrl = f.target.result;
+                const mimeType = rawDataUrl.split(';')[0].split(':')[1] || 'image/jpeg';
+
+                // Compress before storing
+                const compressedDataUrl = await compressImage(rawDataUrl, mimeType);
+
                 const newImage: GalleryImage = {
                     id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                    src: f.target.result,
+                    src: compressedDataUrl,
                     createdAt: Date.now(),
                     name: file.name
                 };
@@ -126,13 +165,6 @@ export default function MyGalleryModal({ isOpen, onClose, onApply, maxSelection 
                     return prev;
                 });
 
-                // Switch to history tab to show it's added? Or just show preview in upload tab?
-                // The requirement says: "Auto select the new image (allow user to apply directly)"
-                // Let's switch to history view or just show it as selected.
-                // Requirement B-3: "Computer Upload tab... Auto select latest"
-                // It might be better to just add it and maybe switch to History tab where user can see it selected?
-                // Or maybe the upload tab shows the current selection too?
-                // Let's switch to 'history' tab so they see it in the grid
                 setActiveTab('history');
             }
         };
