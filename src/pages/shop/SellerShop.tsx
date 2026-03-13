@@ -61,6 +61,7 @@ const SellerShop: React.FC = () => {
     const [categories, setCategories] = useState<Category[]>([]);
     const [categoryMap, setCategoryMap] = useState<Map<string, Category>>(new Map());
     const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(new Set());
+    const [hasAckedSelection, setHasAckedSelection] = useState(false);
     const navigate = useNavigate();
     const location = useLocation();
     const { isAuthenticated } = useAuth();
@@ -301,11 +302,37 @@ const SellerShop: React.FC = () => {
             </header>
 
             {(templateId || bgId) && (
-                <div className="bg-blue-600 text-white text-center py-3 px-4 shadow-sm relative text-sm font-medium flex justify-center items-center">
-                    {bgId
-                        ? '請先選擇上方商品分類及型號，選擇後將自動套用您所點擊的背景素材'
-                        : '請先選擇上方商品分類及型號，選擇後將自動套用您所點擊的設計模板'}
-                </div>
+                <>
+                    {/* 一次性精美彈出視窗 */}
+                    {!hasAckedSelection && (
+                        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center">
+                                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-6">
+                                    <Smartphone className="w-8 h-8 text-blue-600" />
+                                </div>
+                                <h3 className="text-2xl font-bold text-gray-900 mb-3 text-center">請先選擇商品型號</h3>
+                                <p className="text-gray-500 text-center mb-8 leading-relaxed">
+                                    {bgId
+                                        ? '選擇完成後將自動套用您所選的背景素材！'
+                                        : '選擇完成後將自動套用您所選的設計模板！'}
+                                </p>
+                                <button
+                                    onClick={() => setHasAckedSelection(true)}
+                                    className="w-full py-3.5 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-colors shadow-lg active:scale-[0.98]"
+                                >
+                                    我知道了，開始選擇
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 頂部持續提醒橫幅 */}
+                    <div className="bg-blue-600 text-white text-center py-3 px-4 shadow-sm relative text-sm font-medium flex justify-center items-center">
+                        {bgId
+                            ? '請先選擇下方商品分類及型號，選擇後將自動套用您所點擊的背景素材'
+                            : '請先選擇下方商品分類及型號，選擇後將自動套用您所點擊的設計模板'}
+                    </div>
+                </>
             )}
 
             <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 flex gap-8">
