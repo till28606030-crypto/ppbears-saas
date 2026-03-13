@@ -7310,6 +7310,32 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 </div>
 
 
+
+                                {/* 5. AI 工具按鈕 — 卡通化 / 去背（移除標題與點數徽章，只保留功能按鈕） */}
+                                {selectedObject.type === 'image' && !(selectedObject as any).isStickerLayer && !(selectedObject as any).isBarcodeLayer && (p.aiCartoon || p.aiRemoveBg) && (
+                                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100 mt-2">
+                                        {p.aiCartoon && (
+                                            <button
+                                                onClick={() => { setAiConfirmAction('toon_ink'); setActiveAdjust(null); }}
+                                                className="flex flex-col items-center justify-center p-3 rounded-xl border border-purple-100 bg-purple-50 text-purple-600 hover:bg-purple-100 transition-all group shadow-sm active:scale-95"
+                                                title="卡通化"
+                                            >
+                                                <Wand2 className="w-6 h-6 mb-1.5 text-purple-500 group-hover:scale-110 transition-transform" />
+                                                <span className="text-[10px] font-bold text-purple-700">卡通化</span>
+                                            </button>
+                                        )}
+                                        {p.aiRemoveBg && (
+                                            <button
+                                                onClick={() => { setAiConfirmAction('remove_bg'); setActiveAdjust(null); }}
+                                                className="flex flex-col items-center justify-center p-3 rounded-xl border border-red-100 bg-red-50 text-red-600 hover:bg-red-100 transition-all group shadow-sm active:scale-95"
+                                                title="去背"
+                                            >
+                                                <Scissors className="w-6 h-6 mb-1.5 text-red-500 group-hover:scale-110 transition-transform" />
+                                                <span className="text-[10px] font-bold text-red-700">去背</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ) : (
