@@ -1,7 +1,7 @@
 {
   "name": "ppbears-saas",
   "private": true,
-  "version": "6.3",
+  "version": "6.4",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"vite\" \"cd server && npm run dev\"",
@@ -60,5 +60,6 @@
     "vite-tsconfig-paths": "^5.1.4"
   }
 }
+
 
 

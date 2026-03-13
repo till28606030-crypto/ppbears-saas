@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase'; // still needed for DB queries (styles)
 import { X, Sparkles, Loader2, Trash2, ImagePlus } from 'lucide-react';
 import MyGalleryModal from './MyGalleryModal';
 import AiUsageBadge from './AiUsageBadge';
@@ -134,6 +134,29 @@ export default function DesignCollageModal({
     setPreviews(prev => prev.filter((_, i) => i !== index));
   };
 
+  // Helper: compress File to base64 string via Canvas (no Supabase needed)
+  const compressFileToBase64 = (file: File, maxDim = 1200, quality = 0.85): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) { height = Math.round(height * maxDim / width); width = maxDim; }
+          else { width = Math.round(width * maxDim / height); height = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('圖片讀取失敗')); };
+      img.src = url;
+    });
+  };
+
   const handleGenerate = async () => {
     if (files.length === 0 || !selectedStyle) return;
 
@@ -147,28 +170,17 @@ export default function DesignCollageModal({
     setIsGenerating(true);
     setError(null);
 
-    // Track uploaded temp paths for cleanup
-    const uploadedPaths: string[] = [];
-
     try {
       const apiOrigin = import.meta.env.VITE_API_ORIGIN || '';
 
-      // --- Step 1: Upload images to Supabase Storage to get public URLs ---
-      const uploadedUrls: string[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const ext = file.type === 'image/png' ? 'png' : 'jpg';
-        const path = `ai-temp/${Date.now()}_${i}.${ext}`;
-        uploadedPaths.push(path); // track for cleanup
-        const { error: uploadErr } = await supabase.storage
-          .from('design-assets')
-          .upload(path, file, { contentType: file.type, upsert: true });
-        if (uploadErr) throw new Error(`圖片上傳失敗: ${uploadErr.message}`);
-        const { data: urlData } = supabase.storage.from('design-assets').getPublicUrl(path);
-        uploadedUrls.push(urlData.publicUrl);
+      // --- Step 1: Compress images client-side → base64 (no Supabase, no RLS issues) ---
+      const base64Images: string[] = [];
+      for (const file of files) {
+        const b64 = await compressFileToBase64(file);
+        base64Images.push(b64);
       }
 
-      // --- Step 2: Generate background ---
+      // --- Step 2: Generate background (parallel) ---
       const bgPayload = {
         mode: 'background',
         stylePrompt: selectedStyle.prompt,
@@ -183,8 +195,7 @@ export default function DesignCollageModal({
         body: JSON.stringify(bgPayload),
       }).then(async r => {
         if (!r.ok) {
-          let errData;
-          try { errData = await r.json(); } catch { errData = {}; }
+          let errData; try { errData = await r.json(); } catch { errData = {}; }
           throw new Error(errData.message || '背景生成失敗');
         }
         const data = await r.json();
@@ -192,19 +203,18 @@ export default function DesignCollageModal({
         return data.url;
       });
 
-      // --- Step 3: Remove backgrounds using public URLs ---
+      // --- Step 3: Remove backgrounds using base64 ---
       const cutoutUrls: string[] = [];
       const bgUrl = await bgPromise;
 
-      for (const imgUrl of uploadedUrls) {
+      for (const b64 of base64Images) {
         const r = await fetch(`${apiOrigin}/api/ai/remove-bg`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageUrl: imgUrl })
+          body: JSON.stringify({ imageUrl: b64 })
         });
         if (!r.ok) {
-          let errData;
-          try { errData = await r.json(); } catch { errData = {}; }
+          let errData; try { errData = await r.json(); } catch { errData = {}; }
           throw new Error(errData.message || '去背處理失敗');
         }
         const data = await r.json();
@@ -219,10 +229,6 @@ export default function DesignCollageModal({
       setError(err.message || 'AI 生成失敗，請稍後再試');
     } finally {
       setIsGenerating(false);
-      // Auto-cleanup: delete temp files from Supabase Storage (fire and forget)
-      if (uploadedPaths.length > 0) {
-        supabase.storage.from('design-assets').remove(uploadedPaths).catch(() => {});
-      }
     }
   };
 
@@ -341,14 +347,14 @@ export default function DesignCollageModal({
           <button
             onClick={onClose}
             disabled={isGenerating}
-            className="px-4 py-2.5 text-gray-600 hover:bg-gray-100 rounded-lg font-medium disabled:opacity-50"
+            className="px-4 py-2.5 text-gray-600 hover:bg-gray-100 rounded-lg font-medium disabled:opacity-50 outline-none focus:outline-none"
           >
             取消
           </button>
           <button
             onClick={handleGenerate}
             disabled={isGenerating || files.length === 0 || !selectedStyle}
-            className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-bold hover:from-purple-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+            className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-bold hover:from-purple-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm outline-none focus:outline-none"
           >
             {isGenerating ? (
               <>
