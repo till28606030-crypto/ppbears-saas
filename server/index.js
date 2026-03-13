@@ -867,8 +867,6 @@ app.post('/api/ai/auto-tag', express.json({ limit: '1mb' }), async (req, res) =>
 });
 
 // 4. Recognize Product Specs from Screenshot (Gemini 2.0 Flash Vision)
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-
 const RECOGNIZE_PROMPT = `你是手機殼商品規格辨識專家，專門處理 Devilcase 官網截圖。
 請從截圖中提取：
 1. 手機型號（如 Apple - iPhone 17 Pro Max）
@@ -921,7 +919,8 @@ app.post('/api/ai/recognize-product', express.json({ limit: '10mb' }), async (re
             finalMimeType = mimeType;
         }
 
-        // Call Gemini 2.0 Flash
+        // Use dynamic import() to load ESM-only @google/generative-ai in CommonJS server
+        const { GoogleGenerativeAI } = await import('@google/generative-ai');
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
@@ -963,6 +962,7 @@ app.post('/api/ai/recognize-product', express.json({ limit: '10mb' }), async (re
         });
     }
 });
+
 
 
 // --- Existing Template Routes (LowDB) ---
