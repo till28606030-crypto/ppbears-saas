@@ -146,16 +146,19 @@ export default function DesignCollageModal({
     setIsGenerating(true);
     setError(null);
 
+    // Track uploaded temp paths for cleanup
+    const uploadedPaths: string[] = [];
+
     try {
       const apiOrigin = import.meta.env.VITE_API_ORIGIN || '';
 
       // --- Step 1: Upload images to Supabase Storage to get public URLs ---
-      // This avoids sending large base64 payloads over mobile networks (timeout fix)
       const uploadedUrls: string[] = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const ext = file.type === 'image/png' ? 'png' : 'jpg';
         const path = `ai-temp/${Date.now()}_${i}.${ext}`;
+        uploadedPaths.push(path); // track for cleanup
         const { error: uploadErr } = await supabase.storage
           .from('design-assets')
           .upload(path, file, { contentType: file.type, upsert: true });
@@ -164,7 +167,7 @@ export default function DesignCollageModal({
         uploadedUrls.push(urlData.publicUrl);
       }
 
-      // --- Step 2: Generate background (no image needed) ---
+      // --- Step 2: Generate background ---
       const bgPayload = {
         mode: 'background',
         stylePrompt: selectedStyle.prompt,
@@ -188,8 +191,7 @@ export default function DesignCollageModal({
         return data.url;
       });
 
-      // --- Step 3: Remove backgrounds using public URLs (not base64) ---
-      // Sequential to avoid overwhelming Vercel concurrent function limits on mobile
+      // --- Step 3: Remove backgrounds using public URLs ---
       const cutoutUrls: string[] = [];
       const bgUrl = await bgPromise;
 
@@ -216,6 +218,10 @@ export default function DesignCollageModal({
       setError(err.message || 'AI 生成失敗，請稍後再試');
     } finally {
       setIsGenerating(false);
+      // Auto-cleanup: delete temp files from Supabase Storage (fire and forget)
+      if (uploadedPaths.length > 0) {
+        supabase.storage.from('design-assets').remove(uploadedPaths).catch(() => {});
+      }
     }
   };
 
