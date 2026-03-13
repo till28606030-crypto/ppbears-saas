@@ -3,9 +3,9 @@ import { supabase } from '../../lib/supabase';
 import { listAssets } from '../../lib/assets';
 import { listFrames, Frame } from '../../lib/frameService';
 import CanvasEditor, { CanvasEditorRef } from '../../components/CanvasEditor';
-import { AssetItem, Category } from '@/types';
-import { Palette, X, Layers, Image as ImageIcon, Sparkles, Loader2, Save } from 'lucide-react';
-import { update } from 'idb-keyval';
+import FontPicker from '../../components/FontPicker';
+import { AssetItem } from '@/types';
+import { Palette, X, Layers, Image as ImageIcon, Sparkles, Loader2, Save, Type, Plus } from 'lucide-react';
 
 interface AdminDesignBuilderProps {
     onClose: () => void;
@@ -14,10 +14,23 @@ interface AdminDesignBuilderProps {
     canvasHeightMM: number;
 }
 
+const FONT_OPTIONS = [
+    { family: 'Arial', label: 'Arial' },
+    { family: 'Georgia', label: 'Georgia' },
+    { family: 'Verdana', label: 'Verdana' },
+    { family: 'Noto Sans TC', label: '思源黑體' },
+    { family: 'Noto Serif TC', label: '思源明體' },
+    { family: 'LXGW WenKai TC', label: '霞鶩文楷' },
+    { family: 'Dela Gothic One', label: 'Dela Gothic' },
+    { family: 'Pacifico', label: 'Pacifico' },
+    { family: 'Dancing Script', label: 'Dancing Script' },
+    { family: 'Lobster', label: 'Lobster' },
+];
+
 export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, canvasHeightMM }: AdminDesignBuilderProps) {
     const canvasRef = useRef<CanvasEditorRef>(null);
 
-    const [productConfig, setProductConfig] = useState({
+    const [productConfig] = useState({
         width: Math.round(canvasWidthMM * 300 / 25.4),
         height: Math.round(canvasHeightMM * 300 / 25.4),
         borderRadius: 0,
@@ -26,33 +39,29 @@ export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, can
         offset: { x: 0, y: 0 }
     });
 
-    const currentProductProp = useMemo(() => {
-        // We MUST provide a base_image to force CanvasEditor to initialize a workspace.
-        // If we want a transparent BG, we can provide a 1x1 transparent PNG or rely on CanvasEditor
-        // handling an empty string. But CanvasEditor requires product.base_image to load image dimensions.
-        // Actually, if we pass custom width and height via productConfig, the editor might ignore base_image
-        // OR we can pass a dummy base_image, and it will draw it but it's empty.
-        // Let's ensure base_image is not totally breaking it.
-        return {
-            id: 'admin_design_builder',
-            base_image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', // 1x1 transparent png
-            mask_image: '',
-        }
-    }, []);
+    const currentProductProp = useMemo(() => ({
+        id: 'admin_design_builder',
+        base_image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+        mask_image: '',
+    }), []);
 
-    const [activePanel, setActivePanel] = useState<'stickers' | 'backgrounds' | 'frames' | 'layers'>('stickers');
+    const [activePanel, setActivePanel] = useState<'stickers' | 'backgrounds' | 'frames' | 'text'>('stickers');
 
     const [stickers, setStickers] = useState<AssetItem[]>([]);
     const [backgrounds, setBackgrounds] = useState<AssetItem[]>([]);
     const [frames, setFrames] = useState<Frame[]>([]);
     const [loadingAssets, setLoadingAssets] = useState(false);
-
     const [isSaving, setIsSaving] = useState(false);
 
-
+    // Text tool state
+    const [textInput, setTextInput] = useState('您的文字');
+    const [textFont, setTextFont] = useState('Noto Sans TC');
+    const [textColor, setTextColor] = useState('#000000');
+    const [textSize, setTextSize] = useState(48);
 
     useEffect(() => {
         const loadAssets = async () => {
+            if (activePanel === 'text') return;
             setLoadingAssets(true);
             try {
                 if (activePanel === 'stickers' || activePanel === 'backgrounds') {
@@ -70,20 +79,25 @@ export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, can
                 setLoadingAssets(false);
             }
         };
-
         loadAssets();
     }, [activePanel]);
 
+    const handleAddText = () => {
+        if (!textInput.trim()) return;
+        canvasRef.current?.addTextLayer({
+            text: textInput,
+            fontFamily: textFont,
+            fill: textColor,
+            fontSize: textSize,
+        });
+    };
 
     const handleSave = async () => {
         if (!canvasRef.current) return;
         setIsSaving(true);
         try {
-            // Get JSON
             const canvasData = await canvasRef.current.exportAsJSON();
-            // Get Preview
             const previewDataUrl = await canvasRef.current.exportAsDataURL({ withMask: true });
-
             await onSave(canvasData, previewDataUrl);
             onClose();
         } catch (error) {
@@ -93,6 +107,9 @@ export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, can
             setIsSaving(false);
         }
     };
+
+    const tabClass = (panel: string) =>
+        `flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex flex-col items-center gap-1 ${activePanel === panel ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`;
 
     return (
         <div className="flex flex-col h-full bg-gray-50">
@@ -104,18 +121,10 @@ export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, can
                     <span className="text-xs text-gray-500 ml-2 bg-gray-100 px-2 py-1 rounded">在此排版好的圖樣，客戶可直接套用到不同型號的手機殼</span>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium transition-colors"
-                        disabled={isSaving}
-                    >
+                    <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium transition-colors" disabled={isSaving}>
                         取消
                     </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
-                    >
+                    <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2">
                         {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                         儲存並產生連結
                     </button>
@@ -125,42 +134,100 @@ export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, can
             {/* Main Workspace */}
             <div className="flex flex-1 overflow-hidden relative">
 
-                {/* Left Sidebar - Asset Tools */}
+                {/* Left Sidebar */}
                 <div className="w-80 bg-white border-r border-gray-200 flex flex-col shrink-0 z-10">
+                    {/* Tabs */}
                     <div className="flex border-b border-gray-100">
-                        <button
-                            onClick={() => setActivePanel('stickers')}
-                            className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex flex-col items-center gap-1 ${activePanel === 'stickers' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-                        >
+                        <button onClick={() => setActivePanel('stickers')} className={tabClass('stickers')}>
                             <Sparkles className="w-4 h-4" /> 貼紙
                         </button>
-                        <button
-                            onClick={() => setActivePanel('frames')}
-                            className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex flex-col items-center gap-1 ${activePanel === 'frames' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-                        >
+                        <button onClick={() => setActivePanel('frames')} className={tabClass('frames')}>
                             <ImageIcon className="w-4 h-4" /> 相框
                         </button>
-                        <button
-                            onClick={() => setActivePanel('backgrounds')}
-                            className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex flex-col items-center gap-1 ${activePanel === 'backgrounds' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
-                        >
+                        <button onClick={() => setActivePanel('backgrounds')} className={tabClass('backgrounds')}>
                             <Layers className="w-4 h-4" /> 背景
+                        </button>
+                        <button onClick={() => setActivePanel('text')} className={tabClass('text')}>
+                            <Type className="w-4 h-4" /> 字體
                         </button>
                     </div>
 
+                    {/* Panel Content */}
                     <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                        {loadingAssets ? (
+                        {activePanel === 'text' ? (
+                            /* ── 文字工具面板 ── */
+                            <div className="space-y-5">
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">文字內容</label>
+                                    <textarea
+                                        value={textInput}
+                                        onChange={e => setTextInput(e.target.value)}
+                                        rows={3}
+                                        placeholder="輸入文字..."
+                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+                                        style={{ fontFamily: textFont }}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">字型</label>
+                                    <FontPicker value={textFont} onChange={setTextFont} options={FONT_OPTIONS} />
+                                </div>
+
+                                <div className="flex gap-4">
+                                    <div className="flex-1">
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">顏色</label>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="color"
+                                                value={textColor}
+                                                onChange={e => setTextColor(e.target.value)}
+                                                className="w-9 h-9 rounded-lg border border-gray-200 cursor-pointer p-0.5"
+                                            />
+                                            <span className="text-xs text-gray-500 font-mono">{textColor}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex-1">
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1.5">大小 <span className="text-blue-600">{textSize}px</span></label>
+                                        <input
+                                            type="range"
+                                            min={12}
+                                            max={200}
+                                            value={textSize}
+                                            onChange={e => setTextSize(Number(e.target.value))}
+                                            className="w-full accent-blue-600"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Preview */}
+                                <div className="rounded-xl bg-gray-50 border border-gray-200 p-4 flex items-center justify-center min-h-[80px]">
+                                    <span style={{ fontFamily: textFont, color: textColor, fontSize: Math.min(textSize, 48) }} className="break-all text-center">
+                                        {textInput || '預覽文字'}
+                                    </span>
+                                </div>
+
+                                <button
+                                    onClick={handleAddText}
+                                    className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-sm active:scale-[0.98]"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                    加入畫布
+                                </button>
+
+                                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 leading-relaxed">
+                                    💡 <strong>提示：</strong>客戶套用此模板後，可<strong>雙擊文字</strong>直接編輯修改內容，非常方便！
+                                </p>
+                            </div>
+                        ) : loadingAssets ? (
                             <div className="flex items-center justify-center h-32">
                                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
                             </div>
                         ) : activePanel === 'stickers' ? (
                             <div className="grid grid-cols-3 gap-2">
                                 {stickers.map((s) => (
-                                    <button
-                                        key={s.id}
-                                        onClick={() => canvasRef.current?.addSticker(s.url)}
-                                        className="aspect-square bg-gray-50 rounded-lg p-2 border border-gray-100 hover:border-blue-400 hover:shadow-sm transition-all flex items-center justify-center group"
-                                    >
+                                    <button key={s.id} onClick={() => canvasRef.current?.addSticker(s.url)}
+                                        className="aspect-square bg-gray-50 rounded-lg p-2 border border-gray-100 hover:border-blue-400 hover:shadow-sm transition-all flex items-center justify-center group">
                                         <img src={s.url} alt={s.name} className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform" crossOrigin="anonymous" />
                                     </button>
                                 ))}
@@ -169,19 +236,11 @@ export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, can
                         ) : activePanel === 'frames' ? (
                             <div className="grid grid-cols-2 gap-3">
                                 {frames.map((f) => (
-                                    <button
-                                        key={f.id}
-                                        onClick={() => canvasRef.current?.addFrame({
-                                            id: f.id,
-                                            name: f.name,
-                                            imageUrl: f.url,
-                                            clipPathPoints: f.clipPathPoints,
-                                            width: f.width,
-                                            height: f.height,
-                                            category: f.category
-                                        })}
-                                        className="aspect-[3/4] bg-gray-50 rounded-lg p-2 border border-gray-100 hover:border-blue-400 hover:shadow-sm transition-all flex flex-col items-center justify-center group"
-                                    >
+                                    <button key={f.id} onClick={() => canvasRef.current?.addFrame({
+                                        id: f.id, name: f.name, imageUrl: f.url,
+                                        clipPathPoints: f.clipPathPoints, width: f.width, height: f.height, category: f.category
+                                    })}
+                                        className="aspect-[3/4] bg-gray-50 rounded-lg p-2 border border-gray-100 hover:border-blue-400 hover:shadow-sm transition-all flex flex-col items-center justify-center group">
                                         <div className="flex-1 w-full flex items-center justify-center mb-1">
                                             <img src={f.url} alt={f.name} className="max-w-full max-h-full object-contain drop-shadow-sm group-hover:scale-105 transition-transform" crossOrigin="anonymous" />
                                         </div>
@@ -192,39 +251,30 @@ export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, can
                             </div>
                         ) : activePanel === 'backgrounds' ? (
                             <div className="grid grid-cols-2 gap-3">
-                                <button
-                                    onClick={() => canvasRef.current?.setCanvasBgImage("")}
-                                    className="aspect-[9/16] bg-white rounded-lg border-2 border-dashed border-gray-300 hover:border-red-400 hover:text-red-500 text-gray-400 transition-all flex flex-col items-center justify-center"
-                                >
+                                <button onClick={() => canvasRef.current?.setCanvasBgImage("")}
+                                    className="aspect-[9/16] bg-white rounded-lg border-2 border-dashed border-gray-300 hover:border-red-400 hover:text-red-500 text-gray-400 transition-all flex flex-col items-center justify-center">
                                     <X className="w-6 h-6 mb-1" />
                                     <span className="text-xs font-medium">移除背景</span>
                                 </button>
                                 {backgrounds.map((bg) => (
-                                    <button
-                                        key={bg.id}
-                                        onClick={() => canvasRef.current?.setCanvasBgImage(bg.url)}
-                                        className="aspect-[9/16] rounded-lg border border-gray-200 hover:border-blue-500 hover:shadow-md transition-all overflow-hidden relative group"
-                                    >
+                                    <button key={bg.id} onClick={() => canvasRef.current?.setCanvasBgImage(bg.url)}
+                                        className="aspect-[9/16] rounded-lg border border-gray-200 hover:border-blue-500 hover:shadow-md transition-all overflow-hidden relative group">
                                         <img src={bg.url} alt={bg.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" crossOrigin="anonymous" />
                                     </button>
                                 ))}
                             </div>
                         ) : null}
                     </div>
-
-
                 </div>
 
                 {/* Canvas Area */}
                 <div className="flex-1 relative flex items-center justify-center bg-gray-100" style={{ backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
                     <div className="relative w-full h-full flex items-center justify-center p-8">
-                        {/* We use productConfig to force a specific aspect ratio or size in CanvasEditor */}
                         <CanvasEditor
                             ref={canvasRef}
                             currentProduct={currentProductProp}
                             previewConfig={{
                                 ...productConfig,
-                                // Enforce the user-specified dimensions
                                 width: Math.round(canvasWidthMM * 300 / 25.4),
                                 height: Math.round(canvasHeightMM * 300 / 25.4)
                             }}
@@ -236,22 +286,22 @@ export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, can
                     </div>
                 </div>
 
-                {/* Right Sidebar - Layers & Inspector */}
+                {/* Right Sidebar */}
                 <div className="w-72 bg-white border-l border-gray-200 shrink-0 z-10 flex flex-col shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)]">
                     <div className="p-4 border-b border-gray-100 flex items-center gap-2 bg-gray-50">
                         <Layers className="w-4 h-4 text-gray-500" />
                         <h3 className="text-sm font-medium text-gray-700">圖層與工具</h3>
                     </div>
                     <div className="p-4 flex-1 overflow-y-auto">
-                        {/* The Canvas Editor has built-in context menus and toolbars now, 
-                              but normally we would expose a layer panel here.
-                              For MVP Admin builder, we rely on the internal Fabric controls.
-                          */}
                         <p className="text-xs text-gray-500 mb-4 bg-blue-50 p-3 rounded text-blue-800 leading-relaxed border border-blue-100">
                             🔔 <strong>設計技巧：</strong><br />
-                            於左側點擊即可新增素材。<br />
+                            於左側點擊即可新增素材、相框、背景或文字。<br />
                             可以直接在畫布上拖曳、旋轉、縮放。<br />
                             可隨時由左下方切換「預覽商品底圖」，確認套用到不同殼型時的展示效果。所有的貼紙、相框等素材都會原封不動地保留！
+                        </p>
+                        <p className="text-xs text-amber-700 bg-amber-50 p-3 rounded border border-amber-100 leading-relaxed">
+                            💡 <strong>相框提醒：</strong><br />
+                            加入相框後，客戶在前台套用此模板時，可點擊相框中心直接替換成自己的照片。
                         </p>
                     </div>
                 </div>

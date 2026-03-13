@@ -894,6 +894,7 @@ export interface CanvasEditorRef {
     clearDraft: () => void;
     exportAsJSON: () => Promise<string>;
     exportAsDataURL: (options?: { withMask?: boolean }) => Promise<string>;
+    addTextLayer: (options: { text: string; fontFamily: string; fill: string; fontSize: number }) => void;
 }
 
 const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedRef<CanvasEditorRef>) => {
@@ -3169,6 +3170,30 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
     // --- Toolbar Logic ---
 
+    const addTextLayer = (options: { text: string; fontFamily: string; fill: string; fontSize: number }) => {
+        const canvas = fabricCanvas.current;
+        if (!canvas) return;
+        const CENTER_X = REAL_WIDTH / 2;
+        const CENTER_Y = REAL_HEIGHT / 2;
+        const t = new IText(options.text || '文字', {
+            left: CENTER_X,
+            top: CENTER_Y,
+            originX: 'center',
+            originY: 'center',
+            fontSize: options.fontSize || 48,
+            fill: options.fill || '#000000',
+            fontFamily: options.fontFamily || 'Arial',
+            lockUniScaling: true,
+        });
+        t.setControlsVisibility({ mt: false, mb: false, ml: false, mr: false });
+        (t as any).id = genId('text');
+        (t as any).data = { kind: 'user_text', editable: true, isTemplateText: true };
+        canvas.add(t);
+        canvas.setActiveObject(t);
+        if (maskLayerRef.current) canvas.bringObjectToFront(maskLayerRef.current);
+        canvas.renderAll();
+    };
+
     useImperativeHandle(ref, () => ({
         insertImageFromSrc: handleInsertImageFromSrc,
         insertAiCollage: handleInsertAiCollage,
@@ -3563,6 +3588,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 multiplier: 1 // We can adjust this if we want higher res previews
             });
         },
+        addTextLayer,
         // --- Image Crop (Mask) System ---
         applyCrop,
         updateFrameParams,
@@ -4959,6 +4985,15 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         });
 
         canvas.on('mouse:dblclick', (e) => {
+            if (e.target && (e.target as any).isFrameLayer) {
+                // Double-clicking on a frame opens the gallery so the user can pick a photo to fill it
+                if (mobileActions?.onUpload) {
+                    canvas.setActiveObject(e.target); // Ensure frame stays selected
+                    canvas.renderAll();
+                    setTimeout(() => mobileActions.onUpload(), 50);
+                }
+                return;
+            }
             if (e.target && e.target instanceof FabricImage && e.target.clipPath) {
                 toggleCropModeRef.current();
             }
