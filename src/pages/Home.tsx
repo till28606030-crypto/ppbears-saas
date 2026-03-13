@@ -2363,10 +2363,10 @@ export default function Home() {
                                                             >
                                                                 <img
                                                                     src={(() => {
-                                                                        // Supabase Image Transformation: /object/public/ → /render/image/public/ + ?width=200&quality=75
-                                                                        // This forces Supabase to serve a resized thumbnail (server-side, free tier supported)
+                                                                        // Supabase Image Transformation: /object/public/ → /render/image/public/
+                                                                        // resize=contain → 保持原始比例，不裁切
                                                                         try {
-                                                                            return item.url.replace('/object/public/', '/render/image/public/') + '?width=200&quality=75';
+                                                                            return item.url.replace('/object/public/', '/render/image/public/') + '?width=150&height=150&resize=contain&quality=75';
                                                                         } catch {
                                                                             return item.url;
                                                                         }

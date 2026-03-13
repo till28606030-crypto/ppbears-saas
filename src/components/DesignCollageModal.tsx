@@ -140,28 +140,31 @@ export default function DesignCollageModal({
     // Check & increment daily AI usage limit before generating
     if (onCheckAndIncrementUsage) {
       const allowed = await onCheckAndIncrementUsage();
-      if (!allowed) return; // limit reached, modal already shown by parent
+      if (!allowed) return;
     }
 
     setIsGenerating(true);
     setError(null);
 
     try {
-      // Convert Files to Base64
-      const getBase64 = (file: File): Promise<string> => {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.readAsDataURL(file);
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = error => reject(error);
-        });
-      };
-      
-      const base64Images = await Promise.all(files.map(getBase64));
-
       const apiOrigin = import.meta.env.VITE_API_ORIGIN || '';
 
-      // 1. Generate stylized background
+      // --- Step 1: Upload images to Supabase Storage to get public URLs ---
+      // This avoids sending large base64 payloads over mobile networks (timeout fix)
+      const uploadedUrls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const ext = file.type === 'image/png' ? 'png' : 'jpg';
+        const path = `ai-temp/${Date.now()}_${i}.${ext}`;
+        const { error: uploadErr } = await supabase.storage
+          .from('design-assets')
+          .upload(path, file, { contentType: file.type, upsert: true });
+        if (uploadErr) throw new Error(`圖片上傳失敗: ${uploadErr.message}`);
+        const { data: urlData } = supabase.storage.from('design-assets').getPublicUrl(path);
+        uploadedUrls.push(urlData.publicUrl);
+      }
+
+      // --- Step 2: Generate background (no image needed) ---
       const bgPayload = {
         mode: 'background',
         stylePrompt: selectedStyle.prompt,
@@ -185,26 +188,26 @@ export default function DesignCollageModal({
         return data.url;
       });
 
-      // 2. Remove backgrounds for each character image
-      const cutoutPromises = base64Images.map(imgB64 =>
-        fetch(`${apiOrigin}/api/ai/remove-bg`, {
+      // --- Step 3: Remove backgrounds using public URLs (not base64) ---
+      // Sequential to avoid overwhelming Vercel concurrent function limits on mobile
+      const cutoutUrls: string[] = [];
+      const bgUrl = await bgPromise;
+
+      for (const imgUrl of uploadedUrls) {
+        const r = await fetch(`${apiOrigin}/api/ai/remove-bg`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ imageUrl: imgB64 })
-        }).then(async r => {
-          if (!r.ok) {
-            let errData;
-            try { errData = await r.json(); } catch { errData = {}; }
-            throw new Error(errData.message || '去背處理失敗');
-          }
-          const data = await r.json();
-          if (!data.success || !data.url) throw new Error('去背結果無效');
-          return data.url;
-        })
-      );
-
-      // Wait for all to finish
-      const [bgUrl, ...cutoutUrls] = await Promise.all([bgPromise, ...cutoutPromises]);
+          body: JSON.stringify({ imageUrl: imgUrl })
+        });
+        if (!r.ok) {
+          let errData;
+          try { errData = await r.json(); } catch { errData = {}; }
+          throw new Error(errData.message || '去背處理失敗');
+        }
+        const data = await r.json();
+        if (!data.success || !data.url) throw new Error('去背結果無效');
+        cutoutUrls.push(data.url);
+      }
 
       onResult({ bgUrl, cutoutUrls });
       onClose();
