@@ -343,7 +343,7 @@ export default function DesignCollageModal({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3 shrink-0">
+        <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 shrink-0">
           <button
             onClick={onClose}
             disabled={isGenerating}
