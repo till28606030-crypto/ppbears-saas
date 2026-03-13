@@ -392,7 +392,9 @@ export default function AdminDesigns() {
     };
 
     const handleCopyLink = (design: DesignTemplate) => {
-        const link = `${window.location.origin}/t/${design.id}`;
+        const basePath = import.meta.env.VITE_BASE_PATH || '/';
+        const safeBasePath = basePath.endsWith('/') ? basePath : basePath + '/';
+        const link = `${window.location.origin}${safeBasePath}t/${design.id}`;
         navigator.clipboard.writeText(link);
         alert("專屬模板連結已複製到剪貼簿！\n\n網址: " + link);
     };
