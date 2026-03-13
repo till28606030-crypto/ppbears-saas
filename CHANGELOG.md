@@ -5,10 +5,11 @@
 ---
 
 
-## [6.9] - 2026-03-13
+## [7.0] - 2026-03-13
 ### Fixed
 - 新增 Vercel Serverless Function `api/ai/recognize-product.js` — 修復生產環境 AI 辨識失效問題
 - 在根目錄 `package.json` 加入 `openai` 套件供 Vercel Serverless Function 使用
+- 全面修復 Gemini / OpenAI AI 辨識 fallback 機制，確保辨識穩定性
 
 ---
 
