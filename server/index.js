@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const { v4: uuidv4 } = require('uuid');
 const { createClient } = require('@supabase/supabase-js');
 const db = require('./db');
@@ -51,6 +52,29 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
 }));
+
+// ─── Rate Limiting (#10) ────────────────────────────────────────────────────
+// General API: 100 requests per 15 minutes per IP
+const generalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: '請求過於頻繁，請稍後再試 (Rate limit exceeded)',  errorCode: 'RATE_LIMIT' },
+    skip: (req) => req.path === '/api/health', // Health check always passes
+});
+// AI endpoints: 20 requests per 15 minutes (protect expensive API calls)
+const aiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'AI 請求過於頻繁，請稍後再試 (AI rate limit exceeded)', errorCode: 'AI_RATE_LIMIT' },
+});
+app.use('/api/', generalLimiter);
+app.use('/api/ai/', aiLimiter);
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.use((req, res, next) => {
     // Debug Log for Content-Type
     if (req.path.startsWith('/api/ai')) {

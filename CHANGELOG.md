@@ -5,6 +5,17 @@
 ---
 
 
+## [7.3] - 2026-03-13
+### Security & Quality
+- **速率限制 (Rate Limiting #10)**：後端新增 `express-rate-limit`，一般 API 限制 100 次/15分鐘，AI 端點限制 20 次/15分鐘，防止 API 濫用。
+- **前端錯誤邊界 (#12)**：新增 `ErrorBoundary.tsx`，全面保護所有路由，避免單一元件崩潰致整個 App 白屏。
+- **SEO 優化 (#13)**：`index.html` 語系改為 `zh-TW`，新增 meta description、Open Graph 與 Twitter Card 標籤，改善搜尋引擎可見性。
+- **環境變數文件 (#14)**：新增 `.env.example` 與 `server/.env.example`，每個變數附說明與取得方式。
+- **根目錄清理 (#11)**：刪除 12 個開發用臨時/除錯檔案（debug_json.json、old_CanvasEditor.txt 等），頂層目錄恢復整潔。
+- **測試覆蓋 (#15)**：新增 `tests/rateLimiting.test.js`，包含速率限制邏輯、Response helpers、IP 提取等 7 個測試案例。
+
+---
+
 ## [7.2] - 2026-03-13
 ### Performance Optimization
 - **前端 Bundle 大瘦身**：
