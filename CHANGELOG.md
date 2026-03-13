@@ -4,6 +4,13 @@
 
 ---
 
+## [6.8] - 2026-03-13
+### Fixed
+- 修復 AI 商品規格辨識功能 (移至後端伺服器處理，解決移除 API Key 後的失效問題)
+- 移除前端 `aiRecognition.ts` 的重複宣告與直接對外呼叫
+
+---
+
 ## [6.7] - 2026-03-13
 ### Security
 - 核心安全修復 (Critical Security Fixes)

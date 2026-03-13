@@ -866,6 +866,106 @@ app.post('/api/ai/auto-tag', express.json({ limit: '1mb' }), async (req, res) =>
     }
 });
 
+// 4. Recognize Product Specs from Screenshot (OpenAI GPT-4o Vision)
+// This replaces the previous direct frontend call that used VITE_OPENAI_API_KEY
+app.post('/api/ai/recognize-product', express.json({ limit: '10mb' }), async (req, res) => {
+    console.log(`[AI] HIT /api/ai/recognize-product (ID: ${BUILD_ID})`);
+    try {
+        const { imageBase64, mimeType = 'image/jpeg' } = req.body || {};
+
+        if (!imageBase64) {
+            return fail(res, '缺少 imageBase64 參數', { errorCode: 'MISSING_PARAM' });
+        }
+
+        if (!process.env.OPENAI_API_KEY) {
+            return fail(res, 'Server configuration error (Missing OpenAI API Key)', { errorCode: 'MISSING_ENV' });
+        }
+
+        // Compress image using sharp (convert base64 → buffer → compress → base64)
+        let imageDataUri;
+        try {
+            const inputBuffer = Buffer.from(imageBase64, 'base64');
+            const compressed = await sharp(inputBuffer)
+                .resize(1280, 1280, { fit: 'inside', withoutEnlargement: true })
+                .jpeg({ quality: 80 })
+                .toBuffer();
+            imageDataUri = `data:image/jpeg;base64,${compressed.toString('base64')}`;
+            console.log(`[AI] recognize-product: image compressed to ${Math.round(compressed.length / 1024)}KB`);
+        } catch (imgErr) {
+            // If compression fails, use original
+            console.warn('[AI] Image compression failed, using original:', imgErr.message);
+            imageDataUri = `data:${mimeType};base64,${imageBase64}`;
+        }
+
+        const promptText = `你是手機殼商品規格辨識專家，專門處理 Devilcase 官網截圖。
+請從截圖中提取：
+1. 手機型號（如 Apple - iPhone 17 Pro Max）
+2. 殼種款式名稱（如 惡魔防摔殼 PRO 3 磁吸版、惡魔防摔殼 標準版 等）
+3. 所有配件規格屬性（外框、鏡頭造型、按鍵組、動作按鍵、相機按鍵 等）
+
+請用以下 JSON 格式回傳（只回傳 JSON，不要其他文字）：
+{
+  "phoneName": "填入實際的手機型號",
+  "caseName": "填入實際的殼種款式",
+  "specs": [
+    {"category": "外框", "value": "填入實際外框規格"},
+    {"category": "鏡頭造型", "value": "填入實際鏡頭規格"}
+  ]
+}
+
+注意：
+- 極度重要：請逐字完整照抄圖片上的繁體中文文字，絕對不能自行猜測、翻譯或修改成相似的詞語。
+- caseName 請完整包含版本資訊（根據圖片實際文字，可能是 PRO 3、磁吸版、標準版 等）
+- 動作按鍵和相機按鍵是不同的欄位，請分開辨識
+- 若截圖中看不到某欄位，就不要包含在 specs 裡`;
+
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [
+                { role: 'system', content: promptText },
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: '請辨識這張截圖中的商品規格。請確保嚴格逐字照抄，不可有任何自行猜測修改的字眼。' },
+                        { type: 'image_url', image_url: { url: imageDataUri } }
+                    ]
+                }
+            ],
+            max_tokens: 800,
+            temperature: 0.1
+        });
+
+        const content = response.choices?.[0]?.message?.content;
+        if (!content) {
+            return fail(res, 'No content received from OpenAI', { errorCode: 'EMPTY_RESPONSE' });
+        }
+
+        // Extract JSON from response (may be wrapped in code blocks)
+        let jsonStr = content.trim();
+        const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (codeBlockMatch) jsonStr = codeBlockMatch[1];
+
+        let productInfo;
+        try {
+            productInfo = JSON.parse(jsonStr);
+        } catch (parseErr) {
+            console.error('[AI] recognize-product JSON parse error:', parseErr.message, 'Raw:', content.slice(0, 200));
+            return fail(res, 'AI 辨識結果格式錯誤，請重試', { errorCode: 'PARSE_ERROR' });
+        }
+
+        console.log('[AI] recognize-product result:', JSON.stringify(productInfo).slice(0, 300));
+        return ok(res, { productInfo });
+
+    } catch (error) {
+        console.error('[AI] recognize-product Error:', error);
+        return fail(res, 'AI 商品辨識失敗', {
+            errorCode: 'AI_ERROR',
+            endpoint: '/api/ai/recognize-product',
+            error: String(error?.message || error)
+        });
+    }
+});
+
 // --- Existing Template Routes (LowDB) ---
 app.get('/api/templates', (req, res) => {
     try {

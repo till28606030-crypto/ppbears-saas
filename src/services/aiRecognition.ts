@@ -10,9 +10,8 @@ export interface RecognizedProductInfo {
     specs: RecognizedSpec[]; // 其餘規格
 }
 
-const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 /**
- * Helper to convert a File or Blob to a base64 string.
+ * Helper to convert a File or Blob to a base64 string (without data URI prefix).
  */
 function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
     return new Promise((resolve, reject) => {
@@ -29,131 +28,67 @@ function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }>
 }
 
 /**
- * Recognizes product specifications from an image (screenshot) using OpenAI GPT-4o-mini.
- * Returns full product info including phone model, case name, and attribute specs.
+ * Recognizes product specifications from an image (screenshot) using the backend
+ * proxy which calls OpenAI GPT-4o Vision securely server-side.
  */
 export async function recognizeProductFromImage(file: File): Promise<RecognizedProductInfo> {
-    if (!OPENAI_API_KEY) {
-        throw new Error('OpenAI API Key is missing. Please check your environment variables.');
-    }
+    console.log('[AI Recognition] Starting backend recognition for:', file.name);
 
-    console.log('[AI Recognition] Starting OpenAI Vision recognition for:', file.name);
-
-    const { base64: base64Image, mimeType } = await fileToBase64(file);
+    const { base64: imageBase64, mimeType } = await fileToBase64(file);
     console.log('[AI Recognition] File MIME type detected:', mimeType);
 
-    // Development environment uses Vite proxy (/openai) to bypass localhost CORS issues.
-    // Production uses the PHP proxy script to bypass CORS issues on the live domain.
-    const apiUrl = import.meta.env.PROD ? '/design/proxy-openai.php' : '/openai/v1/chat/completions';
-    console.log('[AI Recognition] Using URL:', apiUrl);
+    // Always call our backend — works in both dev and production
+    const apiOrigin = import.meta.env.VITE_API_ORIGIN || window.location.origin;
+    const endpoint = `${apiOrigin}/api/ai/recognize-product`;
+    console.log('[AI Recognition] Using backend endpoint:', endpoint);
 
-    const promptText = `你是手機殼商品規格辨識專家，專門處理 Devilcase 官網截圖。
-請從截圖中提取：
-1. 手機型號（如 Apple - iPhone 17 Pro Max）
-2. 殼種款式名稱（如 惡魔防摔殼 PRO 3 磁吸版、惡魔防摔殼 標準版 等）
-3. 所有配件規格屬性（外框、鏡頭造型、按鍵組、動作按鍵、相機按鍵 等）
-
-請用以下 JSON 格式回傳（只回傳 JSON，不要其他文字）。
-【以下僅為 JSON 格式範例，請務必根據圖片「實際內容」填寫，絕對不要直接抄襲範例的值】：
-{
-  "phoneName": "填入實際的手機型號",
-  "caseName": "填入實際的殼種款式",
-  "specs": [
-    {"category": "外框", "value": "填入實際外框規格"},
-    {"category": "鏡頭造型", "value": "填入實際鏡頭規格"}
-  ]
-}
-
-注意：
-- ！！！極度重要：請【逐字完整照抄】圖片上的繁體中文文字，絕對不能自行猜測、翻譯或修改成相似的詞語。例如圖片寫「羅賓橘(不耐髒)」，就必須輸出「羅賓橘(不耐髒)」，絕對不能辨識為「羅家莊(不滅)」。
-- caseName 請完整包含版本資訊（根據圖片實際文字，可能是 PRO 3、磁吸版、標準版 等）
-- 動作按鍵和相機按鍵是不同的欄位，請分開辨識
-- 若截圖中看不到某欄位，就不要包含在 specs 裡`;
-
-    const response = await fetch(apiUrl, {
+    const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${OPENAI_API_KEY}`
+            'X-AI-Token': import.meta.env.VITE_AI_TOKEN || '',
         },
-        body: JSON.stringify({
-            model: 'gpt-4o',
-            messages: [
-                {
-                    role: 'system',
-                    content: promptText
-                },
-                {
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'text',
-                            text: '請辨識這張截圖中的商品規格。請確保嚴格逐字照抄，不可有任何自行猜測修改的字眼。'
-                        },
-                        {
-                            type: 'image_url',
-                            image_url: {
-                                url: `data:${mimeType};base64,${base64Image}`
-                            }
-                        }
-                    ]
-                }
-            ],
-            max_tokens: 800,
-            temperature: 0.1
-        })
+        body: JSON.stringify({ imageBase64, mimeType }),
+        credentials: 'omit',
+        mode: 'cors',
     });
 
     if (!response.ok) {
         let errorMsg = response.statusText;
         try {
             const errorData = await response.json();
-            errorMsg = errorData.error?.message || errorMsg;
+            errorMsg = errorData.message || errorMsg;
             console.error('[AI Recognition] API Error:', JSON.stringify(errorData));
         } catch (_) { }
-        throw new Error(`OpenAI API error: ${errorMsg}`);
+        throw new Error(`AI 辨識失敗: ${errorMsg}`);
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-
-    if (!content) {
-        throw new Error('No content received from OpenAI');
+    if (!data.success || !data.productInfo) {
+        throw new Error(data.message || 'AI 辨識結果無效，請重試');
     }
 
-    // 嘗試解析 JSON
-    let jsonStr = content.trim();
-    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-    if (codeBlockMatch) {
-        jsonStr = codeBlockMatch[1];
-    }
+    const parsed = data.productInfo;
+    const result: RecognizedProductInfo = {
+        phoneName: parsed.phoneName || parsed.phone_name || '',
+        caseName: parsed.caseName || parsed.case_name || '',
+        specs: Array.isArray(parsed.specs) ? parsed.specs.map((item: any) => ({
+            category: String(item.category || item.name || ''),
+            value: String(item.value || item.option || '')
+        })) : []
+    };
 
-    try {
-        const parsed = JSON.parse(jsonStr);
-        const result: RecognizedProductInfo = {
-            phoneName: parsed.phoneName || parsed.phone_name || '',
-            caseName: parsed.caseName || parsed.case_name || '',
-            specs: Array.isArray(parsed.specs) ? parsed.specs.map((item: any) => ({
-                category: String(item.category || item.name || ''),
-                value: String(item.value || item.option || '')
-            })) : []
-        };
+    // 針對特定欄位，若截圖中沒有辨識到，則強制補上「無選項」
+    const requiredCategories = ['鏡頭造型', '相機按鍵', '動作按鍵'];
+    requiredCategories.forEach(cat => {
+        if (!result.specs.some(s => s.category.includes(cat))) {
+            result.specs.push({ category: cat, value: '無選項' });
+            console.log(`[AI Recognition] Missing ${cat}, explicitly adding "無選項"`);
+        }
+    });
 
-        // 針對特定欄位，若截圖中沒有辨識到，則強制補上「無選項」
-        const requiredCategories = ['鏡頭造型', '相機按鍵', '動作按鍵'];
-        requiredCategories.forEach(cat => {
-            if (!result.specs.some(s => s.category.includes(cat))) {
-                result.specs.push({ category: cat, value: '無選項' });
-                console.log(`[AI Recognition] Missing ${cat}, explicitly adding "無選項"`);
-            }
-        });
-
-        console.log('[AI Recognition] Recognized product info:', result);
-        return result;
-    } catch (e) {
-        console.error('[AI Recognition] JSON parse error:', e, 'Raw content:', content);
-        throw new Error('AI 辨識結果格式錯誤，請重試。');
-    }
+    console.log('[AI Recognition] Recognized product info:', result);
+    return result;
 }
 
 /**
