@@ -36,7 +36,7 @@ export default function AiActionConfirmModal({ action, onConfirm, onCancel }: Ai
   const [usageCount, setUsageCount] = useState(0);
   const [animated, setAnimated] = useState(false);
   const [countdown, setCountdown] = useState('');
-  const LIMIT = 20; // v6.0: raised from 10 to 20
+  const LIMIT = Number(localStorage.getItem('ppbears_ai_usage_limit') || '10'); // dynamic: read from product specs via Home.tsx
   const COST = action === 'toon_ink' ? 5 : 1; // 卡通化=5點，去背=1點
 
   useEffect(() => {

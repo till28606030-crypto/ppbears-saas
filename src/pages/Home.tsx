@@ -642,6 +642,12 @@ export default function Home() {
                     console.log("[DEBUG] Loaded Product:", dbProduct);
                     setCurrentProduct(dbProduct);
 
+                    // Sync ai_usage_limit to localStorage so AiActionConfirmModal reads correct value
+                    const aiLimit = dbProduct?.specs?.ai_usage_limit;
+                    if (typeof aiLimit === 'number' && aiLimit > 0) {
+                        localStorage.setItem('ppbears_ai_usage_limit', String(aiLimit));
+                    }
+
                     // Map DB fields to Editor Config
                     const specs = dbProduct.specs || {};
                     const maskConfig = dbProduct.mask_config || {};

@@ -5,6 +5,12 @@
 ---
 
 
+## [7.9] - 2026-03-14
+### Bug Fixes
+- **修復 AI 每日上限未連動後台設定**：後台在「產品編輯」第一步設定的「AI 每日使用上限」現在正確套用至前台的 AI 卡通化/去背確認彈窗，不再顯示硬編碼的 20 次限制。修改 `Home.tsx` 在商品載入後將 `specs.ai_usage_limit` 寫入 `localStorage`，`AiActionConfirmModal.tsx` 改為從 `localStorage` 動態讀取。
+
+---
+
 ## [7.8] - 2026-03-14
 ### Bug Fixes
 - **修復商務結帳 Timeout**：優化 `Home.tsx` 的 `handleAddToCart` 流程。將體積龐大的 `canvas_json` 欄位移至背景非同步更新，避免大型設計（包含多張照片時）觸發 Supabase 的 8 秒 statement timeout，確保客戶能順利加入購物車並結帳。

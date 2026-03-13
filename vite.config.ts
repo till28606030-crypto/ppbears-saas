@@ -105,4 +105,4 @@ export default defineConfig(({ mode }) => {
   }
 })
 
-// Trigger dev server restart for version update (v7.8 - deployed)
+// Trigger dev server restart for version update (v7.9 - deployed)
