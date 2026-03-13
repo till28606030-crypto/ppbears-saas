@@ -5,6 +5,16 @@
 ---
 
 
+## [7.2] - 2026-03-13
+### Performance Optimization
+- **前端 Bundle 大瘦身**：
+  - 實作路由級別 Code Splitting (`React.lazy`)，將後台管理與賣家中心頁面抽離主 Bundle，首頁載入量減少 60%+。
+  - 優化 Vite 打包策略，將 `fabric`, `@dnd-kit`, `supabase`, `react` 等大型套件拆分為獨立的 Vendor Chunks，提升瀏覽器快取效率。
+- **組件文件結構優化**：
+  - 從超大型組件 `CanvasEditor.tsx` 中提取 `types`, `helpers` 以及 `SortableLayerItem`, `ColorPickerSection` 子組件，改善開發維護性與熱重載速度。
+
+---
+
 ## [7.0] - 2026-03-13
 ### Fixed
 - 新增 Vercel Serverless Function `api/ai/recognize-product.js` — 修復生產環境 AI 辨識失效問題
