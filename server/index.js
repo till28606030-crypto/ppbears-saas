@@ -898,10 +898,6 @@ app.post('/api/ai/recognize-product', express.json({ limit: '10mb' }), async (re
             return fail(res, '缺少 imageBase64 參數', { errorCode: 'MISSING_PARAM' });
         }
 
-        if (!process.env.GEMINI_API_KEY) {
-            return fail(res, 'Server configuration error (Missing GEMINI_API_KEY)', { errorCode: 'MISSING_ENV' });
-        }
-
         // Compress image using sharp
         let compressedBase64;
         let finalMimeType = 'image/jpeg';
@@ -919,26 +915,56 @@ app.post('/api/ai/recognize-product', express.json({ limit: '10mb' }), async (re
             finalMimeType = mimeType;
         }
 
-        // Use dynamic import() to load ESM-only @google/generative-ai in CommonJS server
-        const { GoogleGenerativeAI } = await import('@google/generative-ai');
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        let rawContent = null;
 
-        const result = await model.generateContent([
-            RECOGNIZE_PROMPT,
-            { inlineData: { mimeType: finalMimeType, data: compressedBase64 } },
-            '請辨識這張截圖中的商品規格。請確保嚴格逐字照抄，不可有任何自行猜測修改的字眼。',
-        ]);
+        // --- Try Gemini 2.0 Flash first (dynamic import for ESM-only package) ---
+        if (process.env.GEMINI_API_KEY) {
+            try {
+                const { GoogleGenerativeAI } = await import('@google/generative-ai');
+                const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+                const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+                const result = await model.generateContent([
+                    RECOGNIZE_PROMPT,
+                    { inlineData: { mimeType: finalMimeType, data: compressedBase64 } },
+                    '請辨識這張截圖中的商品規格。請確保嚴格逐字照抄，不可有任何自行猜測修改的字眼。',
+                ]);
+                rawContent = result.response.text();
+                console.log('[AI] Gemini succeeded:', rawContent?.slice(0, 150));
+            } catch (geminiErr) {
+                console.warn('[AI] Gemini failed, trying OpenAI fallback:', geminiErr.message?.slice(0, 150));
+            }
+        }
 
-        const content = result.response.text();
-        console.log('[AI] Gemini output:', content?.slice(0, 300));
+        // --- Fallback: OpenAI GPT-4o ---
+        if (!rawContent && process.env.OPENAI_API_KEY) {
+            console.log('[AI] Using OpenAI GPT-4o as fallback...');
+            const OpenAI = require('openai');
+            const openaiClient = new OpenAI.default({ apiKey: process.env.OPENAI_API_KEY });
+            const response = await openaiClient.chat.completions.create({
+                model: 'gpt-4o',
+                messages: [
+                    { role: 'system', content: RECOGNIZE_PROMPT },
+                    {
+                        role: 'user',
+                        content: [
+                            { type: 'text', text: '請辨識這張截圖中的商品規格。' },
+                            { type: 'image_url', image_url: { url: `data:${finalMimeType};base64,${compressedBase64}` } }
+                        ]
+                    }
+                ],
+                max_tokens: 800,
+                temperature: 0.1
+            });
+            rawContent = response.choices?.[0]?.message?.content;
+            console.log('[AI] OpenAI fallback output:', rawContent?.slice(0, 150));
+        }
 
-        if (!content) {
-            return fail(res, 'No content from Gemini', { errorCode: 'EMPTY_RESPONSE' });
+        if (!rawContent) {
+            return fail(res, 'AI 辨識無法取得結果，請確認 API Key 設定', { errorCode: 'NO_PROVIDER' });
         }
 
         // Extract JSON
-        let jsonStr = content.trim();
+        let jsonStr = rawContent.trim();
         const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
         if (codeBlockMatch) jsonStr = codeBlockMatch[1];
 
@@ -946,7 +972,7 @@ app.post('/api/ai/recognize-product', express.json({ limit: '10mb' }), async (re
         try {
             productInfo = JSON.parse(jsonStr);
         } catch (parseErr) {
-            console.error('[AI] recognize-product JSON parse error:', parseErr.message, 'Raw:', content.slice(0, 200));
+            console.error('[AI] recognize-product JSON parse error:', parseErr.message, 'Raw:', rawContent.slice(0, 200));
             return fail(res, 'AI 辨識結果格式錯誤，請重試', { errorCode: 'PARSE_ERROR' });
         }
 
