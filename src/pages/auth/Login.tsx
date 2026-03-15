@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { User, Lock, Loader2, ShieldCheck, ArrowRight } from 'lucide-react';
 
 export default function Login() {
     const navigate = useNavigate();
-    const { login } = useAuth();
+    const { login, isAuthenticated } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // 已登入時直接跳轉後台，不顯示登入表單
+    if (isAuthenticated) {
+        return <Navigate to="/seller/products" replace />;
+    }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

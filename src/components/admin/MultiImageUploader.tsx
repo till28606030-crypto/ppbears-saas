@@ -1,6 +1,102 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Upload, X, Image as ImageIcon, ZoomIn, ChevronLeft, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Upload, X, Image as ImageIcon, ZoomIn, ChevronLeft, ChevronRight, AlertCircle, GripVertical } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import {
+    DndContext,
+    closestCenter,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    DragEndEvent,
+} from '@dnd-kit/core';
+import {
+    SortableContext,
+    useSortable,
+    rectSortingStrategy,
+    arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+// ---------- Sortable Image Card ----------
+interface SortableImageItemProps {
+    id: string;
+    src: string;
+    index: number;
+    onZoom: () => void;
+    onRemove: () => void;
+}
+
+function SortableImageItem({ id, src, index, onZoom, onRemove }: SortableImageItemProps) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({ id });
+
+    const style: React.CSSProperties = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        zIndex: isDragging ? 10 : undefined,
+    };
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            className={`group relative aspect-square bg-gray-100 rounded-lg border overflow-hidden transition-all ${
+                isDragging
+                    ? 'border-blue-400 shadow-lg scale-95'
+                    : 'border-gray-200 hover:shadow-md hover:border-blue-300'
+            }`}
+        >
+            <img
+                src={src}
+                alt={`Uploaded ${index + 1}`}
+                className="w-full h-full object-contain"
+                loading="lazy"
+            />
+
+            {/* Drag Handle */}
+            <div
+                {...attributes}
+                {...listeners}
+                className="absolute top-1 left-1 p-1 bg-white/80 rounded cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-white shadow-sm"
+                title="拖曳排序"
+            >
+                <GripVertical className="w-3.5 h-3.5 text-gray-500" />
+            </div>
+
+            {/* Action Overlay */}
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                <button
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); onZoom(); }}
+                    className="p-2 bg-white rounded-full text-gray-700 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                    title="放大檢視"
+                >
+                    <ZoomIn className="w-4 h-4" />
+                </button>
+                <button
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); onRemove(); }}
+                    className="p-2 bg-white rounded-full text-gray-700 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    title="刪除"
+                >
+                    <X className="w-4 h-4" />
+                </button>
+            </div>
+
+            {/* Index Label */}
+            <div className="absolute bottom-0 inset-x-0 bg-black/60 p-1 text-center">
+                <p className="text-[10px] text-white truncate px-1">IMG_{index + 1}</p>
+            </div>
+        </div>
+    );
+}
 
 interface MultiImageUploaderProps {
     images: string[];
@@ -24,6 +120,20 @@ export default function MultiImageUploader({
     const [progress, setProgress] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Drag-to-sort sensors (requires 8px movement before starting a drag)
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+    );
+
+    const handleSortDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (over && active.id !== over.id) {
+            const oldIndex = images.indexOf(active.id as string);
+            const newIndex = images.indexOf(over.id as string);
+            onChange(arrayMove(images, oldIndex, newIndex));
+        }
+    };
 
     // Lightbox State
     const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -268,48 +378,34 @@ export default function MultiImageUploader({
                 )}
             </div>
 
-            {/* Gallery Grid */}
+            {/* Gallery Grid – drag to reorder */}
             {images.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {images.map((src, idx) => (
-                        <div
-                            key={idx}
-                            className="group relative aspect-square bg-gray-100 rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-all hover:border-blue-300"
-                        >
-                            <img
-                                src={src}
-                                alt={`Uploaded ${idx + 1}`}
-                                className="w-full h-full object-contain"
-                                loading="lazy"
-                            />
-
-                            {/* Overlay */}
-                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); openLightbox(idx); }}
-                                    className="p-2 bg-white rounded-full text-gray-700 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                                    title="放大檢視"
-                                >
-                                    <ZoomIn className="w-4 h-4" />
-                                </button>
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); removeImage(idx); }}
-                                    className="p-2 bg-white rounded-full text-gray-700 hover:text-red-600 hover:bg-red-50 transition-colors"
-                                    title="刪除"
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
+                <>
+                    <p className="text-[10px] text-gray-400 flex items-center gap-1">
+                        <GripVertical className="w-3 h-3" />
+                        長按圖片左上角可拖曳排序
+                    </p>
+                    <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleSortDragEnd}
+                    >
+                        <SortableContext items={images} strategy={rectSortingStrategy}>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                {images.map((src, idx) => (
+                                    <SortableImageItem
+                                        key={src}
+                                        id={src}
+                                        src={src}
+                                        index={idx}
+                                        onZoom={() => openLightbox(idx)}
+                                        onRemove={() => removeImage(idx)}
+                                    />
+                                ))}
                             </div>
-
-                            {/* File Name (Simulated since we might only have dataURL) */}
-                            <div className="absolute bottom-0 inset-x-0 bg-black/60 p-1 text-center">
-                                <p className="text-[10px] text-white truncate px-1">
-                                    IMG_{idx + 1}
-                                </p>
-                            </div>
-                        </div>
-                    ))}
-                </div>
+                        </SortableContext>
+                    </DndContext>
+                </>
             )}
 
             {/* Lightbox Modal */}
