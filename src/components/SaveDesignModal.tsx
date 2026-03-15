@@ -1222,7 +1222,7 @@ export default function SaveDesignModal({
                         <AlertCircle className="w-4 h-4 text-red-600" />
                     </div>
                     <p className="text-red-700 text-sm font-bold leading-relaxed">
-                        請再次詳細核對規格，出貨將以這選項為準
+                        請再次詳細核對規格，出貨將以官方網站截圖為準
                     </p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

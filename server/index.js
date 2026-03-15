@@ -939,6 +939,9 @@ app.post('/api/ai/recognize-product', express.json({ limit: '10mb' }), async (re
 
 注意：
 - 極度重要：請逐字完整照抄圖片上的繁體中文文字，絕對不能自行猜測、翻譯或修改成相似的詞語。
+- 易混淆字警告（必須嚴格區分）：
+  「鈦」≠「鈍」：彩鈦、鈦金屬 中的「鈦」字右邊是「弋」，絕對不能寫成「鈍」（鈍右邊是「屯」）
+  「鈦」的正確筆畫：金字旁 + 弋（音同太）
 - caseName 請完整包含版本資訊（根據圖片實際文字，可能是 PRO 3、磁吸版、標準版 等）
 - 動作按鍵和相機按鍵是不同的欄位，請分開辨識
 - 若截圖中看不到某欄位，就不要包含在 specs 裡`;
@@ -950,13 +953,13 @@ app.post('/api/ai/recognize-product', express.json({ limit: '10mb' }), async (re
                 {
                     role: 'user',
                     content: [
-                        { type: 'text', text: '請辨識這張截圖中的商品規格。請確保嚴格逐字照抄，不可有任何自行猜測修改的字眼。' },
+                        { type: 'text', text: '請辨識這張截圖中的商品規格。請確保嚴格逐字照抄，不可有任何自行猜測修改的字眼。特別注意：「彩鈦」的「鈦」右邊是「弋」，不是「屯」，絕對不能寫成「彩鈍」。' },
                         { type: 'image_url', image_url: { url: imageDataUri } }
                     ]
                 }
             ],
             max_tokens: 800,
-            temperature: 0.1
+            temperature: 0
         });
 
         const content = response.choices?.[0]?.message?.content;
