@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useProductEditor } from '../hooks/useProductEditor';
 import { Loader2, ArrowLeft, Save, AlertCircle, Upload, Image as ImageIcon, Check, ChevronRight, Layout, Info, ExternalLink, Share2, Sparkles, ImagePlus } from 'lucide-react';
 import VisualTab from './tabs/VisualTab';
@@ -21,6 +21,8 @@ const STEPS = [
 const ProductEditorV2: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnSearch: string = (location.state as any)?.returnSearch || '';
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [collapsedSteps, setCollapsedSteps] = useState<Record<number, boolean>>({});
   const [activeCategoryByStep, setActiveCategoryByStep] = useState<Record<number, string | null>>({});
@@ -67,7 +69,7 @@ const ProductEditorV2: React.FC = () => {
     const result = await save();
     if (result.success) {
       alert('產品已成功發佈！');
-      navigate(`/seller/products-v2`);
+      navigate(`/seller/products-v2${returnSearch}`);
     } else {
       alert(`發佈失敗: ${result.error}`);
     }
@@ -140,7 +142,7 @@ const ProductEditorV2: React.FC = () => {
     <div className="p-6 max-w-5xl mx-auto pb-20">
       <div className="flex items-center gap-4 mb-8">
         <button
-          onClick={() => navigate('/seller/products-v2')}
+          onClick={() => navigate(`/seller/products-v2${returnSearch}`)}
           className="p-2 hover:bg-gray-100 rounded-full transition-colors"
         >
           <ArrowLeft className="w-6 h-6" />

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { ProductRow } from '../shared/types';
 import { useProductEditor } from '../hooks/useProductEditor';
@@ -39,7 +39,7 @@ interface SortableRowProps {
   onOpenPermissionEdit?: (product: Partial<ProductRow>) => void;
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
-  navigate: (path: string) => void;
+  navigate: (path: string, options?: { state?: any }) => void;
 }
 
 const SortableRow: React.FC<SortableRowProps> = ({ product, isSelected, onToggleSelection, onOpenSingleEdit, onOpenPermissionEdit, onDelete, onDuplicate, navigate }) => {
@@ -193,7 +193,7 @@ const SortableRow: React.FC<SortableRowProps> = ({ product, isSelected, onToggle
             <Trash2 className="w-4 h-4" />
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); navigate(`/seller/products-v2/${product.id}`); }}
+            onClick={(e) => { e.stopPropagation(); navigate(`/seller/products-v2/${product.id}`, { state: { returnSearch: window.location.search } }); }}
             className="text-blue-600 hover:text-blue-800 font-medium text-sm ml-2"
           >
             編輯
@@ -219,9 +219,18 @@ const ProductListV2: React.FC = () => {
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [permissionProducts, setPermissionProducts] = useState<{ id: string; name: string; permissions?: any }[]>([]);
 
-  // Search & Filter State
+  // Search & Filter State — selectedCategory stored in URL so it survives navigation to/from ProductEditor
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedCategory = searchParams.get('cat') || 'all';
+  const setSelectedCategory = (val: string) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (val === 'all') next.delete('cat');
+      else next.set('cat', val);
+      return next;
+    }, { replace: true });
+  };
   const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
@@ -746,7 +755,7 @@ const ProductListV2: React.FC = () => {
                         }}
                         onDelete={handleDelete}
                         onDuplicate={handleDuplicate}
-                        navigate={navigate}
+                        navigate={(path, opts) => navigate(path, opts)}
                       />
                     ))
                   )}
