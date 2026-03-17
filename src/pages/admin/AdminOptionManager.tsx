@@ -1963,39 +1963,39 @@ export default function AdminOptionManager() {
 
                                         <div className="space-y-2">
                                             {conditions.map((cond, idx) => (
-                                                <div key={idx} className="flex gap-2 items-center bg-white rounded-lg border border-red-100 p-2 shadow-sm">
-                                                    {/* Group select */}
-                                                    <select
-                                                        className="flex-1 border border-gray-200 rounded px-2 py-1.5 text-xs bg-gray-50 focus:ring-1 focus:ring-red-400 outline-none"
-                                                        value={cond.groupId || ''}
-                                                        onChange={e => updateCondition(idx, { groupId: e.target.value, optionId: undefined })}
-                                                    >
-                                                        <option value="">選擇要隱藏的大類…</option>
-                                                        {groupOptgroups('將隱藏：')}
-                                                    </select>
-                                                    {/* Option select */}
-                                                    <select
-                                                        className="flex-1 border border-gray-200 rounded px-2 py-1.5 text-xs bg-gray-50 focus:ring-1 focus:ring-red-400 outline-none"
-                                                        value={cond.optionId || ''}
-                                                        disabled={!cond.groupId}
-                                                        onChange={e => updateCondition(idx, { optionId: e.target.value || undefined })}
-                                                    >
-                                                        <option value="">任何選項都觸發</option>
-                                                        {cond.groupId && items
-                                                            .filter(i => i.parentId === cond.groupId)
-                                                            .map(i => <option key={i.id} value={i.id}>僅限：{i.name}</option>)
-                                                        }
-                                                    </select>
-                                                    {/* Delete */}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeCondition(idx)}
-                                                        className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors shrink-0"
-                                                        title="刪除此條件"
-                                                    >
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </button>
-                                                </div>
+                                                    <div key={idx} className="flex flex-wrap gap-2 items-center bg-white rounded-lg border border-red-100 p-2 shadow-sm">
+                                                        {/* Group select */}
+                                                        <select
+                                                            className="flex-1 min-w-[140px] border border-gray-200 rounded px-2 py-1.5 text-xs bg-gray-50 focus:ring-1 focus:ring-red-400 outline-none"
+                                                            value={cond.groupId || ''}
+                                                            onChange={e => updateCondition(idx, { groupId: e.target.value, optionId: undefined })}
+                                                        >
+                                                            <option value="">選擇要隱藏的大類…</option>
+                                                            {groupOptgroups('將隱藏：')}
+                                                        </select>
+                                                        {/* Option select */}
+                                                        <select
+                                                            className="flex-1 min-w-[140px] border border-gray-200 rounded px-2 py-1.5 text-xs bg-gray-50 focus:ring-1 focus:ring-red-400 outline-none"
+                                                            value={cond.optionId || ''}
+                                                            disabled={!cond.groupId}
+                                                            onChange={e => updateCondition(idx, { optionId: e.target.value || undefined })}
+                                                        >
+                                                            <option value="">任何選項都觸發</option>
+                                                            {cond.groupId && items
+                                                                .filter(i => i.parentId === cond.groupId)
+                                                                .map(i => <option key={i.id} value={i.id}>僅限：{i.name}</option>)
+                                                            }
+                                                        </select>
+                                                        {/* Delete */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeCondition(idx)}
+                                                            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors shrink-0 ml-auto"
+                                                            title="刪除此條件"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
                                             ))}
                                         </div>
 
