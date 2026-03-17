@@ -195,6 +195,7 @@ export default function SaveDesignModal({
     const [caseNameMismatch, setCaseNameMismatch] = useState<string | null>(null);
 
     // Data State
+    const [linkedOptionItemsMap, setLinkedOptionItemsMap] = useState<Record<string, string[]>>({});
     const [groups, setGroups] = useState<OptionGroup[]>([]);
     const [items, setItems] = useState<OptionItem[]>([]);
     const [availability, setAvailability] = useState<ProductAvailability[]>([]);
@@ -471,6 +472,7 @@ export default function SaveDesignModal({
             setTextFallbackFields({});
             setCaseNameMismatch(null);
             setInlineError(null); // ← 確保關閉後重開不殘留上次錯誤
+            setLinkedOptionItemsMap({});
 
             // Timeout wrapper for IndexedDB operations
             const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
@@ -535,6 +537,10 @@ export default function SaveDesignModal({
                                     console.log('[SaveDesignModal] Filtered groups count:', filteredGroups.length);
                                 } else {
                                     console.log('[SaveDesignModal] No linked_option_groups found, showing all groups');
+                                }
+
+                                if ((product.specs as any)?.linked_option_items) {
+                                    setLinkedOptionItemsMap((product.specs as any).linked_option_items);
                                 }
                             }
                         } catch (err) {
@@ -690,6 +696,12 @@ export default function SaveDesignModal({
                     return rule && rule.isAvailable;
                 });
             }
+        }
+
+        // 3. NEW: Filter by linked_option_items from Product Specs (whitelist per group)
+        if (Object.keys(linkedOptionItemsMap).length > 0 && linkedOptionItemsMap[groupId]) {
+            const allowedItems = linkedOptionItemsMap[groupId];
+            groupItems = groupItems.filter(item => allowedItems.includes(item.id));
         }
 
         return groupItems;

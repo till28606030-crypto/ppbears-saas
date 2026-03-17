@@ -10,6 +10,7 @@ export interface ProductSpecs {
     left: number;
   };
   linked_option_groups?: string[];  // 關聯的規格大類 IDs (option_groups)
+  linked_option_items?: Record<string, string[]>; // 關聯的子項目 (groupId -> optionItemIds[])
   [key: string]: any;
 }
 
