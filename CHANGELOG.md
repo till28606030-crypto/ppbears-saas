@@ -5,6 +5,15 @@
 ---
 
 
+## [8.2] - 2026-03-17
+### Bug Fixes
+- **修復媒體庫「素材圖片」和「客戶設計大圖」無法顯示**：`MediaLibrary.tsx` 的兩個 tab 改從正確的資料來源讀取：素材圖片改從 DB table `assets` 讀取（含貼圖/背景/相框），客戶設計大圖改從 DB table `custom_designs` 讀取（含預覽縮圖、刪除功能）。
+- **修復開啟客戶設計編輯時出現空白畫面**：`Home.tsx` 的 `loadDesignById` 加入 `isTemplateLoading` 依賴，確保商品底圖完全載入後才執行設計還原，並加入 loading overlay 遮蔽等待期，防止使用者誤以為設計圖消失。
+- **修復 AI 去背/卡通化結果因 URL 過期導致設計圖無法還原**：`CanvasEditor.tsx` 的 AI 處理流程，在取得 Replicate 臨時 URL 後立即上傳到 Supabase Storage (`design-assets/ai-output/`)，改用永久 URL 存入 `canvas_json`，防止日後設計還原失敗。
+- **加強 restoreFromJSON 容錯性**：改用 `Promise.allSettled` 逐一 enliven canvas objects，單一失效 URL 不再導致整個設計還原失敗，其餘 layers（文字、貼圖、背景）仍可正常還原。
+
+---
+
 ## [8.1] - 2026-03-15
 ### Bug Fixes
 - **修復已登入後台每次開 `/login` 仍需重新登入問題**：在 `Login.tsx` 加入 `isAuthenticated` 判斷，已登入狀態直接跳轉至後台 `/seller/products`。

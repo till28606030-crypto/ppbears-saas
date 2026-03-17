@@ -3296,11 +3296,20 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         canvas.backgroundColor = json.backgroundColor;
                     }
 
-                    // 3. Enliven & Add Objects
+                    // 3. Enliven & Add Objects — per-object to survive failed/expired URLs
                     let enlivenedObjects: FabricObject[] = [];
                     try {
-                        const objs = await util.enlivenObjects(json.objects);
-                        enlivenedObjects = Array.isArray(objs) ? (objs as FabricObject[]) : [];
+                        // Enliven each object individually so a single failed URL
+                        // (e.g. expired replicate.delivery AI link) doesn't wipe the whole restore.
+                        const results = await Promise.allSettled(
+                            json.objects.map((obj: any) => util.enlivenObjects([obj]))
+                        );
+                        for (const r of results) {
+                            if (r.status === 'fulfilled' && Array.isArray(r.value) && r.value.length > 0) {
+                                enlivenedObjects.push(...(r.value as FabricObject[]));
+                            }
+                            // 'rejected' or empty = image URL dead / parse error — silently skip
+                        }
                     } catch (enlivenErr) {
                         console.error("[CanvasEditor] Failed to enliven objects:", enlivenErr);
                     }
@@ -5638,9 +5647,32 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                 const outputImage = outputUrl;
 
+                // ── Persist AI output to Supabase Storage (prevent expired temp URLs in canvas_json) ──
+                let permanentOutputUrl = outputImage;
+                try {
+                    const aiImgRes = await fetch(outputImage);
+                    if (aiImgRes.ok) {
+                        const aiBlob = await aiImgRes.blob();
+                        const aiPath = `ai-output/${Date.now()}_${style}.png`;
+                        const { error: aiUploadErr } = await supabase.storage
+                            .from('design-assets')
+                            .upload(aiPath, aiBlob, { contentType: 'image/png', upsert: false });
+                        if (!aiUploadErr) {
+                            permanentOutputUrl = supabase.storage
+                                .from('design-assets')
+                                .getPublicUrl(aiPath).data.publicUrl;
+                            console.log('[AI] Output saved to permanent URL:', permanentOutputUrl);
+                        } else {
+                            console.warn('[AI] Failed to persist output, using temp URL:', aiUploadErr.message);
+                        }
+                    }
+                } catch (persistErr) {
+                    console.warn('[AI] Persist step failed, using temp URL:', persistErr);
+                }
+
                 // B1. Only proceed with canvas modification if we have a valid outputImage
                 await withHistoryTransaction(async () => {
-                    const img = await FabricImage.fromURL(outputImage, { crossOrigin: 'anonymous' });
+                    const img = await FabricImage.fromURL(permanentOutputUrl, { crossOrigin: 'anonymous' });
                     ensureObjectId(img, 'ai_generated');
 
                     img.set({

@@ -144,6 +144,7 @@ export default function Home() {
     const [hasClipPath, setHasClipPath] = useState(false);
     const [isImageSelected, setIsImageSelected] = useState(false);
     const [isTemplateLoading, setIsTemplateLoading] = useState(false);
+    const [isDesignRestored, setIsDesignRestored] = useState(false); // true once restoreFromJSON completes
     const [canvasHasUserImage, setCanvasHasUserImage] = useState(false);
 
     // Assets State
@@ -812,7 +813,9 @@ export default function Home() {
     useEffect(() => {
         const loadDesignById = async () => {
             const loadDesignId = searchParams.get('load_design_id');
+            // Wait for: URL param present + productConfig ready + canvas ref exists + base image fully loaded
             if (!loadDesignId || !canvasRef.current || !productConfig) return;
+            if (isTemplateLoading) return; // ← KEY FIX: Wait until base image is on canvas
 
             try {
                 console.log('[DesignLoad] Loading design for admin re-edit:', loadDesignId);
@@ -824,21 +827,23 @@ export default function Home() {
 
                 if (error || !design) {
                     console.error('[DesignLoad] Design not found:', error);
+                    setIsDesignRestored(true); // Clear overlay even on error
                     return;
                 }
 
                 if (design.canvas_json) {
-                    // Remove 1s delay and ensure we use the loaded ID
                     if (loadDesignId !== designId) setDesignId(loadDesignId);
                     await canvasRef.current?.restoreFromJSON?.(design.canvas_json);
                     console.log('[DesignLoad] Design restored successfully');
                 }
+                setIsDesignRestored(true); // ← Dismiss loading overlay
             } catch (e: any) {
                 console.error('[DesignLoad] Error loading design:', e);
+                setIsDesignRestored(true);
             }
         };
         loadDesignById();
-    }, [searchParams, productConfig]);
+    }, [searchParams, productConfig, isTemplateLoading]); // ← Added isTemplateLoading dependency
 
     const handleCopyId = () => {
         if (designId) {
@@ -2462,6 +2467,14 @@ export default function Home() {
                 </header>
 
                 <div className="flex-1 overflow-hidden relative flex flex-col">
+                    {/* ── Loading overlay while base image + design are loading (admin re-edit mode only) ── */}
+                    {searchParams.get('load_design_id') && (!isDesignRestored || isTemplateLoading) && (
+                        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-white/90 backdrop-blur-sm">
+                            <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4" />
+                            <p className="text-sm font-semibold text-gray-700">正在載入設計圖...</p>
+                            <p className="text-xs text-gray-400 mt-1">請稍候，設計內容還原中</p>
+                        </div>
+                    )}
                     <CanvasEditor
                         ref={canvasRef}
                         uploadedImage={uploadedImage}
