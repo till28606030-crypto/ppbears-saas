@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Plus,
     Trash2,
@@ -1671,7 +1671,8 @@ export default function AdminOptionManager() {
             {/* Modal: Edit Group */}
             {isEditingGroup && (
                 <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl w-full max-w-lg p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+                    <div className="bg-white rounded-xl w-full max-w-lg p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto 
+                                    my-4" /* Prevent clipping on small screens */>
                         <h3 className="text-xl font-bold sticky top-0 bg-white z-10 pb-2 border-b">{editingGroupData.id ? '編輯大類' : '新增規格大類'}</h3>
 
                         <div>
@@ -1842,9 +1843,27 @@ export default function AdminOptionManager() {
                                             }}
                                         >
                                             <option value="">無條件 (預設顯示)</option>
-                                            {groups.filter(g => g.id !== editingGroupData.id).map(g => (
-                                                <option key={g.id} value={g.id}>需要先選擇：{g.name}</option>
-                                            ))}
+                                            {(() => {
+                                                const filtered = groups.filter(g => g.id !== editingGroupData.id);
+                                                const sorted = [...filtered].sort((a, b) => {
+                                                    const sA = a.uiConfig?.step ?? 1; const sB = b.uiConfig?.step ?? 1;
+                                                    if (sA !== sB) return sA - sB;
+                                                    const cA = a.uiConfig?.category ?? ''; const cB = b.uiConfig?.category ?? '';
+                                                    if (cA !== cB) return cA.localeCompare(cB, 'zh');
+                                                    return (a.uiConfig?.sortOrder ?? 0) - (b.uiConfig?.sortOrder ?? 0);
+                                                });
+                                                const map = new Map<string, typeof sorted>();
+                                                sorted.forEach(g => {
+                                                    const key = `Step ${g.uiConfig?.step ?? 1}｜${g.uiConfig?.category ?? '(未分類)'}`;
+                                                    if (!map.has(key)) map.set(key, []);
+                                                    map.get(key)!.push(g);
+                                                });
+                                                return Array.from(map.entries()).map(([label, grps]) => (
+                                                    <optgroup key={label} label={label}>
+                                                        {grps.map(g => <option key={g.id} value={g.id}>需要先選擇：{g.name}</option>)}
+                                                    </optgroup>
+                                                ));
+                                            })()}
                                         </select>
                                     </div>
                                     <div>
@@ -1868,6 +1887,122 @@ export default function AdminOptionManager() {
                                 </div>
                                 <p className="text-[10px] text-gray-400 mt-1.5">設定此大類必須在選擇了特定商品後才會在購物車出現。</p>
                             </div>
+
+                            {/* 🚫 Exclusion Conditions (multi) */}
+                            {(() => {
+                                // Helper: sorted+grouped optgroup list for group selects
+                                const groupOptgroups = (prefix: string) => {
+                                    const filtered = groups.filter(g => g.id !== editingGroupData.id);
+                                    const sorted = [...filtered].sort((a, b) => {
+                                        const sA = a.uiConfig?.step ?? 1; const sB = b.uiConfig?.step ?? 1;
+                                        if (sA !== sB) return sA - sB;
+                                        const cA = a.uiConfig?.category ?? ''; const cB = b.uiConfig?.category ?? '';
+                                        if (cA !== cB) return cA.localeCompare(cB, 'zh');
+                                        return (a.uiConfig?.sortOrder ?? 0) - (b.uiConfig?.sortOrder ?? 0);
+                                    });
+                                    const map = new Map<string, typeof sorted>();
+                                    sorted.forEach(g => {
+                                        const key = `Step ${g.uiConfig?.step ?? 1}｜${g.uiConfig?.category ?? '(未分類)'}`;
+                                        if (!map.has(key)) map.set(key, []);
+                                        map.get(key)!.push(g);
+                                    });
+                                    return Array.from(map.entries()).map(([label, grps]) => (
+                                        <optgroup key={label} label={label}>
+                                            {grps.map(g => <option key={g.id} value={g.id}>{prefix}{g.name}</option>)}
+                                        </optgroup>
+                                    ));
+                                };
+
+                                const conditions: Array<{ groupId: string; optionId?: string }> =
+                                    editingGroupData.uiConfig?.excludeConditions || [];
+
+                                const updateCondition = (idx: number, patch: Partial<{ groupId: string; optionId?: string }>) => {
+                                    const next = conditions.map((c, i) => i === idx ? { ...c, ...patch } : c);
+                                    setEditingGroupData(prev => ({
+                                        ...prev,
+                                        uiConfig: { ...prev.uiConfig, excludeConditions: next }
+                                    }));
+                                };
+
+                                const removeCondition = (idx: number) => {
+                                    const next = conditions.filter((_, i) => i !== idx);
+                                    setEditingGroupData(prev => ({
+                                        ...prev,
+                                        uiConfig: { ...prev.uiConfig, excludeConditions: next }
+                                    }));
+                                };
+
+                                const addCondition = () => {
+                                    setEditingGroupData(prev => ({
+                                        ...prev,
+                                        uiConfig: {
+                                            ...prev.uiConfig,
+                                            excludeConditions: [...(prev.uiConfig?.excludeConditions || []), { groupId: '' }]
+                                        }
+                                    }));
+                                };
+
+                                return (
+                                    <div className="bg-red-50/60 p-3 rounded-lg border border-red-100 shadow-sm">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <label className="text-xs font-bold text-red-700 flex items-center gap-1">
+                                                🚫 排除目標 (選擇本大類後，將隱藏下列大類)
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={addCondition}
+                                                className="px-2 py-1 text-xs bg-red-100 text-red-700 hover:bg-red-200 rounded font-bold transition-colors"
+                                            >
+                                                + 新增條件
+                                            </button>
+                                        </div>
+
+                                        {conditions.length === 0 && (
+                                            <div className="text-xs text-gray-400 text-center py-2">尚未設定排除條件（點「+ 新增條件」開始設定）</div>
+                                        )}
+
+                                        <div className="space-y-2">
+                                            {conditions.map((cond, idx) => (
+                                                <div key={idx} className="flex gap-2 items-center bg-white rounded-lg border border-red-100 p-2 shadow-sm">
+                                                    {/* Group select */}
+                                                    <select
+                                                        className="flex-1 border border-gray-200 rounded px-2 py-1.5 text-xs bg-gray-50 focus:ring-1 focus:ring-red-400 outline-none"
+                                                        value={cond.groupId || ''}
+                                                        onChange={e => updateCondition(idx, { groupId: e.target.value, optionId: undefined })}
+                                                    >
+                                                        <option value="">選擇要隱藏的大類…</option>
+                                                        {groupOptgroups('將隱藏：')}
+                                                    </select>
+                                                    {/* Option select */}
+                                                    <select
+                                                        className="flex-1 border border-gray-200 rounded px-2 py-1.5 text-xs bg-gray-50 focus:ring-1 focus:ring-red-400 outline-none"
+                                                        value={cond.optionId || ''}
+                                                        disabled={!cond.groupId}
+                                                        onChange={e => updateCondition(idx, { optionId: e.target.value || undefined })}
+                                                    >
+                                                        <option value="">任何選項都觸發</option>
+                                                        {cond.groupId && items
+                                                            .filter(i => i.parentId === cond.groupId)
+                                                            .map(i => <option key={i.id} value={i.id}>僅限：{i.name}</option>)
+                                                        }
+                                                    </select>
+                                                    {/* Delete */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeCondition(idx)}
+                                                        className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors shrink-0"
+                                                        title="刪除此條件"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <p className="text-[10px] text-red-400 mt-1.5">當消費者選擇此大類內選項後，下列所設定的大類與選項將不再顯示。</p>
+                                    </div>
+                                );
+                            })()}
 
                             <div>
                                 <div className="flex justify-between items-end mb-1">

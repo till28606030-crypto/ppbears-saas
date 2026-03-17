@@ -59,15 +59,24 @@ export interface SubAttribute {
     options?: SubAttributeOption[];
 }
 
-// --- Types (Matched with AdminOptionManager) ---
+export interface ExcludeCondition {
+    groupId: string;
+    optionId?: string;
+}
+
 export interface OptionGroupUIConfig {
     step?: number;
     displayType?: 'cards' | 'grid' | 'list' | 'checkbox' | 'ai_recognition';
     description?: string;
     descriptionImage?: string;
-    category?: string; // 分類標籤，同 Step 內相同分類的商品會被折疊收合
+    category?: string;
     sortOrder?: number;
     categorySortOrder?: number;
+    dependsOnGroupId?: string;
+    dependsOnOptionId?: string;
+    excludeIfGroupId?: string;  // @deprecated
+    excludeIfOptionId?: string; // @deprecated
+    excludeConditions?: ExcludeCondition[]; // 新：多重排除條件
 }
 
 export interface OptionGroup {
@@ -300,6 +309,40 @@ export default function SaveDesignModal({
                     return false; // Parent selected, but not the specific option
                 }
             }
+
+            // 🚫 主動排除條件 (Active Exclusions)
+            // 邏輯反轉：
+            // 系統正在評估目前的 `group` 是否該顯示
+            // 所以我們必須檢查「所有目前已選擇的其他大類」，如果它們之中有誰宣告了「禁止顯示 `group`」，則 `group` 必須隱藏。
+            
+            for (const [selGroupKey, selOptionId] of Object.entries(selectedOptions)) {
+                // Ignore subAttributes (Step 2+)
+                if (selGroupKey.includes(':')) continue;
+
+                const selGroup = groups.find(g => getGroupKey(g) === selGroupKey);
+                if (!selGroup) continue;
+
+                const selUI = getUI(selGroup);
+                const selExcludes: Array<{ groupId: string; optionId?: string }> = selUI?.excludeConditions || [];
+                
+                // backward compat
+                const selLegacyExcludeGroup = selUI?.excludeIfGroupId;
+                const selLegacyExcludeOption = selUI?.excludeIfOptionId;
+                const activeExcludes = selExcludes.length > 0
+                    ? selExcludes
+                    : (selLegacyExcludeGroup ? [{ groupId: selLegacyExcludeGroup, optionId: selLegacyExcludeOption }] : []);
+
+                // 檢查已選大類的排除條件，是否命中了目前正在評估的 group
+                for (const exc of activeExcludes) {
+                    if (exc.groupId === group.id) {
+                        // 如果該條件沒有設定特定的 optionId (代表只要選了該大類就排除)，或者選中的 optionId 剛好符合
+                        if (!exc.optionId || selOptionId === exc.optionId) {
+                            return false; // 🚫 隱藏目前的 group
+                        }
+                    }
+                }
+            }
+
             return true;
         });
     }, [groups, selectedOptions]);

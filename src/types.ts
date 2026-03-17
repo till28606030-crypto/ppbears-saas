@@ -27,6 +27,11 @@ export interface MarketingTag {
     expiresAt?: string; // ISO datetime string
 }
 
+export interface ExcludeCondition {
+    groupId: string;
+    optionId?: string; // 空=任何選項都觸發
+}
+
 export interface OptionGroupUIConfig {
     step?: number; // 1, 2, 3...
     displayType?: 'cards' | 'grid' | 'list' | 'checkbox' | 'ai_recognition';
@@ -38,6 +43,9 @@ export interface OptionGroupUIConfig {
     categorySortOrder?: number; // 分類標籤本身的排序順序
     dependsOnGroupId?: string; // 顯示條件：必須先選擇的前置規格大類 ID
     dependsOnOptionId?: string; // 顯示條件：必須先選擇的前置子選項 ID (可選)
+    excludeIfGroupId?: string;  // @deprecated 舊單一排除條件，保留向下相容
+    excludeIfOptionId?: string; // @deprecated 舊單一排除條件，保留向下相容
+    excludeConditions?: ExcludeCondition[]; // 多重排除條件（新）
     marketingTags?: MarketingTag[]; // 行銷標註 (新品, 推薦, 限時特價等)
     note?: string; // 內部管理備註
 }
