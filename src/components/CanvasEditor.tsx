@@ -964,6 +964,10 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
     const onImageLayerChangeRef = useRef<((hasImage: boolean) => void) | undefined>(onImageLayerChange);
     useEffect(() => { onImageLayerChangeRef.current = onImageLayerChange; }, [onImageLayerChange]);
 
+    // [FIX] mobileActionsRef：解決 useEffect([]) 的 stale closure 問題
+    const mobileActionsRef = useRef(mobileActions);
+    useEffect(() => { mobileActionsRef.current = mobileActions; }, [mobileActions]);
+
     // Selected Object State
     const [selectedObject, setSelectedObject] = useState<FabricObject | null>(null);
     const [textValue, setTextValue] = useState('');
@@ -3348,8 +3352,10 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 }
 
                                 // data.isFrameLayer 是新格式的主要識別標記
-                                const isFrame = srcJson?.isFrameLayer || srcJson?.data?.isFrameLayer;
+                                // [FIX] 向後相容：舊格式 (v8.4 以前) 可能只有 data.kind === 'frame'，沒有頂層 isFrameLayer
+                                const isFrame = srcJson?.isFrameLayer || srcJson?.data?.isFrameLayer || srcJson?.data?.kind === 'frame';
                                 if (isFrame) {
+                                    enlivenedObj.isFrameLayer = true; // 強制確保，防止任何意外遺失
                                     console.log('[TPL] Frame restored ✅ isFrameLayer=true on object', srcJson?.id || i);
                                 }
 
@@ -3493,7 +3499,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                 absolutePositioned: true,
                             });
 
-                            const preserveInner = (obj as any).hasClipPath === true || (obj as any).frameId;
+                            // [FIX] isFrameLayer 相框物件也必須保留原有 clipPath（不能被 boundary 覆蓋）
+                            const preserveInner = (obj as any).hasClipPath === true || (obj as any).frameId || (obj as any).isFrameLayer;
                             if (preserveInner && obj.clipPath) {
                                 (obj.clipPath as any).clipPath = boundary;
                                 (obj.clipPath as any).dirty = true;
@@ -5071,6 +5078,17 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     // [PPBears] 每次選到圖片都強制套用（修復 Undo/Redo 後控制點復活）
                     enforceImageUniformScaling(e.selected[0] as any);
                     setActiveMobileSubMenu('image');
+
+                    // [FEATURE] 若點擊的是空相框（來自設計模板），自動彈出「我的圖庫」
+                    const selObj = e.selected[0] as any;
+                    if (selObj.isFrameLayer && !disableFrameUpload) {
+                        const isFrameEmpty = !canvas.getObjects().some(
+                            o => (o as any).frameId === selObj.id
+                        );
+                        if (isFrameEmpty && mobileActionsRef.current?.onUpload) {
+                            setTimeout(() => mobileActionsRef.current?.onUpload(), 150);
+                        }
+                    }
                 }
                 updateToolbar();
             }
@@ -5116,10 +5134,10 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         canvas.on('mouse:dblclick', (e) => {
             if (e.target && (e.target as any).isFrameLayer) {
                 // Double-clicking on a frame opens the gallery so the user can pick a photo to fill it
-                if (mobileActions?.onUpload) {
+                if (mobileActionsRef.current?.onUpload) {
                     canvas.setActiveObject(e.target); // Ensure frame stays selected
                     canvas.renderAll();
-                    setTimeout(() => mobileActions.onUpload(), 50);
+                    setTimeout(() => mobileActionsRef.current?.onUpload(), 50);
                 }
                 return;
             }
