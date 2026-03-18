@@ -5,7 +5,7 @@ import { listFrames, Frame } from '../../lib/frameService';
 import CanvasEditor, { CanvasEditorRef } from '../../components/CanvasEditor';
 import FontPicker from '../../components/FontPicker';
 import { AssetItem } from '@/types';
-import { Palette, X, Layers, Image as ImageIcon, Sparkles, Loader2, Save, Type, Plus } from 'lucide-react';
+import { Palette, X, Layers, Image as ImageIcon, Sparkles, Loader2, Save, Type, Plus, Undo2, Redo2, Trash2 } from 'lucide-react';
 
 interface AdminDesignBuilderProps {
     onClose: () => void;
@@ -267,37 +267,67 @@ export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, can
                     </div>
                 </div>
 
-                {/* Canvas Area */}
-                <div className="flex-1 relative flex items-center justify-center bg-gray-100" style={{ backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
-                    <div className="relative w-full h-full flex items-center justify-center p-8">
-                        <CanvasEditor
-                            ref={canvasRef}
-                            currentProduct={currentProductProp}
-                            previewConfig={{
-                                ...productConfig,
-                                width: Math.round(canvasWidthMM * 300 / 25.4),
-                                height: Math.round(canvasHeightMM * 300 / 25.4)
-                            }}
-                            uploadedImage={null}
-                            readOnly={false}
-                            disableDraft={true}
-                            disableFrameUpload={true}
-                        />
-                    </div>
+                {/* Canvas Area - no extra wrapper div so CanvasEditor fills all available space */}
+                <div className="flex-1 relative overflow-hidden">
+                    <CanvasEditor
+                        ref={canvasRef}
+                        currentProduct={currentProductProp}
+                        previewConfig={{
+                            ...productConfig,
+                            width: Math.round(canvasWidthMM * 300 / 25.4),
+                            height: Math.round(canvasHeightMM * 300 / 25.4)
+                        }}
+                        uploadedImage={null}
+                        readOnly={false}
+                        disableDraft={true}
+                        disableFrameUpload={true}
+                        isAdminMode={true}
+                    />
                 </div>
 
                 {/* Right Sidebar */}
                 <div className="w-72 bg-white border-l border-gray-200 shrink-0 z-10 flex flex-col shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)]">
-                    <div className="p-4 border-b border-gray-100 flex items-center gap-2 bg-gray-50">
-                        <Layers className="w-4 h-4 text-gray-500" />
-                        <h3 className="text-sm font-medium text-gray-700">圖層與工具</h3>
+                    {/* 圖層與工具 header with undo/redo/clear */}
+                    <div className="p-3 border-b border-gray-100 bg-gray-50 flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                            <Layers className="w-4 h-4 text-gray-500" />
+                            <h3 className="text-sm font-medium text-gray-700 flex-1">圖層與工具</h3>
+                        </div>
+                        {/* 工具列：復原 / 重做 / 清空 */}
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => canvasRef.current?.undo()}
+                                className="flex-1 flex flex-col items-center justify-center gap-0.5 py-1.5 px-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 rounded-lg transition-all text-xs"
+                                title="復原"
+                            >
+                                <Undo2 className="w-4 h-4" />
+                                <span className="text-[10px] font-medium">復原</span>
+                            </button>
+                            <button
+                                onClick={() => canvasRef.current?.redo()}
+                                className="flex-1 flex flex-col items-center justify-center gap-0.5 py-1.5 px-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 rounded-lg transition-all text-xs"
+                                title="重做"
+                            >
+                                <Redo2 className="w-4 h-4" />
+                                <span className="text-[10px] font-medium">重做</span>
+                            </button>
+                            <div className="w-px h-8 bg-gray-200 mx-0.5" />
+                            <button
+                                onClick={() => canvasRef.current?.clearCanvas()}
+                                className="flex-1 flex flex-col items-center justify-center gap-0.5 py-1.5 px-2 text-gray-500 hover:bg-red-50 hover:text-red-600 rounded-lg transition-all text-xs"
+                                title="清空畫布"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                <span className="text-[10px] font-medium">清空</span>
+                            </button>
+                        </div>
                     </div>
                     <div className="p-4 flex-1 overflow-y-auto">
                         <p className="text-xs text-gray-500 mb-4 bg-blue-50 p-3 rounded text-blue-800 leading-relaxed border border-blue-100">
                             🔔 <strong>設計技巧：</strong><br />
                             於左側點擊即可新增素材、相框、背景或文字。<br />
                             可以直接在畫布上拖曳、旋轉、縮放。<br />
-                            可隨時由左下方切換「預覽商品底圖」，確認套用到不同殼型時的展示效果。所有的貼紙、相框等素材都會原封不動地保留！
+                            所有素材套用到不同殼型時都會完整保留！
                         </p>
                         <p className="text-xs text-amber-700 bg-amber-50 p-3 rounded border border-amber-100 leading-relaxed">
                             💡 <strong>相框提醒：</strong><br />

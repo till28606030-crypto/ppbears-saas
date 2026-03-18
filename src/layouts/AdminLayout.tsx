@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 const APP_VERSION = __APP_VERSION__;
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -7,6 +7,7 @@ import {
   GripVertical, Pencil, Check, RotateCcw
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { USE_PRODUCTS_V2 } from '@/config';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor,
@@ -42,9 +43,10 @@ const DEFAULT_NAV_ITEMS: NavItem[] = [
 
 const STORAGE_KEY = 'ppbears_admin_nav_prefs';
 
-type NavPrefs = { id: string; label: string }[];
+type NavPrefs = { order: string[]; labels: Record<string, string> };
 
-function loadPrefs(): { order: string[]; labels: Record<string, string> } {
+// 讀取本地快取（給 UI 即時登筆，避免閃爍）
+function loadLocalPrefs(): NavPrefs {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
@@ -52,7 +54,8 @@ function loadPrefs(): { order: string[]; labels: Record<string, string> } {
   return { order: DEFAULT_NAV_ITEMS.map(i => i.id), labels: {} };
 }
 
-function savePrefs(order: string[], labels: Record<string, string>) {
+// 儲存到 localStorage
+function persistLocalPrefs(order: string[], labels: Record<string, string>) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ order, labels }));
 }
 
@@ -160,14 +163,53 @@ function SortableNavItem({
 // ─── Main Layout ────────────────────────────────────────────────────
 export default function AdminLayout() {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const location = useLocation();
   const path = location.pathname;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Load persisted prefs
-  const [prefs, setPrefs] = useState(loadPrefs);
+  // 初始從 localStorage 快取讀取（避免 UI 閃爍）
+  const [prefs, setPrefs] = useState<NavPrefs>(loadLocalPrefs);
   const [isEditMode, setIsEditMode] = useState(false);
+
+  // ─── Supabase 同步：儲存 order + labels 到資料庫 ─────────────────
+  const savePrefs = useCallback(async (order: string[], labels: Record<string, string>) => {
+    // 1. 立即寫 localStorage（UI 即時響應）
+    persistLocalPrefs(order, labels);
+    // 2. 非同步同步到 Supabase
+    if (!user?.id) return;
+    try {
+      await supabase.from('admin_preferences').upsert(
+        { user_id: user.id, nav_order: order, nav_labels: labels },
+        { onConflict: 'user_id' }
+      );
+    } catch (e) {
+      console.warn('[AdminLayout] Failed to sync prefs to DB:', e);
+    }
+  }, [user?.id]);
+
+  // ─── 掛載時從 Supabase 同步（跨裝置、跨瀏覽器）───────────────────
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('admin_preferences')
+          .select('nav_order, nav_labels')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (data && !cancelled) {
+          const synced: NavPrefs = { order: data.nav_order ?? [], labels: data.nav_labels ?? {} };
+          persistLocalPrefs(synced.order, synced.labels);
+          setPrefs(synced);
+        }
+      } catch (e) {
+        console.warn('[AdminLayout] Failed to load prefs from DB, using local cache:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   // Build ordered item list
   const orderedItems = (() => {
@@ -227,6 +269,7 @@ export default function AdminLayout() {
     setPrefs(fresh);
     savePrefs(fresh.order, fresh.labels);
   };
+
 
   const Sidebar = (
     <aside className={`

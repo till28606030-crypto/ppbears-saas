@@ -853,6 +853,8 @@ interface CanvasEditorProps {
     disableDraft?: boolean;
     readOnly?: boolean;
     disableFrameUpload?: boolean;
+    /** 後台設計款模板建立模式：使用白色大畫布 UI，隱藏行動底欄 */
+    isAdminMode?: boolean;
     /** Product ID 供 AI 點數徽章顯示 */
     productId?: string | null;
     /** 打開 AI創意 Modal（右面板 AI創意按鈕回呼） */
@@ -895,6 +897,8 @@ export interface CanvasEditorRef {
     exportAsJSON: () => Promise<string>;
     exportAsDataURL: (options?: { withMask?: boolean }) => Promise<string>;
     addTextLayer: (options: { text: string; fontFamily: string; fill: string; fontSize: number }) => void;
+    undo: () => void;
+    redo: () => void;
 }
 
 const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedRef<CanvasEditorRef>) => {
@@ -913,7 +917,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         onImageLayerChange,
         disableDraft = false,
         readOnly = false,
-        disableFrameUpload = false
+        disableFrameUpload = false,
+        isAdminMode = false
     } = props;
 
     const [searchParams] = useSearchParams();
@@ -2846,7 +2851,15 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     isFrameLayer: true,
                     perPixelTargetFind: true, // Allow clicking through transparent areas
                     lockUniScaling: true,
-                    clipPathPoints: clipPathPoints
+                    clipPathPoints: clipPathPoints,
+                    // 【關鍵】也存入 data 物件，確保 Fabric v6 toJSON 能夠序列化
+                    // （Fabric v6 不序列化直接 set 的自訂屬性，但 data 物件是例外）
+                    data: {
+                        ...((img as any).data || {}),
+                        kind: 'frame',
+                        isFrameLayer: true,
+                        clipPathPoints: clipPathPoints,
+                    }
                 });
 
                 canvas.add(img);
@@ -3199,6 +3212,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         insertAiCollage: handleInsertAiCollage,
         clearCanvas: clearCanvas,
         confirmClearCanvas: confirmClearCanvas,
+        undo: undo,
+        redo: redo,
         getCanvasJSON: () => {
             const canvas = fabricCanvas.current;
             if (!canvas) return {};
@@ -3297,6 +3312,12 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     }
 
                     // 3. Enliven & Add Objects — per-object to survive failed/expired URLs
+                    // We track (srcJson, enlivenedObj) pairs to apply custom props reliably after enliven.
+                    const CUSTOM_PROPS_TO_RESTORE = [
+                        'isFrameLayer', 'clipPathPoints', 'frameId', 'isCropLocked',
+                        'isUserBackground', 'perPixelTargetFind', 'isBaseLayer', 'isMaskLayer',
+                        'hasClipPath', 'frameMeta'
+                    ];
                     let enlivenedObjects: FabricObject[] = [];
                     try {
                         // Enliven each object individually so a single failed URL
@@ -3304,9 +3325,35 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         const results = await Promise.allSettled(
                             json.objects.map((obj: any) => util.enlivenObjects([obj]))
                         );
-                        for (const r of results) {
+
+                        // 【關鍵修復 v2】用索引配對 JSON 原始物件與 enlivened 物件，
+                        // 確保 isFrameLayer 等自訂屬性被回填。
+                        // 理由：Fabric v6 enlivenObjects 不保證回填頂層自訂屬性，
+                        //       且 ensureObjectId 可能覆蓋 id，造成 id Map 查詢失敗。
+                        for (let i = 0; i < results.length; i++) {
+                            const r = results[i];
                             if (r.status === 'fulfilled' && Array.isArray(r.value) && r.value.length > 0) {
-                                enlivenedObjects.push(...(r.value as FabricObject[]));
+                                const enlivenedObj = r.value[0] as any;
+                                const srcJson = json.objects[i];
+
+                                // 強制回填自訂屬性（在 ensureObjectId 之前執行，avoid id overwrite）
+                                // 策略：先讀頂層（舊格式），再讀 data 物件（新格式，Fabric v6 可靠序列化）
+                                for (const prop of CUSTOM_PROPS_TO_RESTORE) {
+                                    const topLevel = srcJson?.[prop];
+                                    const fromData = srcJson?.data?.[prop];
+                                    const value = topLevel !== undefined ? topLevel : fromData;
+                                    if (value !== undefined) {
+                                        enlivenedObj[prop] = value;
+                                    }
+                                }
+
+                                // data.isFrameLayer 是新格式的主要識別標記
+                                const isFrame = srcJson?.isFrameLayer || srcJson?.data?.isFrameLayer;
+                                if (isFrame) {
+                                    console.log('[TPL] Frame restored ✅ isFrameLayer=true on object', srcJson?.id || i);
+                                }
+
+                                enlivenedObjects.push(enlivenedObj);
                             }
                             // 'rejected' or empty = image URL dead / parse error — silently skip
                         }
@@ -3407,6 +3454,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                     enlivenedObjects.forEach(obj => {
                         ensureObjectId(obj, 'tpl');
+
+                        // Note: custom props (isFrameLayer, etc.) already applied during enliven loop above.
 
                         // Apply alignment compensation
                         if (scaleFactor !== 1) {
@@ -3586,6 +3635,67 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 'scaleX', 'scaleY', 'left', 'top', 'width', 'height', 'angle', 'fill', 'stroke', 'strokeWidth',
                 'data', 'hasClipPath', 'isCropLocked', 'frameMeta', '__baseScale', 'clipPathPoints'
             ]);
+
+            // 【關鍵補丁 v3】Fabric v6 的 toJSON 不序列化透過 .set() 直接賦值的自訂屬性。
+            // 策略：先以 index 對應注入 id（canvas.getObjects() 內含 excludeFromExport 物件，
+            //       但 toJSON 排除它們 → 原本 index 會錯位）。
+            // 更安全的做法：用 id 作為 key 查找 fabricObj，避免任何 index 偏移問題。
+            // 
+            // 步驟 1：對 canvas.getObjects() 建立 id → fabricObj 的 Map。
+            //         Fabric v6 的 get('id') 能正常回傳 ensureObjectId 設定的 id，
+            //         因為它是直接屬性，也在 propertiesToInclude 內 → toJSON 會有 jsonObj.id。
+            const CUSTOM_SERIALIZABLE_PROPS = [
+                'isFrameLayer', 'clipPathPoints', 'frameId', 'isCropLocked',
+                'isUserBackground', 'isBaseLayer', 'isMaskLayer', 'frameMeta', 'perPixelTargetFind'
+            ];
+
+            // 步驟 1: 建立 pos → id 的映射（先注入 id，以便後面用 id 匹配）
+            //   canvas.getObjects() 包含所有物件（含 excludeFromExport）
+            //   json.objects 排除了 excludeFromExport 物件
+            //   所以先把每個 fabricObj 的 id 標記到「剩下的」jsonObj 中（跳過被排除的）
+            const allFabricObjects = canvas.getObjects() as any[];
+            let jIdx = 0;
+            for (const fabricObj of allFabricObjects) {
+                if (fabricObj.excludeFromExport) continue; // 跳過會被 toJSON 排除的物件
+                const jsonObj = json.objects?.[jIdx];
+                if (!jsonObj) break;
+                // Step 1: inject id into jsonObj if missing
+                if (!jsonObj.id && fabricObj.id) {
+                    jsonObj.id = fabricObj.id;
+                }
+                jIdx++;
+            }
+
+            // 步驟 2: 建立 id → fabricObj 的 Map（現在 json 和 canvas 物件都有 id）
+            const idToFabricObj = new Map<string, any>();
+            for (const fabricObj of allFabricObjects) {
+                if (fabricObj.id) idToFabricObj.set(fabricObj.id, fabricObj);
+            }
+
+            // 步驟 3: 用 id 匹配，注入缺失的自訂屬性
+            if (json.objects && Array.isArray(json.objects)) {
+                json.objects.forEach((jsonObj: any) => {
+                    const fabricObj = jsonObj.id ? idToFabricObj.get(jsonObj.id) : null;
+                    if (!fabricObj) return;
+                    for (const prop of CUSTOM_SERIALIZABLE_PROPS) {
+                        if (fabricObj[prop] !== undefined && jsonObj[prop] === undefined) {
+                            jsonObj[prop] = fabricObj[prop];
+                        }
+                    }
+                    // 雙保險：同步 data 物件
+                    if (fabricObj.isFrameLayer) {
+                        jsonObj.data = {
+                            ...(jsonObj.data || {}),
+                            kind: 'frame',
+                            isFrameLayer: true,
+                            clipPathPoints: fabricObj.clipPathPoints,
+                        };
+                    }
+                });
+                const frameCount = json.objects.filter((o: any) => o.isFrameLayer).length;
+                console.log('[exportAsJSON] post-inject done. Frame objects:', frameCount);
+            }
+
             return JSON.stringify(json);
         },
         exportAsDataURL: async (options?: { withMask?: boolean }) => {
@@ -4155,7 +4265,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         if (!fabricCanvas.current || !containerRef.current) return;
 
         const canvas = fabricCanvas.current;
-        const PADDING = 60;
+        const PADDING = isAdminMode ? 8 : 60;
         const availableWidth = containerDimensions.width - PADDING * 2;
         const availableHeight = containerDimensions.height - PADDING * 2;
 
@@ -4164,7 +4274,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
         const scaleX = availableWidth / REAL_WIDTH;
         const scaleY = availableHeight / REAL_HEIGHT;
-        const zoom = Math.min(scaleX, scaleY) * 0.8; // 0.8 factor for spacing
+        const zoom = Math.min(scaleX, scaleY) * (isAdminMode ? 0.99 : 0.8); // admin: fill space; user: leave breathing room
 
         const visualWidth = REAL_WIDTH * zoom;
         const visualHeight = REAL_HEIGHT * zoom;
@@ -4936,6 +5046,16 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             if (e.selected && e.selected.length > 0) {
                 setSelectedObject(e.selected[0]);
 
+                // [DEBUG] 追蹤 isFrameLayer 是否存在
+                const dbgObj = e.selected[0] as any;
+                console.log('[DEBUG-FRAME] selected obj:', {
+                    type: dbgObj.type,
+                    isFrameLayer: dbgObj.isFrameLayer,
+                    'data.isFrameLayer': dbgObj.data?.isFrameLayer,
+                    'data.kind': dbgObj.data?.kind,
+                    id: dbgObj.id,
+                });
+
                 const objType = e.selected[0].type;
                 const isText = objType === 'i-text' || objType === 'text';
                 const isImage = objType === 'image';
@@ -5348,8 +5468,11 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             try {
                 const seq = ++enterSeqRef.current;
 
-                // (1) Template first
-                if (baseImage || maskImage || currentProduct?.id === 'admin_design_builder') {
+                // (1) Template first - Admin 模式不需要底圖，直接顯示空白畫布
+                if (isAdminMode) {
+                    // Admin 模式：跳過底圖載入，直接標記為已載入
+                    setHasTemplateLoaded(true);
+                } else if (baseImage || maskImage || currentProduct?.id === 'admin_design_builder') {
                     const productForTemplate = currentProduct || { id: 'unknown', updated_at: Date.now() };
                     await applyTemplateForProduct({
                         ...productForTemplate,
@@ -6386,6 +6509,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 </div>
             )}
 
+
             {/* Loading Overlay */}
             {isGenerating && (
                 <div className="absolute inset-0 z-50 bg-white/80 flex flex-col items-center justify-center backdrop-blur-sm">
@@ -6409,18 +6533,41 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         setActiveAdjust(null);
                     }
                 }}
-                className="flex-1 flex flex-col md:flex-row items-center justify-start md:justify-center bg-[radial-gradient(circle_at_center,_#ffffff_0%,_#d1d5db_100%)] px-4 pb-32 pt-24 md:p-4 overflow-y-auto md:overflow-hidden relative order-first md:order-none"
+                className={`flex-1 flex flex-col md:flex-row items-center justify-center overflow-hidden relative order-first md:order-none ${
+                    isAdminMode
+                        ? 'bg-white p-0'
+                        : 'bg-[radial-gradient(circle_at_center,_#ffffff_0%,_#d1d5db_100%)] px-4 pb-32 pt-24 md:p-4 overflow-y-auto md:overflow-hidden'
+                }`}
             >
+                {/* Admin Canvas Wrapper: checkerboard as CSS background so it shows through Fabric's transparent canvas */}
                 <div
-                    className={`shadow-2xl rounded-lg overflow-hidden bg-white max-w-full max-h-full transition-opacity duration-300 ${hasTemplateLoaded ? 'opacity-100' : 'opacity-0'
-                        }`}
-                    style={{ touchAction: 'none', overscrollBehavior: 'none' }}
+                    className={`transition-opacity duration-300 ${hasTemplateLoaded ? 'opacity-100' : 'opacity-0'
+                        } ${!isAdminMode ? 'shadow-2xl rounded-lg overflow-hidden bg-white max-w-full max-h-full' : ''}`}
+                    style={{
+                        touchAction: 'none',
+                        overscrollBehavior: 'none',
+                        ...(isAdminMode ? {
+                            // 棋盤格只出現在畫布範圍，背景區域保持白色
+                            backgroundImage: [
+                                'linear-gradient(45deg, #c0c0c0 25%, transparent 25%)',
+                                'linear-gradient(-45deg, #c0c0c0 25%, transparent 25%)',
+                                'linear-gradient(45deg, transparent 75%, #c0c0c0 75%)',
+                                'linear-gradient(-45deg, transparent 75%, #c0c0c0 75%)'
+                            ].join(', '),
+                            backgroundSize: '20px 20px',
+                            backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
+                            backgroundColor: '#f0f0f0',
+                            boxShadow: '0 8px 40px 0 rgba(0,0,0,0.28)',
+                            borderRadius: '4px',
+                            overflow: 'hidden',
+                        } : {})
+                    }}
                 >
                     <canvas ref={canvasEl} />
                 </div>
 
-                {/* Unified Top Controls & Floating Actions Container */}
-                {/* Unified Top Controls & Floating Actions Container */}
+                {/* Unified Top Controls - 非 admin 模式才顯示 */}
+                {!isAdminMode && (
                 <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-col items-center gap-2 w-max max-w-full px-2">
 
                     {/* 1. Static Top Controls (Layers, Undo, Redo, Clear) */}
@@ -6469,6 +6616,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         </button>
                     </div>
                 </div>
+                )}
 
                 {/* 2. Dynamic Floating Quick Actions (The "Pill") - Positioned relative to property bar on mobile */}
                 {selectedObject && !showMobileTextInput && !isMobileLayersOpen && (
