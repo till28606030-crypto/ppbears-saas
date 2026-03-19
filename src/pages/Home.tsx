@@ -2670,13 +2670,13 @@ export default function Home() {
                     height_mm: currentProduct?.specs?.height_mm,
                     dpi: currentProduct?.specs?.dpi || 300,
                 }}
-                onCheckAndIncrementUsage={async () => {
+                onCheckAndIncrementUsage={async (cost = 1) => {
                     try {
                         const apiOrigin = (import.meta as any).env?.VITE_API_ORIGIN || '';
                         const checkRes = await fetch(`${apiOrigin}/api/ai/usage-check-increment`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ product_id: currentProduct?.id || null }),
+                            body: JSON.stringify({ product_id: currentProduct?.id || null, cost }),
                         });
                         const checkData = await checkRes.json();
                         if (!checkData.allowed) {
@@ -2693,12 +2693,12 @@ export default function Home() {
                         const today = new Date().toISOString().split('T')[0];
                         const usageKey = `ppbears_ai_usage_${today}`;
                         const currentUsage = Number(localStorage.getItem(usageKey) || '0');
-                        const limit = currentProduct?.specs?.ai_usage_limit ?? 10;
-                        if (currentUsage >= limit) {
+                        const limit = currentProduct?.specs?.ai_usage_limit ?? 20; // v6.0: 20 points
+                        if (currentUsage + cost > limit) {
                             setShowAiLimitModal(true);
                             return false;
                         }
-                        localStorage.setItem(usageKey, (currentUsage + 1).toString());
+                        localStorage.setItem(usageKey, (currentUsage + cost).toString());
                         setAiUsageRefreshTrigger(prev => prev + 1);
                         return true;
                     }

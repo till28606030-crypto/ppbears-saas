@@ -44,6 +44,7 @@ export default function DesignCollageModal({
   const [previews, setPreviews] = useState<string[]>([]);
   const [styles, setStyles] = useState<StylePreset[]>([]);
   const [selectedStyle, setSelectedStyle] = useState<StylePreset | null>(null);
+  const [userCustomPrompt, setUserCustomPrompt] = useState(''); // 使用者自訂主題
   const [isGenerating, setIsGenerating] = useState(false);
   const [loadingStyles, setLoadingStyles] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +85,7 @@ export default function DesignCollageModal({
       setFiles([]);
       setPreviews([]);
       setSelectedStyle(null);
+      setUserCustomPrompt('');
       setError(null);
       setIsGenerating(false);
       
@@ -184,6 +186,7 @@ export default function DesignCollageModal({
       const bgPayload = {
         mode: 'background',
         stylePrompt: selectedStyle.prompt,
+        userCustomPrompt: userCustomPrompt.trim() || undefined,
         widthMm: productSpecs?.width_mm,
         heightMm: productSpecs?.height_mm,
         dpi: productSpecs?.dpi
@@ -253,7 +256,24 @@ export default function DesignCollageModal({
 
         {/* Body - scrollable */}
         <div className="p-6 space-y-5 overflow-y-auto flex-1">
-          {/* Step 1: Upload Photos */}
+          {/* Step 1: Custom Theme Input */}
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-1.5">
+              🎯 想要的主題 <span className="text-gray-400 font-normal text-xs">（選填）</span>
+            </label>
+            <input
+              type="text"
+              value={userCustomPrompt}
+              onChange={e => setUserCustomPrompt(e.target.value)}
+              disabled={isGenerating}
+              maxLength={100}
+              placeholder="例如：京都街景、貓咪、粉藍色調..."
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 disabled:opacity-50 placeholder-gray-300"
+            />
+            <p className="text-[10px] text-gray-400 mt-1">輸入物品、地名、顏色等關鍵字，AI 將以此為核心主題生成背景</p>
+          </div>
+
+          {/* Step 2: Upload Photos */}
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-2">
               📸 上傳照片（1-{selectedStyle?.max_photos ?? (styles.length > 0 ? styles[0].max_photos : 3)} 張）

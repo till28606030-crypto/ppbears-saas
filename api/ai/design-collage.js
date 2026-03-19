@@ -1,4 +1,5 @@
 import Replicate from 'replicate';
+import OpenAI from 'openai';
 import sharp from 'sharp';
 import { setCors } from '../_cors.js';
 
@@ -11,6 +12,46 @@ export const config = {
 };
 
 const MAX_DIMENSION = 2048;
+
+/**
+ * 如果輸入含有中文（或其他非 ASCII），用 GPT-4o-mini 翻譯並擴展為豐富的英文視覺描述。
+ * 若已是英文，則仅小幅擴展驗證名詞。
+ */
+async function expandThemeToEnglish(theme) {
+    const hasNonAscii = /[^\x00-\x7F]/.test(theme);
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const systemPrompt = hasNonAscii
+        ? `You are a creative AI art director. The user will give you a short keyword in Chinese. 
+Translate it to English, then expand it into a rich, vivid visual description (15-25 words) that helps an AI image generator understand the scene/style/subject.
+Only reply with the English visual description — no explanations, no Chinese, no punctuation at the end.`
+        : `You are a creative AI art director. The user will give you a short keyword or phrase. 
+Expand it into a rich, specific visual description (15-25 words) for an AI image generator.
+Only reply with the expanded English description — no explanations.`;
+
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
+
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: theme }
+            ],
+            max_tokens: 80,
+            temperature: 0.4
+        }, { signal: controller.signal });
+
+        clearTimeout(timeoutId);
+        const expanded = response.choices?.[0]?.message?.content?.trim();
+        console.log(`[THEME] Original: "${theme}" → Expanded: "${expanded}"`);
+        return expanded || theme;
+    } catch (err) {
+        console.warn('[THEME] Expand failed, using original:', err.message);
+        return theme; // 安全降級：回掘原始輸入
+    }
+}
 
 async function processImage(buffer) {
     try {
@@ -91,8 +132,27 @@ export default async function handler(req, res) {
         }
 
         // 5. Parse Body
-        const { images = [], stylePrompt, widthMm, heightMm, dpi: inputDpi, mode } = req.body || {};
+        const { images = [], stylePrompt, userCustomPrompt, widthMm, heightMm, dpi: inputDpi, mode } = req.body || {};
         const isBackgroundOnly = mode === 'background';
+
+        // Build the user theme prefix (highest-weight prompt) if provided
+        const userTheme = userCustomPrompt && String(userCustomPrompt).trim()
+            ? String(userCustomPrompt).trim()
+            : null;
+
+        // Auto-translate/expand to English if needed (non-ASCII detected = Chinese input)
+        let expandedTheme = null;
+        if (userTheme && process.env.OPENAI_API_KEY) {
+            expandedTheme = await expandThemeToEnglish(userTheme);
+        } else if (userTheme) {
+            expandedTheme = userTheme;
+        }
+
+        // When user provides a theme, use strong mandatory language so it overrides
+        // any "random landscape" instructions inside the style prompt.
+        const themePrefix = expandedTheme
+            ? `IMPORTANT REQUIRED SUBJECT: "${expandedTheme}". The scene MUST specifically depict this. Do NOT use generic or random substitutes.`
+            : null;
 
         if (!isBackgroundOnly && (!Array.isArray(images) || images.length === 0)) {
             return res.status(400).json({ success: false, code: 'NO_IMAGES', message: '請至少上傳 1 張圖片' });
@@ -142,12 +202,14 @@ export default async function handler(req, res) {
 
         const fullPrompt = isBackgroundOnly
             ? [
+                themePrefix,                           // 用戶自訂主題（最高權重）
                 `Create a beautiful, abstract background or scenery fitting for a phone case design.`,
                 `Style: ${stylePrompt}`,
                 `Do NOT include any people, character subjects, or text. Just a pure stylistic background that seamlessly blends.`,
                 dimensionHint,
             ].filter(Boolean).join(' ')
             : [
+                themePrefix,                           // 用戶自訂主題（最高權重）
                 `Create a beautiful, print-ready design collage using the provided ${images.length} photo(s).`,
                 `Style: ${stylePrompt}`,
                 `Layout: aesthetically balanced composition with seamless photo blending.`,

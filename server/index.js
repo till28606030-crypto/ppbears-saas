@@ -498,8 +498,22 @@ app.post('/api/ai/design-collage', requireAiAuth, express.json({ limit: '50mb' }
     console.log(`[AI] HIT /api/ai/design-collage (ID: ${BUILD_ID})`);
     try {
         // --- Validate inputs ---
-        const { images = [], stylePrompt, widthMm, heightMm, dpi: inputDpi, mode } = req.body || {};
+        const { images = [], stylePrompt, userCustomPrompt, widthMm, heightMm, dpi: inputDpi, mode } = req.body || {};
         const isBackgroundOnly = mode === 'background';
+
+        // --- Build user theme prefix (highest-weight prompt) ---
+        const userTheme = userCustomPrompt && String(userCustomPrompt).trim()
+            ? String(userCustomPrompt).trim()
+            : null;
+        let expandedTheme = null;
+        if (userTheme && process.env.OPENAI_API_KEY) {
+            expandedTheme = await expandThemeToEnglish(userTheme);
+        } else if (userTheme) {
+            expandedTheme = userTheme;
+        }
+        const themePrefix = expandedTheme
+            ? `IMPORTANT REQUIRED SUBJECT: "${expandedTheme}". The scene MUST specifically depict this. Do NOT use generic or random substitutes.`
+            : null;
 
         if (!isBackgroundOnly && (!Array.isArray(images) || images.length === 0)) {
             return fail(res, '請至少上傳 1 張圖片', { errorCode: 'NO_IMAGES' });
@@ -558,12 +572,14 @@ app.post('/api/ai/design-collage', requireAiAuth, express.json({ limit: '50mb' }
 
         const fullPrompt = isBackgroundOnly
             ? [
+                themePrefix,                            // 用戶自訂主題（最高權重）
                 `Create a beautiful, abstract background or scenery fitting for a phone case design.`,
                 `Style: ${stylePrompt}`,
                 `Do NOT include any people, character subjects, or text. Just a pure stylistic background that seamlessly blends.`,
                 dimensionHint,
             ].filter(Boolean).join(' ')
             : [
+                themePrefix,                            // 用戶自訂主題（最高權重）
                 `Create a beautiful, print-ready design collage using the provided ${images.length} photo(s).`,
                 `Style: ${stylePrompt}`,
                 `Layout: aesthetically balanced composition with seamless photo blending.`,
@@ -576,24 +592,26 @@ app.post('/api/ai/design-collage', requireAiAuth, express.json({ limit: '50mb' }
         console.log(`[AI] Prompt: ${fullPrompt.substring(0, 200)}...`);
 
         // --- Call Replicate ---
+        // Background: use flux-1.1-pro for high resolution print-quality output
+        // Collage: use flux-kontext multi-image model
         let actualModel = "flux-kontext-apps/multi-image-list";
         const input = {
             prompt: fullPrompt,
-            aspect_ratio: aspectRatioStr,
             output_format: "png",
         };
 
         if (isBackgroundOnly) {
-            // Text to image model for pure background
-            actualModel = "black-forest-labs/flux-schnell";
-            // flux-schnell doesn't use input_images
+            // flux-1.1-pro: much higher quality & resolution than flux-schnell, suitable for printing
+            actualModel = "black-forest-labs/flux-1.1-pro";
+            input.aspect_ratio = aspectRatioStr;
+            input.output_quality = 100;  // max quality
+            input.prompt_upsampling = true; // better prompt adherence
         } else {
+            input.aspect_ratio = aspectRatioStr;
             input.input_images = imageUris;
-            
-            // If only 1-2 images, use the cheaper Pro model
+
             if (images.length <= 2) {
                 actualModel = "flux-kontext-apps/multi-image-kontext-pro";
-                // Pro model uses input_image_1 / input_image_2 instead of input_images array
                 delete input.input_images;
                 input.input_image_1 = imageUris[0];
                 if (imageUris[1]) {
@@ -778,6 +796,42 @@ const OpenAI = require('openai');
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
+
+/**
+ * 如果輸入含有中文（非 ASCII），用 GPT-4o-mini 翻譯並擴展為豐富的英文視覺描述。
+ * 若已是英文，就小幅擴展詳寫。失敗時回掕原始輸入。
+ */
+async function expandThemeToEnglish(theme) {
+    const hasNonAscii = /[^\x00-\x7F]/.test(theme);
+    const gptClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const systemPrompt = hasNonAscii
+        ? `You are a creative AI art director. The user gives you a short keyword in Chinese.
+Translate it to English, then expand it into a rich, vivid visual description (15-25 words) that helps an AI image generator understand the scene/style/subject.
+Only reply with the English visual description — no explanations, no Chinese, no punctuation at the end.`
+        : `You are a creative AI art director. The user gives you a short keyword or phrase.
+Expand it into a rich, specific visual description (15-25 words) for an AI image generator.
+Only reply with the expanded English description — no explanations.`;
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const response = await gptClient.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: theme }
+            ],
+            max_tokens: 80,
+            temperature: 0.4
+        }, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        const expanded = response.choices?.[0]?.message?.content?.trim();
+        console.log(`[THEME] "${theme}" → "${expanded}"`);
+        return expanded || theme;
+    } catch (err) {
+        console.warn('[THEME] expand failed, using original:', err.message);
+        return theme;
+    }
+}
 
 app.post('/api/ai/auto-tag', express.json({ limit: '1mb' }), async (req, res) => {
     console.log(`[AI] HIT /api/ai/auto-tag (ID: ${BUILD_ID})`);

@@ -4300,23 +4300,51 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         const canvas = fabricCanvas.current;
         if (!canvas || !obj) return;
 
-        // Debug Frame Sync
+        // Frame Sync (isFrameLayer → sync linked photos)
         if ((obj as any).isFrameLayer) {
-            // console.log('[FrameSync] Frame Moving:', obj.id);
             const objects = canvas.getObjects();
-            const photos = objects.filter(o => (o as any).frameId === obj.id);
-            // console.log('[FrameSync] Linked Photos:', photos.length);
+            const photos = objects.filter(o => (o as any).frameId === (obj as any).id);
+
+            // --- Calculate Deltas ---
+            const prevLeft = (obj as any)._prevLeft ?? obj.left;
+            const prevTop = (obj as any)._prevTop ?? obj.top;
+            const prevAngle = (obj as any)._prevAngle ?? obj.angle;
+            const prevScaleX = (obj as any)._prevScaleX ?? obj.scaleX;
+            const prevScaleY = (obj as any)._prevScaleY ?? obj.scaleY;
+
+            const dx = obj.left - prevLeft;
+            const dy = obj.top - prevTop;
+            const dAngle = obj.angle - prevAngle;
+            // Scale ratio (how much the frame grew relative to last tick)
+            const ratioX = prevScaleX !== 0 ? (obj.scaleX ?? 1) / prevScaleX : 1;
+            const ratioY = prevScaleY !== 0 ? (obj.scaleY ?? 1) / prevScaleY : 1;
+            const isScaling = ratioX !== 1 || ratioY !== 1;
 
             photos.forEach(photo => {
-                // Always Sync ClipPath (Hole) to Frame
+                // --- 1. Scale photo with frame ---
+                if (isScaling) {
+                    // Scale the photo itself
+                    photo.scaleX = (photo.scaleX ?? 1) * ratioX;
+                    photo.scaleY = (photo.scaleY ?? 1) * ratioY;
+
+                    // Reposition photo so it stays centered on the frame
+                    // The offset from frame center must also scale.
+                    const frameCX = obj.left;
+                    const frameCY = obj.top;
+                    const photoOffsetX = photo.left - frameCX;
+                    const photoOffsetY = photo.top - frameCY;
+                    photo.left = frameCX + photoOffsetX * ratioX;
+                    photo.top = frameCY + photoOffsetY * ratioY;
+                }
+
+                // --- 2. Sync ClipPath to frame ---
                 if (photo.clipPath) {
-                    // Calculate offset based on frameOffsetX/Y
                     const frameOffsetX = (photo.clipPath as any).frameOffsetX || 0;
                     const frameOffsetY = (photo.clipPath as any).frameOffsetY || 0;
 
                     const offsetVec = rotateVector(
-                        frameOffsetX * obj.scaleX,
-                        frameOffsetY * obj.scaleY,
+                        frameOffsetX * (obj.scaleX ?? 1),
+                        frameOffsetY * (obj.scaleY ?? 1),
                         obj.angle
                     );
 
@@ -4334,53 +4362,32 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     photo.clipPath.setCoords();
                 }
 
-                // Always Sync Photo Position to Frame (Container carries Content)
-                // This allows moving the "Whole Composition" even if Crop Mode (Unlock) is active.
-                // Unlock Mode only affects "Moving Photo moves Frame" (Part 2).
-
-                // Calculate Translation Delta
-                const prevLeft = (obj as any)._prevLeft ?? obj.left;
-                const prevTop = (obj as any)._prevTop ?? obj.top;
-                const dx = obj.left - prevLeft;
-                const dy = obj.top - prevTop;
-
-                // Calculate Rotation Delta
-                const prevAngle = (obj as any)._prevAngle ?? obj.angle;
-                const dAngle = obj.angle - prevAngle;
-
+                // --- 3. Translate (move) photo with frame ---
                 if (dx !== 0 || dy !== 0) {
                     photo.left += dx;
                     photo.top += dy;
                 }
 
+                // --- 4. Rotate photo around frame center ---
                 if (dAngle !== 0) {
-                    // Rotate Photo Angle
                     photo.angle += dAngle;
-
-                    // Rotate Photo Position around Frame Center
-                    // 1. Get Frame Center (New Position)
                     const frameCenter = new Point(obj.left, obj.top);
-
-                    // 2. Rotate Photo Center around Frame Center
                     const photoCenter = new Point(photo.left, photo.top);
-                    // Use Point.rotate instead of util.rotatePoint in Fabric v6
                     const newPhotoCenter = photoCenter.rotate(util.degreesToRadians(dAngle), frameCenter);
-
                     photo.left = newPhotoCenter.x;
                     photo.top = newPhotoCenter.y;
                 }
 
-                if (dx !== 0 || dy !== 0 || dAngle !== 0) {
-                    photo.setCoords();
-                }
-
+                photo.setCoords();
                 photo.dirty = true;
             });
 
-            // Update prev coords for next delta
+            // --- Update prev state for next delta ---
             (obj as any)._prevLeft = obj.left;
             (obj as any)._prevTop = obj.top;
             (obj as any)._prevAngle = obj.angle;
+            (obj as any)._prevScaleX = obj.scaleX;
+            (obj as any)._prevScaleY = obj.scaleY;
         }
 
         // 2. Photo Moved -> Sync Frame Overlay
@@ -5153,12 +5160,14 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
         // Sync Frame ClipPaths & Rotation
         const handleSyncWrapper = (e: any) => {
-            // Initialize prev coords/angle on start of interaction
+            // Initialize prev coords/angle/scale on start of interaction
             if (e.target) {
                 if ((e.target as any)._prevLeft === undefined) {
                     (e.target as any)._prevLeft = e.target.left;
                     (e.target as any)._prevTop = e.target.top;
                     (e.target as any)._prevAngle = e.target.angle;
+                    (e.target as any)._prevScaleX = e.target.scaleX;
+                    (e.target as any)._prevScaleY = e.target.scaleY;
                 }
             }
             handleFrameSync(e);
@@ -5236,6 +5245,9 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             if (e.target) {
                 (e.target as any)._prevLeft = e.target.left;
                 (e.target as any)._prevTop = e.target.top;
+                (e.target as any)._prevAngle = e.target.angle;
+                (e.target as any)._prevScaleX = e.target.scaleX;
+                (e.target as any)._prevScaleY = e.target.scaleY;
             }
         });
         canvas.on('object:scaling', handleFrameSync);
