@@ -839,6 +839,8 @@ interface CanvasEditorProps {
         onAiDesignCollage?: () => void;
         onOpenProduct: () => void;
     };
+    /** Toolbar config from specs (order/visibility/labels), synced from ToolbarSettings */
+    toolbarConfig?: Array<{ id: string; label: string; visible: boolean; sort_order: number }>;
     onImageLayerChange?: (hasImage: boolean) => void;
     previewConfig?: {
         width: number;
@@ -918,7 +920,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         disableDraft = false,
         readOnly = false,
         disableFrameUpload = false,
-        isAdminMode = false
+        isAdminMode = false,
+        toolbarConfig,
     } = props;
 
     const [searchParams] = useSearchParams();
@@ -5800,32 +5803,47 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                 const outputImage = outputUrl;
 
-                // ── Persist AI output to Supabase Storage (prevent expired temp URLs in canvas_json) ──
+                // ── Persist AI output to Supabase Storage via Canvas Extraction (Bypass fetch CORS) ──
                 let permanentOutputUrl = outputImage;
-                try {
-                    const aiImgRes = await fetch(outputImage);
-                    if (aiImgRes.ok) {
-                        const aiBlob = await aiImgRes.blob();
+
+                // B1. Only proceed with canvas modification if we have a valid outputImage
+                await withHistoryTransaction(async () => {
+                    // First, load the Replicate URL into Fabric. (<img> tags bypass strict fetch() CORS).
+                    const img = await FabricImage.fromURL(outputImage, { crossOrigin: 'anonymous' });
+                    
+                    try {
+                        // Extract the loaded image into a Base64 Data URL straight from the object
+                        const clone = await img.clone();
+                        clone.scaleX = 1; clone.scaleY = 1; clone.angle = 0;
+                        clone.skewX = 0; clone.skewY = 0;
+                        const dataUrl = clone.toDataURL({ format: 'png', multiplier: 1 });
+                        
+                        // Convert Data URL to a Blob
+                        const res = await fetch(dataUrl);
+                        const aiBlob = await res.blob();
+                        
+                        // Upload to Supabase Storage
                         const aiPath = `ai-output/${Date.now()}_${style}.png`;
                         const { error: aiUploadErr } = await supabase.storage
                             .from('design-assets')
                             .upload(aiPath, aiBlob, { contentType: 'image/png', upsert: false });
+                            
                         if (!aiUploadErr) {
                             permanentOutputUrl = supabase.storage
                                 .from('design-assets')
                                 .getPublicUrl(aiPath).data.publicUrl;
-                            console.log('[AI] Output saved to permanent URL:', permanentOutputUrl);
+                            console.log('[AI] Output saved to permanent URL via Canvas bypass:', permanentOutputUrl);
+                            
+                            // Swap the temporary Replicate URL object with the permanent Supabase URL
+                            // so that JSON serialization stores a reliable, non-expiring URL!
+                            await img.setSrc(permanentOutputUrl, { crossOrigin: 'anonymous' });
                         } else {
-                            console.warn('[AI] Failed to persist output, using temp URL:', aiUploadErr.message);
+                            console.warn('[AI] Failed to persist output via Canvas bypass, using temp URL:', aiUploadErr.message);
                         }
+                    } catch (persistErr) {
+                        console.warn('[AI] Canvas extraction persist step failed, using temp URL:', persistErr);
                     }
-                } catch (persistErr) {
-                    console.warn('[AI] Persist step failed, using temp URL:', persistErr);
-                }
 
-                // B1. Only proceed with canvas modification if we have a valid outputImage
-                await withHistoryTransaction(async () => {
-                    const img = await FabricImage.fromURL(permanentOutputUrl, { crossOrigin: 'anonymous' });
                     ensureObjectId(img, 'ai_generated');
 
                     img.set({
@@ -6566,13 +6584,13 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                 className={`flex-1 flex flex-col md:flex-row items-center justify-center overflow-hidden relative order-first md:order-none ${
                     isAdminMode
                         ? 'bg-white p-0'
-                        : 'bg-[radial-gradient(circle_at_center,_#ffffff_0%,_#d1d5db_100%)] px-4 pb-32 pt-24 md:p-4 overflow-y-auto md:overflow-hidden'
+                        : 'bg-[radial-gradient(ellipse_at_center,_#ffffff_0%,_#ffffff_55%,_#ebebeb_100%)] px-4 pb-32 pt-24 md:p-4 overflow-y-auto md:overflow-hidden'
                 }`}
             >
                 {/* Admin Canvas Wrapper: checkerboard as CSS background so it shows through Fabric's transparent canvas */}
                 <div
                     className={`transition-opacity duration-300 ${hasTemplateLoaded ? 'opacity-100' : 'opacity-0'
-                        } ${!isAdminMode ? 'shadow-2xl rounded-lg overflow-hidden bg-white max-w-full max-h-full' : ''}`}
+                        } ${!isAdminMode ? 'shadow-2xl rounded-lg overflow-hidden max-w-full max-h-full' : ''}`}
                     style={{
                         touchAction: 'none',
                         overscrollBehavior: 'none',
@@ -6818,8 +6836,8 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                                 <div className="w-6 h-px md:w-px md:h-6 bg-gray-200 flex-shrink-0 my-0.5 md:my-0 md:mx-0.5"></div>
 
-                                {/* Only show Lock/Unlock if object has a clipPath (Crop/Frame) */}
-                                {selectedObject.clipPath && (
+                                {/* Only show Lock/Unlock if object is a photo linked to a Frame */}
+                                {(selectedObject as any).frameId && (
                                     <button onClick={toggleCropMode} className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-lg hover:bg-gray-50 min-w-[2.25rem] transition-colors ${isCropping ? 'text-blue-600 bg-blue-50' : 'text-gray-600'}`}>
                                         {isCropping ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
                                         <span className="text-[9px] font-bold">{isCropping ? "解鎖" : "鎖定"}</span>
@@ -7274,7 +7292,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                             {/* Removed all Frame/Crop buttons from here as requested by user to "remove all mobile frame functions" */}
 
-                            {selectedObject?.clipPath && (
+                            {(selectedObject as any)?.frameId && (
                                 <>
                                     <div className="w-px h-8 bg-gray-300 mx-2"></div>
                                     <button
@@ -7290,96 +7308,83 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         </>
                     ) : (
                         // === 狀態 A: 主功能選單 (Main Menu) ===
-                        <>
-                            <button
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={mobileActions?.onUpload}
-                                className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
-                            >
-                                <Upload className="w-6 h-6" />
-                                <span className="text-[10px] font-medium">上傳</span>
-                            </button>
+                        (() => {
+                            const DEFAULT_TOOLBAR = [
+                                { id: 'upload',     label: '上傳',   visible: true,  sort_order: 1 },
+                                { id: 'text',       label: '文字',   visible: true,  sort_order: 2 },
+                                { id: 'stickers',   label: '貼圖',   visible: true,  sort_order: 3 },
+                                { id: 'background', label: '背景',   visible: true,  sort_order: 4 },
+                                { id: 'frames',     label: '相框',   visible: true,  sort_order: 5 },
+                                { id: 'barcode',    label: '條碼',   visible: false, sort_order: 6 },
+                                { id: 'designs',    label: '設計',   visible: false, sort_order: 7 },
+                                { id: 'ai',         label: 'AI創意', visible: true,  sort_order: 8 },
+                            ];
+                            const saved = toolbarConfig || [];
+                            const effective = DEFAULT_TOOLBAR
+                                .map(def => { const s = saved.find((x: any) => x.id === def.id); return s ? { ...def, ...s } : def; })
+                                .sort((a, b) => a.sort_order - b.sort_order)
+                                .filter(t => t.visible);
 
-                            {mobileActions?.onAddText && (
-                                <button
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={mobileActions?.onAddText}
-                                    className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
-                                >
-                                    <Type className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">文字</span>
-                                </button>
-                            )}
+                            const btnClass = "flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600";
+                            const aiBtnClass = "flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-indigo-500 active:text-indigo-700";
 
-                            {mobileActions?.onOpenStickers && (
-                                <button
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={mobileActions?.onOpenStickers}
-                                    className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
-                                >
-                                    <Sticker className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">貼圖</span>
-                                </button>
-                            )}
-
-                            {mobileActions?.onOpenBackgrounds && (
-                                <button
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={mobileActions?.onOpenBackgrounds}
-                                    className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
-                                >
-                                    <ImageIcon className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">背景</span>
-                                </button>
-                            )}
-
-                            {mobileActions?.onOpenFrames && (
-                                <button
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={mobileActions?.onOpenFrames}
-                                    className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
-                                >
-                                    <Frame className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">相框</span>
-                                </button>
-                            )}
-
-                            {mobileActions?.onOpenBarcode && (
-                                <button
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={mobileActions?.onOpenBarcode}
-                                    className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
-                                >
-                                    <ScanBarcode className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">條碼</span>
-                                </button>
-                            )}
-
-                            {mobileActions?.onOpenDesigns && (
-                                <button
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={mobileActions?.onOpenDesigns}
-                                    className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-gray-500 active:text-blue-600"
-                                >
-                                    <LayoutTemplate className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">設計</span>
-                                </button>
-                            )}
-
-                            {/* AI Design Collage */}
-                            {mobileActions?.onAiDesignCollage && (
-                                <button
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={mobileActions?.onAiDesignCollage}
-                                    className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-indigo-500 active:text-indigo-700"
-                                >
-                                    <Sparkles className="w-6 h-6" />
-                                    <span className="text-[10px] font-medium">AI設計</span>
-                                </button>
-                            )}
-
-                            <div className="w-4 flex-shrink-0" />
-                        </>
+                            return (
+                                <>
+                                    {effective.map(tool => {
+                                        if (tool.id === 'upload') return (
+                                            <button key="upload" onMouseDown={(e) => e.preventDefault()} onClick={mobileActions?.onUpload} className={btnClass}>
+                                                <Upload className="w-6 h-6" />
+                                                <span className="text-[10px] font-medium">{tool.label}</span>
+                                            </button>
+                                        );
+                                        if (tool.id === 'text' && mobileActions?.onAddText) return (
+                                            <button key="text" onMouseDown={(e) => e.preventDefault()} onClick={mobileActions?.onAddText} className={btnClass}>
+                                                <Type className="w-6 h-6" />
+                                                <span className="text-[10px] font-medium">{tool.label}</span>
+                                            </button>
+                                        );
+                                        if (tool.id === 'stickers' && mobileActions?.onOpenStickers) return (
+                                            <button key="stickers" onMouseDown={(e) => e.preventDefault()} onClick={mobileActions?.onOpenStickers} className={btnClass}>
+                                                <Sticker className="w-6 h-6" />
+                                                <span className="text-[10px] font-medium">{tool.label}</span>
+                                            </button>
+                                        );
+                                        if (tool.id === 'background' && mobileActions?.onOpenBackgrounds) return (
+                                            <button key="background" onMouseDown={(e) => e.preventDefault()} onClick={mobileActions?.onOpenBackgrounds} className={btnClass}>
+                                                <ImageIcon className="w-6 h-6" />
+                                                <span className="text-[10px] font-medium">{tool.label}</span>
+                                            </button>
+                                        );
+                                        if (tool.id === 'frames' && mobileActions?.onOpenFrames) return (
+                                            <button key="frames" onMouseDown={(e) => e.preventDefault()} onClick={mobileActions?.onOpenFrames} className={btnClass}>
+                                                <Frame className="w-6 h-6" />
+                                                <span className="text-[10px] font-medium">{tool.label}</span>
+                                            </button>
+                                        );
+                                        if (tool.id === 'barcode' && mobileActions?.onOpenBarcode) return (
+                                            <button key="barcode" onMouseDown={(e) => e.preventDefault()} onClick={mobileActions?.onOpenBarcode} className={btnClass}>
+                                                <ScanBarcode className="w-6 h-6" />
+                                                <span className="text-[10px] font-medium">{tool.label}</span>
+                                            </button>
+                                        );
+                                        if (tool.id === 'designs' && mobileActions?.onOpenDesigns) return (
+                                            <button key="designs" onMouseDown={(e) => e.preventDefault()} onClick={mobileActions?.onOpenDesigns} className={btnClass}>
+                                                <LayoutTemplate className="w-6 h-6" />
+                                                <span className="text-[10px] font-medium">{tool.label}</span>
+                                            </button>
+                                        );
+                                        if (tool.id === 'ai' && mobileActions?.onAiDesignCollage) return (
+                                            <button key="ai" onMouseDown={(e) => e.preventDefault()} onClick={mobileActions?.onAiDesignCollage} className={aiBtnClass}>
+                                                <Sparkles className="w-6 h-6" />
+                                                <span className="text-[10px] font-medium">{tool.label}</span>
+                                            </button>
+                                        );
+                                        return null;
+                                    })}
+                                    <div className="w-4 flex-shrink-0" />
+                                </>
+                            );
+                        })()
                     )}
                 </div>
             </div>

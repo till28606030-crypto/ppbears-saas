@@ -199,7 +199,7 @@ export default function AdminAssets() {
                 type: type === 'stickers' ? 'sticker' : type === 'backgrounds' ? 'background' : 'frame',
                 url: publicUrl,
                 name: file.name.split('.')[0],
-                category: '未分類',
+                category: selectedCategory !== '全部' ? selectedCategory : '未分類',
                 tags: [],
                 created_at: new Date().toISOString()
             };
@@ -576,12 +576,13 @@ export default function AdminAssets() {
                             <div>
                                 <div className="flex items-center justify-between mb-1">
                                     <label className="block text-sm font-medium text-gray-700">標籤 (以逗號分隔)</label>
-                                    {!isAiTagging && editingAsset.tags.length === 0 && (
+                                    {!isAiTagging && (
                                         <button
                                             onClick={() => autoTagAsset(editingAsset.url, editingAsset)}
                                             className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1"
+                                            title={editingAsset.tags.length > 0 ? '重新 AI 辨識並更新標籤' : 'AI 自動產生標籤'}
                                         >
-                                            <Sparkles className="w-3 h-3" /> AI 自動標籤
+                                            <Sparkles className="w-3 h-3" /> {editingAsset.tags.length > 0 ? '重新辨識' : 'AI 自動標籤'}
                                         </button>
                                     )}
                                 </div>

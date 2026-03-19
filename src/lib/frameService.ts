@@ -5,6 +5,7 @@ export interface Frame {
     id: string;
     name: string;
     category?: string;
+    tags?: string[];
     url: string;
     clipPathPoints: { x: number; y: number }[];
     width: number;
@@ -26,7 +27,7 @@ export async function listFrames(productId?: string): Promise<{ data: Frame[]; s
         // 1. 永遠先從 Supabase 拉取
         const { data, error } = await supabase
             .from('assets')
-            .select('id, name, url, category, metadata')
+            .select('id, name, url, category, tags, metadata')
             .eq('type', 'frame')
             .order('created_at', { ascending: false });
 
@@ -52,6 +53,7 @@ export async function listFrames(productId?: string): Promise<{ data: Frame[]; s
                     id: item.id,
                     name: item.name || '未命名相框',
                     category: item.category || '未分類',
+                    tags: item.tags || [],
                     url: item.url,
                     clipPathPoints: item.metadata?.clipPathPoints || [],
                     width: item.metadata?.width || 1000,

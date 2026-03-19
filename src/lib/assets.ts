@@ -26,21 +26,16 @@ export async function listAssets(params: {
     // Category Filter
     if (category && category !== '全部') {
         if (category === '未分類') {
-            // Handle both null and explicit '未分類' string just in case
             query = query.or(`category.is.null,category.eq.未分類`);
         } else {
             query = query.eq('category', category);
         }
     }
 
-    // Search Filter
-    if (search) {
-        // Search in name or tags
-        // Using Postgres text search would be better but simple ILIKE is sufficient for now
-        // Note: tags is an array, so we check if it contains the search term
-        // query = query.or(`name.ilike.%${search}%,tags.cs.{"${search}"}`); 
-        // Simple name search for stability first
-        query = query.ilike('name', `%${search}%`);
+    // Search Filter: name OR tags (exact tag match using array containment)
+    if (search && search.trim()) {
+        const s = search.trim();
+        query = query.or(`name.ilike.%${s}%,tags.cs.{"${s}"}`);
     }
 
     query = query
@@ -50,7 +45,6 @@ export async function listAssets(params: {
     const { data, error, count } = await query;
 
     if (error) {
-        // Ignore AbortError (common in React strict mode / dev)
         if (error.message?.includes('AbortError') || error.message?.includes('signal is aborted')) {
             return { data: [], total: 0 };
         }
@@ -58,7 +52,6 @@ export async function listAssets(params: {
         throw error;
     }
 
-    // Map DB result to AssetItem interface
     const formattedData: AssetItem[] = (data || []).map((item) => ({
         id: item.id,
         url: item.url,
@@ -73,7 +66,6 @@ export async function listAssets(params: {
 
 /**
  * Fetch distinct categories for a specific asset type
- * This is useful for building dynamic filter menus
  */
 export async function listAssetCategories(type: AssetType): Promise<string[]> {
     const { data, error } = await supabase
@@ -86,7 +78,35 @@ export async function listAssetCategories(type: AssetType): Promise<string[]> {
         return [];
     }
 
-    // Extract unique non-null categories
     const categories = Array.from(new Set(data.map(d => d.category).filter(Boolean)));
     return categories.sort();
+}
+
+/**
+ * Fetch popular tags for a specific asset type (for tag cloud).
+ * Returns unique tags sorted by frequency, limited to top N.
+ */
+export async function listAssetTags(type: AssetType, limit = 30): Promise<string[]> {
+    const { data, error } = await supabase
+        .from('assets')
+        .select('tags')
+        .eq('type', type)
+        .not('tags', 'is', null);
+
+    if (error) {
+        console.error(`Error fetching tags for ${type}:`, error);
+        return [];
+    }
+
+    const freq: Record<string, number> = {};
+    (data || []).forEach(row => {
+        (row.tags as string[] || []).forEach(tag => {
+            if (tag && tag.trim()) freq[tag.trim()] = (freq[tag.trim()] || 0) + 1;
+        });
+    });
+
+    return Object.entries(freq)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .map(([tag]) => tag);
 }

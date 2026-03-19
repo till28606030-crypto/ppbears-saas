@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { update, get } from 'idb-keyval';
 import { listDesignTemplates, DesignTemplate, ensureDesignTemplatesReadable } from '../lib/designTemplates';
-import { listAssets, listAssetCategories } from '../lib/assets';
+import { listAssets, listAssetCategories, listAssetTags } from '../lib/assets';
 import { listFrames, listFrameCategories, Frame, lastFrameDebug, clearFrameCache } from '../lib/frameService';
 // @ts-ignore
 import { readPsd } from 'ag-psd';
@@ -204,7 +204,9 @@ export default function Home() {
 
     // Asset Search & Filter State
     const [assetSearch, setAssetSearch] = useState('');
+    const [isSearchFocused, setIsSearchFocused] = useState(false);
     const [selectedAssetCategory, setSelectedAssetCategory] = useState('全部');
+    const [assetTags, setAssetTags] = useState<string[]>([]);
 
     // Infinite Scroll State
     const [displayLimit, setDisplayLimit] = useState(30);
@@ -309,6 +311,20 @@ export default function Home() {
         listAssetCategories('background').then(cats => setBackgroundCategories(['全部', ...cats]));
         listFrameCategories().then(cats => setFrameCategories(['全部', ...cats]));
     }, []);
+
+    // Load tag cloud when switching to asset panels
+    useEffect(() => {
+        const panelToType: Record<string, 'sticker' | 'background' | 'frame'> = {
+            stickers: 'sticker', backgrounds: 'background', frames: 'frame'
+        };
+        const type = panelToType[activePanel];
+        if (type) {
+            setAssetTags([]);
+            listAssetTags(type, 25).then(tags => setAssetTags(tags));
+        } else {
+            setAssetTags([]);
+        }
+    }, [activePanel]);
 
     // Load Designs from DB
     useEffect(() => {
@@ -1567,7 +1583,7 @@ export default function Home() {
     }
 
     return (
-        <div className="flex h-screen w-screen overflow-hidden bg-gray-50 text-gray-900 font-sans relative">
+        <div className="flex h-screen w-screen overflow-hidden bg-white text-gray-900 font-sans relative">
 
             {/* Checkout Modal (Replaced with SaveDesignModal) */}
             {/* Final Modals */}
@@ -2039,35 +2055,75 @@ export default function Home() {
                                 {/* Search & Filter Header */}
                                 <div className={`border-b border-gray-100 z-20 bg-white shadow-sm ${activePanel === 'frames' ? 'px-3 py-2' : 'p-3'}`}>
                                     {/* Search Input Row with Refresh Button */}
-                                    <div className="flex items-center gap-2 mb-1">
+                                    <div className="flex items-center gap-2">
                                         <div className="relative flex-1">
-                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#8E8E93]">
                                                 <Search className="w-4 h-4" />
                                             </div>
                                             <input
                                                 type="text"
                                                 value={assetSearch}
                                                 onChange={(e) => setAssetSearch(e.target.value)}
-                                                placeholder={activePanel === 'designs' ? "搜尋設計..." : "搜尋素材..."}
-                                                className="block w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                                                onFocus={() => setIsSearchFocused(true)}
+                                                onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
+                                                placeholder={activePanel === 'designs' ? "搜尋設計..." : "搜尋標籤或名稱..."}
+                                                className="block w-full pl-9 pr-8 py-2 bg-[#767680]/[0.12] rounded-[10px] text-sm text-gray-900 placeholder-[#8E8E93] focus:outline-none focus:ring-2 focus:ring-[#007AFF]/30 transition-all font-medium"
                                             />
+                                            {assetSearch && (
+                                                <button
+                                                    onClick={() => setAssetSearch('')}
+                                                    className="absolute inset-y-0 right-0 pr-2 flex items-center justify-center group"
+                                                >
+                                                    <div className="w-4 h-4 rounded-full bg-[#8E8E93] text-white flex items-center justify-center group-hover:bg-gray-500 transition-colors">
+                                                        <X className="w-3 h-3" />
+                                                    </div>
+                                                </button>
+                                            )}
                                         </div>
 
                                         {(activePanel === 'frames' || activePanel === 'stickers' || activePanel === 'backgrounds') && (
                                             <button
                                                 onClick={async () => {
                                                     if (activePanel === 'frames') await clearFrameCache();
-                                                    // Add a small space to trigger dependency re-run if needed
                                                     setAssetSearch(prev => prev + ' ');
                                                     setTimeout(() => setAssetSearch(prev => prev.trim()), 10);
                                                 }}
-                                                className="p-2 text-gray-400 hover:text-blue-500 rounded-lg hover:bg-blue-50 transition-colors shrink-0"
+                                                className="p-2 text-[#007AFF] hover:bg-[#007AFF]/10 rounded-[10px] transition-colors shrink-0 font-medium text-sm flex items-center"
                                                 title="重新整理素材"
                                             >
                                                 <Sparkles className="w-4 h-4" />
                                             </button>
                                         )}
                                     </div>
+
+                                    {/* Apple-style Tag Cloud */}
+                                    {isSearchFocused && assetTags.length > 0 && ['stickers', 'backgrounds', 'frames'].includes(activePanel) && (
+                                        <div className="absolute z-50 bg-white/95 backdrop-blur-md shadow-xl border border-gray-100 p-4 rounded-[16px] w-[calc(100%-24px)] left-3 top-16 transition-all duration-200 animate-in fade-in slide-in-from-top-2">
+                                            <div className="text-[11px] font-semibold text-[#8E8E93] uppercase tracking-wider mb-3 flex items-center gap-1.5 ml-0.5">
+                                                <Sparkles className="w-3.5 h-3.5" />
+                                                推薦標籤
+                                            </div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {assetTags.map(tag => {
+                                                    const isSelected = assetSearch === tag;
+                                                    return (
+                                                        <button
+                                                            key={tag}
+                                                            onClick={() => setAssetSearch(isSelected ? '' : tag)}
+                                                            className={`px-3 py-1.5 rounded-[12px] text-[12px] font-medium active:scale-95 transition-all duration-200 border-none ${
+                                                                isSelected
+                                                                    ? 'bg-[#007AFF] text-white shadow-sm'
+                                                                    : 'bg-[#F2F2F7] text-[#1C1C1E] hover:bg-[#E5E5EA]'
+                                                            }`}
+                                                            style={{ WebkitTapHighlightColor: 'transparent' }}
+                                                        >
+                                                            {tag}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Basic Shapes for Frames Panel */}
@@ -2400,6 +2456,12 @@ export default function Home() {
                                                                             return item.url;
                                                                         }
                                                                     })()}
+                                                                    onError={(e) => {
+                                                                        const target = e.target as HTMLImageElement;
+                                                                        if (target.src !== item.url) {
+                                                                            target.src = item.url;
+                                                                        }
+                                                                    }}
                                                                     alt={item.name}
                                                                     className="max-w-full max-h-full object-contain"
                                                                     loading="lazy"
@@ -2545,6 +2607,7 @@ export default function Home() {
                             onOpenProduct: () => handleToolClick('Product'),
                             onAiDesignCollage: perms.aiDesignCollage ? () => { handleAiAction('design_collage'); } : undefined,
                         }}
+                        toolbarConfig={currentProduct?.specs?.toolbar_config || undefined}
                     />
                 </div>
             </main >
