@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Wand2, Scissors, X, Sparkles, ShieldAlert, RefreshCw } from 'lucide-react';
+import { apiUrl } from '@/lib/apiBase';
 
 interface AiActionConfirmModalProps {
   action: 'toon_ink' | 'remove_bg' | null;
@@ -34,29 +35,60 @@ const ACTION_CONFIG = {
 
 export default function AiActionConfirmModal({ action, onConfirm, onCancel }: AiActionConfirmModalProps) {
   const [usageCount, setUsageCount] = useState(0);
+  const [limit, setLimit] = useState(Number(localStorage.getItem('ppbears_ai_usage_limit') || '20'));
+  const [resetAtStr, setResetAtStr] = useState<string>('');
   const [animated, setAnimated] = useState(false);
   const [countdown, setCountdown] = useState('');
-  const LIMIT = Number(localStorage.getItem('ppbears_ai_usage_limit') || '10'); // dynamic: read from product specs via Home.tsx
   const COST = action === 'toon_ink' ? 5 : 1; // 卡通化=5點，去背=1點
 
   useEffect(() => {
     if (!action) return;
-    const today = new Date().toISOString().split('T')[0];
-    const used = Number(localStorage.getItem(`ppbears_ai_usage_${today}`) || '0');
-    setUsageCount(used);
-    // Trigger bar animation
-    const t = setTimeout(() => setAnimated(true), 80);
-    return () => clearTimeout(t);
+    let isMounted = true;
+    const fetchStatus = async () => {
+        try {
+            const pId = localStorage.getItem('ppbears_current_product_id') || '';
+            const url = apiUrl(`/api/ai/usage-status${pId ? `?product_id=${pId}` : ''}`);
+            const res = await fetch(url);
+            const data = await res.json();
+            if (isMounted && data.success) {
+                setUsageCount(data.count);
+                setLimit(data.limit);
+                setResetAtStr(data.resetAt);
+                localStorage.setItem('ppbears_ai_usage_limit', data.limit.toString());
+            }
+        } catch (err) {
+            console.error('Failed to fetch AI usage:', err);
+            const today = new Date().toISOString().split('T')[0];
+            if (isMounted) setUsageCount(Number(localStorage.getItem(`ppbears_ai_usage_${today}`) || '0'));
+        } finally {
+            if (isMounted) setTimeout(() => setAnimated(true), 80);
+        }
+    };
+    fetchStatus();
+    return () => { isMounted = false; };
   }, [action]);
 
-  // Countdown to midnight Taiwan (UTC+8)
+  // Countdown to next reset time
   useEffect(() => {
     const tick = () => {
+      let resetDate: Date;
+      if (resetAtStr) {
+          resetDate = new Date(resetAtStr);
+      } else {
+          // fallback to 00:00 Taiwan time
+          resetDate = new Date();
+          resetDate.setUTCHours(16, 0, 0, 0);
+          if (resetDate <= new Date()) resetDate.setUTCDate(resetDate.getUTCDate() + 1);
+      }
+      
       const now = new Date();
-      const reset = new Date();
-      reset.setUTCHours(16, 0, 0, 0); // UTC 16:00 = Taiwan 00:00
-      if (reset <= now) reset.setUTCDate(reset.getUTCDate() + 1);
-      const diff = reset.getTime() - now.getTime();
+      const diff = resetDate.getTime() - now.getTime();
+      
+      if (diff <= 0) {
+          setCountdown('0h 00m 00s');
+          return;
+      }
+      
       const h = Math.floor(diff / 3600000);
       const m = Math.floor((diff % 3600000) / 60000);
       const s = Math.floor((diff % 60000) / 1000);
@@ -65,14 +97,14 @@ export default function AiActionConfirmModal({ action, onConfirm, onCancel }: Ai
     tick();
     const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [resetAtStr]);
 
   if (!action) return null;
 
   const cfg = ACTION_CONFIG[action];
-  const remaining = Math.max(0, LIMIT - usageCount);
+  const remaining = Math.max(0, limit - usageCount);
   const canUse = remaining >= COST;
-  const pct = Math.min(100, (usageCount / LIMIT) * 100);
+  const pct = Math.min(100, (usageCount / limit) * 100);
   const barColor = remaining <= 4 ? 'bg-orange-400' : 'bg-blue-500';
 
   return (
@@ -108,10 +140,10 @@ export default function AiActionConfirmModal({ action, onConfirm, onCancel }: Ai
             <div className="flex items-center justify-between mb-1.5">
               <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
                 <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-                AI 今日點數
+                AI 創意點數
               </span>
               <span className={`text-xs font-bold ${!canUse ? 'text-orange-500' : 'text-gray-700'}`}>
-                {!canUse ? `點數不足` : `剩餘 ${remaining} / ${LIMIT}`}
+                {!canUse ? `點數不足` : `剩餘 ${remaining} / ${limit}`}
               </span>
             </div>
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -121,7 +153,7 @@ export default function AiActionConfirmModal({ action, onConfirm, onCancel }: Ai
               />
             </div>
             <p className="text-[10px] text-gray-500 mt-1 flex items-center justify-between">
-              <span>{!canUse ? `今日點數不足（需 ${COST} 點，剩餘 ${remaining} 點）` : `執行後將消耗 ${COST} 點，剩餘 ${remaining - COST} 點`}</span>
+              <span>{!canUse ? `點數不足（需 ${COST} 點，剩餘 ${remaining} 點）` : `執行後將消耗 ${COST} 點，剩餘 ${remaining - COST} 點`}</span>
               <span className="flex items-center gap-1 text-gray-400">
                 <RefreshCw size={9} /> 重置於 {countdown}
               </span>

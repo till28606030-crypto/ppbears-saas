@@ -3330,7 +3330,56 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         // Enliven each object individually so a single failed URL
                         // (e.g. expired replicate.delivery AI link) doesn't wipe the whole restore.
                         const results = await Promise.allSettled(
-                            json.objects.map((obj: any) => util.enlivenObjects([obj]))
+                            json.objects.map(async (obj: any) => {
+                                // [FIX] 使用者上傳的照片以 data: URL(base64)存入 canvas_json。
+                                // Fabric.js 的 util.enlivenObjects 對 image 物件套用 crossOrigin: 'anonymous'，
+                                // 對 data: URL 會觸發 SecurityError，導致圖片被靜默忽略。
+                                // 解決方案：對 data: URL 圖片改用不帶 crossOrigin 的 FabricImage.fromURL 載入。
+                                if (
+                                    (obj.type === 'image' || obj.type === 'Image') &&
+                                    typeof obj.src === 'string' &&
+                                    obj.src.startsWith('data:')
+                                ) {
+                                    const img = await FabricImage.fromURL(obj.src);
+                                    img.set({
+                                        left: obj.left,
+                                        top: obj.top,
+                                        scaleX: obj.scaleX,
+                                        scaleY: obj.scaleY,
+                                        angle: obj.angle || 0,
+                                        originX: obj.originX || 'left',
+                                        originY: obj.originY || 'top',
+                                        opacity: obj.opacity ?? 1,
+                                        flipX: obj.flipX || false,
+                                        flipY: obj.flipY || false,
+                                        visible: obj.visible !== false,
+                                        selectable: obj.selectable !== false,
+                                        evented: obj.evented !== false,
+                                        hasControls: obj.hasControls !== false,
+                                        hasBorders: obj.hasBorders !== false,
+                                        lockUniScaling: obj.lockUniScaling || false,
+                                        lockMovementX: obj.lockMovementX || false,
+                                        lockMovementY: obj.lockMovementY || false,
+                                        lockRotation: obj.lockRotation || false,
+                                        lockScalingX: obj.lockScalingX || false,
+                                        lockScalingY: obj.lockScalingY || false,
+                                    });
+                                    (img as any).id = obj.id;
+                                    (img as any).name = obj.name;
+                                    (img as any).data = obj.data;
+                                    (img as any).hasClipPath = obj.hasClipPath || false;
+                                    (img as any).isCropLocked = obj.isCropLocked || false;
+                                    (img as any).frameId = obj.frameId;
+                                    (img as any).isFrameLayer = obj.isFrameLayer || false;
+                                    (img as any).isUserBackground = obj.isUserBackground || false;
+                                    (img as any).perPixelTargetFind = obj.perPixelTargetFind || false;
+                                    (img as any).clipPathPoints = obj.clipPathPoints;
+                                    (img as any).frameMeta = obj.frameMeta;
+                                    return [img];
+                                }
+                                // Default path for non-data-URL objects
+                                return util.enlivenObjects([obj]);
+                            })
                         );
 
                         // 【關鍵修復 v2】用索引配對 JSON 原始物件與 enlivened 物件，
@@ -4330,14 +4379,20 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                     photo.scaleX = (photo.scaleX ?? 1) * ratioX;
                     photo.scaleY = (photo.scaleY ?? 1) * ratioY;
 
-                    // Reposition photo so it stays centered on the frame
-                    // The offset from frame center must also scale.
-                    const frameCX = obj.left;
-                    const frameCY = obj.top;
-                    const photoOffsetX = photo.left - frameCX;
-                    const photoOffsetY = photo.top - frameCY;
-                    photo.left = frameCX + photoOffsetX * ratioX;
-                    photo.top = frameCY + photoOffsetY * ratioY;
+                    // Reposition photo so it stays correctly offset from the frame
+                    // We must scale the offset in LOCAL coordinates to account for frame rotation
+                    const worldOffsetX = photo.left - prevLeft;
+                    const worldOffsetY = photo.top - prevTop;
+                    
+                    const localOffset = rotateVector(worldOffsetX, worldOffsetY, -prevAngle);
+                    localOffset.x *= ratioX;
+                    localOffset.y *= ratioY;
+                    
+                    const newWorldOffset = rotateVector(localOffset.x, localOffset.y, prevAngle);
+
+                    // Set position based on old coordinate origin, translation comes in step 3
+                    photo.left = prevLeft + newWorldOffset.x;
+                    photo.top = prevTop + newWorldOffset.y;
                 }
 
                 // --- 2. Sync ClipPath to frame ---

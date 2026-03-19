@@ -512,8 +512,9 @@ app.post('/api/ai/design-collage', requireAiAuth, express.json({ limit: '50mb' }
             expandedTheme = userTheme;
         }
         const themePrefix = expandedTheme
-            ? `IMPORTANT REQUIRED SUBJECT: "${expandedTheme}". The scene MUST specifically depict this. Do NOT use generic or random substitutes.`
+            ? `Primary Subject (70% Focus): "${expandedTheme}". The image MUST clearly depict this theme as its central focus.`
             : null;
+        const stylePrefix = `Secondary Style (30% Focus): "${stylePrompt}". Apply this art style and aesthetic gracefully backing the primary subject, but do not let it overpower the main theme.`;
 
         if (!isBackgroundOnly && (!Array.isArray(images) || images.length === 0)) {
             return fail(res, '請至少上傳 1 張圖片', { errorCode: 'NO_IMAGES' });
@@ -572,20 +573,20 @@ app.post('/api/ai/design-collage', requireAiAuth, express.json({ limit: '50mb' }
 
         const fullPrompt = isBackgroundOnly
             ? [
-                themePrefix,                            // 用戶自訂主題（最高權重）
+                themePrefix,                            // 用戶自訂主題（約70%權重）
+                stylePrefix,                            // 設計風格（約30%權重）
                 `Create a beautiful, abstract background or scenery fitting for a phone case design.`,
-                `Style: ${stylePrompt}`,
-                `Do NOT include any people, character subjects, or text. Just a pure stylistic background that seamlessly blends.`,
+                `Do NOT include any people, character subjects, or text unless strictly dictated by the Primary Subject. Blend seamlessly.`,
                 dimensionHint,
             ].filter(Boolean).join(' ')
             : [
-                themePrefix,                            // 用戶自訂主題（最高權重）
+                themePrefix,                            // 用戶自訂主題
+                stylePrefix,                            // 設計風格
                 `Create a beautiful, print-ready design collage using the provided ${images.length} photo(s).`,
-                `Style: ${stylePrompt}`,
-                `Layout: aesthetically balanced composition with seamless photo blending.`,
+                `Layout: aesthetically balanced composition with accurate 70/30 blending of the Subject and Style.`,
                 `Output: high quality, vibrant colors suitable for phone case printing.`,
                 `Keep all main subjects clearly visible.`,
-                `Place all key subjects and faces in the lower 70% of the composition, away from the camera cutout area at the top. Keep the upper area decorative with patterns rather than important elements.`,
+                `Place all key subjects and faces in the lower 70% of the composition. Keep the upper area decorative.`,
                 dimensionHint,
             ].filter(Boolean).join(' ');
 
@@ -648,8 +649,7 @@ app.post('/api/ai/design-collage', requireAiAuth, express.json({ limit: '50mb' }
     }
 });
 
-// ─── AI Usage Tracking (IP-based, Supabase-backed) ───────────────────────────
-
+// ─── AI Usage Tracking (Rolling Hours, Supabase-backed) ────────────────────────
 // Helper: get client IP from request
 function getClientIp(req) {
     return (
@@ -660,20 +660,26 @@ function getClientIp(req) {
     );
 }
 
-// Helper: fetch/create usage row for ip+date, returns { count, limit }
-async function getUsageRow(ip, productId) {
-    const today = new Date().toISOString().split('T')[0];
-
-    // Try to get existing row
-    const { data, error } = await supabaseAdmin
+// Helper: fetch latest cycle and determine if active
+async function getActiveAiCycle(ip, resetHours) {
+    const { data: row, error } = await supabaseAdmin
         .from('ai_usage_log')
-        .select('count')
+        .select('*')
         .eq('ip', ip)
-        .eq('usage_date', today)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
     if (error) throw error;
-    return { count: data?.count ?? 0, date: today };
+    if (!row) return { row: null, isActive: false, cycleEnd: null };
+
+    const now = Date.now();
+    const cycleStart = new Date(row.created_at).getTime();
+    const cycleEnd = cycleStart + resetHours * 3600000;
+    
+    // Cycle is active if current time is strictly less than cycleEnd
+    const isActive = now < cycleEnd;
+    return { row, isActive, cycleEnd };
 }
 
 // GET /api/ai/usage-status?product_id=xxx
@@ -683,7 +689,8 @@ app.get('/api/ai/usage-status', async (req, res) => {
         const ip = getClientIp(req);
         const productId = req.query.product_id || null;
 
-        let limit = 20; // v6.0: raised from 10 to 20
+        let limit = 20; 
+        let resetHours = 24; // Default to 24 hours
         if (productId) {
             const { data: prodData } = await supabaseAdmin
                 .from('products')
@@ -691,27 +698,38 @@ app.get('/api/ai/usage-status', async (req, res) => {
                 .eq('id', productId)
                 .maybeSingle();
             if (prodData?.specs?.ai_usage_limit != null) {
-                limit = prodData.specs.ai_usage_limit;
+                limit = Number(prodData.specs.ai_usage_limit);
+            }
+            if (prodData?.specs?.ai_reset_hours != null) {
+                resetHours = Number(prodData.specs.ai_reset_hours);
+            } else if (prodData?.specs?.ai_reset_time != null) {
+                resetHours = 24; // Fallback for old schema
             }
         }
 
-        const { count } = await getUsageRow(ip, productId);
-        const remaining = Math.max(0, limit - count);
+        const { row, isActive, cycleEnd } = await getActiveAiCycle(ip, resetHours);
+        
+        let count = 0;
+        let resetAt = null;
 
-        // Reset at midnight local server time (Taiwan UTC+8)
-        const now = new Date();
-        const tomorrowMidnight = new Date(now);
-        tomorrowMidnight.setUTCHours(16, 0, 0, 0); // UTC 16:00 = Taiwan 00:00
-        if (tomorrowMidnight <= now) {
-            tomorrowMidnight.setUTCDate(tomorrowMidnight.getUTCDate() + 1);
+        if (isActive) {
+            count = row.count;
+            resetAt = new Date(cycleEnd).toISOString();
+        } else {
+            // Not active (expired, or first time) -> resetAt will start exactly X hours from when they consume their first point
+            count = 0;
+            // Provide an indicator to UI of how long the cycle will be once started
+            resetAt = new Date(Date.now() + resetHours * 3600000).toISOString();
         }
+
+        const remaining = Math.max(0, limit - count);
 
         return res.json({
             success: true,
             count,
             limit,
             remaining,
-            resetAt: tomorrowMidnight.toISOString(),
+            resetAt,
             ip: ip.replace(/\.\d+$/, '.xxx'), // Partially mask for privacy
         });
     } catch (err) {
@@ -721,16 +739,16 @@ app.get('/api/ai/usage-status', async (req, res) => {
 });
 
 // POST /api/ai/usage-check-increment
-// Body: { product_id? }
+// Body: { product_id?, cost? }
 // Returns { allowed: true, count, remaining } or { allowed: false, limitExceeded: true }
 app.post('/api/ai/usage-check-increment', express.json(), async (req, res) => {
     try {
         const ip = getClientIp(req);
         const productId = req.body?.product_id || null;
-        const cost = Math.max(1, parseInt(req.body?.cost ?? '1') || 1); // points consumed per action
-        const today = new Date().toISOString().split('T')[0];
+        const cost = Math.max(1, parseInt(req.body?.cost ?? '1') || 1);
 
-        let limit = 20; // v6.0: raised from 10 to 20
+        let limit = 20;
+        let resetHours = 24;
         if (productId) {
             const { data: prodData } = await supabaseAdmin
                 .from('products')
@@ -738,20 +756,17 @@ app.post('/api/ai/usage-check-increment', express.json(), async (req, res) => {
                 .eq('id', productId)
                 .maybeSingle();
             if (prodData?.specs?.ai_usage_limit != null) {
-                limit = prodData.specs.ai_usage_limit;
+                limit = Number(prodData.specs.ai_usage_limit);
+            }
+            if (prodData?.specs?.ai_reset_hours != null) {
+                resetHours = Number(prodData.specs.ai_reset_hours);
+            } else if (prodData?.specs?.ai_reset_time != null) {
+                resetHours = 24; // Fallback
             }
         }
 
-        // Upsert: increment count by 1 (but only if under limit)
-        // First read current count
-        const { data: existing } = await supabaseAdmin
-            .from('ai_usage_log')
-            .select('id, count')
-            .eq('ip', ip)
-            .eq('usage_date', today)
-            .maybeSingle();
-
-        const currentCount = existing?.count ?? 0;
+        const { row, isActive } = await getActiveAiCycle(ip, resetHours);
+        const currentCount = isActive ? row.count : 0;
 
         if (currentCount + cost > limit) {
             return res.json({
@@ -760,23 +775,38 @@ app.post('/api/ai/usage-check-increment', express.json(), async (req, res) => {
                 limitExceeded: true,
                 count: currentCount,
                 limit,
-                remaining: 0,
+                remaining: Math.max(0, limit - currentCount),
             });
         }
 
-        // Atomically increment
-        if (existing) {
+        // Atomically increment or create new cycle
+        const newCount = currentCount + cost;
+        const nowIso = new Date().toISOString();
+        
+        if (isActive && row) {
+            // Update active cycle
             await supabaseAdmin
                 .from('ai_usage_log')
-                .update({ count: currentCount + cost, updated_at: new Date().toISOString() })
-                .eq('id', existing.id);
+                .update({ count: newCount, updated_at: nowIso })
+                .eq('id', row.id);
         } else {
+            // Start a newly refreshed cycle.
+            // Because of the 'ip, usage_date' unique constraint, we use today's literal string.
+            // If the old expired cycle was from the *same* calendar day, upsert explicitly overwrites created_at to mark the new start time.
+            const todayDateStr = new Date(Date.now() + 8*3600000).toISOString().split('T')[0];
+            
             await supabaseAdmin
                 .from('ai_usage_log')
-                .insert({ ip, usage_date: today, product_id: productId, count: cost });
+                .upsert({
+                    ip,
+                    usage_date: todayDateStr,
+                    product_id: productId,
+                    count: newCount,
+                    created_at: nowIso, 
+                    updated_at: nowIso
+                }, { onConflict: 'ip,usage_date' });
         }
 
-        const newCount = currentCount + cost;
         return res.json({
             success: true,
             allowed: true,
@@ -786,7 +816,6 @@ app.post('/api/ai/usage-check-increment', express.json(), async (req, res) => {
         });
     } catch (err) {
         console.error('[Usage] POST usage-check-increment error:', err);
-        // On server error, allow (fail open - don't block user due to DB issue)
         return res.json({ success: false, allowed: true, error: String(err.message) });
     }
 });
@@ -833,8 +862,8 @@ Only reply with the expanded English description — no explanations.`;
     }
 }
 
-app.post('/api/ai/auto-tag', express.json({ limit: '1mb' }), async (req, res) => {
-    console.log(`[AI] HIT /api/ai/auto-tag (ID: ${BUILD_ID})`);
+app.post('/api/ai/vision-analyze', requireAiAuth, express.json({ limit: '1mb' }), async (req, res) => {
+    console.log(`[AI] HIT /api/ai/vision-analyze (ID: ${BUILD_ID})`);
     try {
         const { imageUrl, existingTags } = req.body;
 
@@ -935,10 +964,10 @@ app.post('/api/ai/auto-tag', express.json({ limit: '1mb' }), async (req, res) =>
         return ok(res, { tags });
 
     } catch (error) {
-        console.error('[AI] Auto-tag Error:', error);
-        return fail(res, 'AI auto-tag failed', {
+        console.error('[AI] Vision Analyze Error:', error);
+        return fail(res, 'AI 圖片分析失敗', {
             errorCode: 'AI_ERROR',
-            endpoint: '/api/ai/auto-tag',
+            endpoint: '/api/ai/vision-analyze',
             error: String(error?.message || error)
         });
     }

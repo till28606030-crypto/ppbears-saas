@@ -723,7 +723,7 @@ CREATE POLICY "public insert custom_designs"
                                                     <span className="flex items-center gap-1">
                                                         <Clock className="w-3 h-3" />
                                                         {design.created_at
-                                                            ? new Date(design.created_at).toLocaleString('zh-TW')
+                                                            ? new Date(design.created_at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })
                                                             : '—'}
                                                     </span>
                                                     <span>NT$ {design.price}</span>

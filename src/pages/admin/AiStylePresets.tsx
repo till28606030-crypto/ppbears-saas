@@ -114,6 +114,12 @@ export default function AiStylePresets() {
   const [isCreating, setIsCreating] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Settings
+  const [products, setProducts] = useState<any[]>([]);
+  const [resetHour, setResetHour] = useState<number>(0);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [savedSettings, setSavedSettings] = useState(false);
+
   // New style form
   const [formLabel, setFormLabel] = useState('');
   const [formEmoji, setFormEmoji] = useState('✨');
@@ -143,6 +149,40 @@ export default function AiStylePresets() {
   };
 
   useEffect(() => { loadStyles(); }, []);
+
+  // --- Load Settings ---
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase.from('products').select('id, specs');
+      if (!error && data && data.length > 0) {
+        setProducts(data);
+        const specs = data[0].specs || {};
+        const hours = specs.ai_reset_hours !== undefined 
+          ? Number(specs.ai_reset_hours) 
+          : (specs.ai_reset_time !== undefined ? 24 : 24); // default 24h
+        setResetHour(hours);
+      }
+    })();
+  }, []);
+
+  const handleSaveSettings = async () => {
+    setSavingSettings(true);
+    try {
+      const updates = products.map(p => {
+        const newSpecs = { ...(p.specs || {}), ai_reset_hours: resetHour };
+        return supabase.from('products').update({ specs: newSpecs }).eq('id', p.id);
+      });
+      const results = await Promise.all(updates);
+      const failed = results.find(r => r.error);
+      if (failed?.error) throw failed.error;
+      setSavedSettings(true);
+      setTimeout(() => setSavedSettings(false), 2000);
+    } catch (err: any) {
+      alert('儲存失敗：' + err.message);
+    } finally {
+      setSavingSettings(false);
+    }
+  };
 
   // --- Create ---
   const handleCreate = async () => {
@@ -258,19 +298,59 @@ export default function AiStylePresets() {
       </header>
 
       <div className="p-8 max-w-4xl mx-auto">
-        {/* Description */}
-        <div className="mb-6 p-4 bg-purple-50 border border-purple-100 rounded-xl">
-          <p className="text-sm text-purple-800">
-            管理 AI 創意功能的風格選單。客戶在前台可選擇一種風格，AI 會根據此處設定的 Prompt 關鍵字來生成設計圖。您可以隨時新增、編輯、停用或拖曳排序。
-          </p>
+        {/* Settings Box */}
+        <div className="mb-8">
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="p-5">
+              <div className="flex items-start gap-3 mb-4">
+                <Sparkles className="w-5 h-5 text-purple-600 mt-0.5 shrink-0" />
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  管理 AI 創意功能的風格選單。客戶在前台可選擇一種風格，AI 會根據此處設定的 Prompt 關鍵字來生成設計圖。您可以隨時新增、編輯、停用或拖曳排序。
+                </p>
+              </div>
+              
+              <div className="pt-5 border-t border-gray-100 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-bold text-gray-800 flex items-center">
+                    AI 點數重置週期 
+                    <span className="text-gray-500 font-normal text-xs ml-2">(自首度使用點數起算)</span>
+                  </label>
+                  <select 
+                    className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-gray-50 focus:ring-2 focus:ring-purple-500 focus:bg-white cursor-pointer outline-none hover:border-purple-300 transition-all w-36"
+                    value={resetHour}
+                    onChange={e => setResetHour(Number(e.target.value))}
+                  >
+                    <option value={1}>1 小時 (測試用)</option>
+                    <option value={6}>6 小時</option>
+                    <option value={12}>12 小時</option>
+                    <option value={24}>24 小時</option>
+                    <option value={48}>48 小時</option>
+                  </select>
+                </div>
+                
+                <button 
+                  onClick={handleSaveSettings}
+                  disabled={savingSettings}
+                  className={`flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+                    savedSettings 
+                      ? 'bg-green-500 text-white shadow-green-500/20 shadow-lg' 
+                      : 'bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/20 hover:shadow-lg disabled:opacity-50 disabled:hover:shadow-none'
+                  }`}
+                >
+                  {savingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {savedSettings ? '已儲存 ✓' : '儲存設定'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Add Button */}
-        <div className="flex justify-between items-center mb-6">
+        {/* Add Button & Style List Header */}
+        <div className="flex justify-between items-center mb-5 px-1 pr-5">
           <h2 className="text-lg font-bold text-gray-800">風格清單（{styles.filter(s => s.is_active).length} 個啟用中）</h2>
           <button
             onClick={() => setIsCreating(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold text-sm transition-colors shadow-sm"
+            className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold text-sm transition-colors shadow-sm"
           >
             <Plus className="w-4 h-4" />
             新增風格

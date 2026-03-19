@@ -256,11 +256,19 @@ export default function AdminAssets() {
 
             console.log('[AutoTag] Sending request for asset:', asset.id, 'url:', imageUrl.slice(0, 60));
 
-            const response = await fetch(apiUrl('/api/ai/auto-tag'), {
+            const response = await fetch(apiUrl('/api/ai/vision-analyze'), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-AI-Token': import.meta.env.VITE_AI_TOKEN || ''
+                },
                 body: JSON.stringify({ imageUrl, existingTags })
             });
+
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.message || `API 錯誤: ${response.statusText}`);
+            }
 
             const result = await response.json();
             console.log('[AutoTag] Response:', JSON.stringify(result));
@@ -283,6 +291,7 @@ export default function AdminAssets() {
             }
         } catch (err) {
             console.error('[AutoTag] Failed:', err);
+            alert('AI 辨識失敗：' + (err instanceof Error ? err.message : String(err)));
             setIsAiTagging(false);
         }
     };
