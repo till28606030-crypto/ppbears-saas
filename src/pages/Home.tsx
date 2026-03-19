@@ -1586,6 +1586,9 @@ export default function Home() {
                     onClose={() => setShowGalleryModal(false)}
                     onApply={handleGalleryApply}
                     maxSelection={5}
+                    disclaimerText={currentProduct?.specs?.upload_disclaimer_text || undefined}
+                    disclaimerLinkText={currentProduct?.specs?.upload_disclaimer_link_text || undefined}
+                    disclaimerLinkUrl={currentProduct?.specs?.upload_disclaimer_url || undefined}
                 />
             )}
 
@@ -1648,7 +1651,7 @@ export default function Home() {
                     <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white font-bold text-xs shadow-md">PP</div>
                 </div>
 
-                {/* Tool: Product */}
+                {/* Tool: Product (always shown) */}
                 <button
                     onClick={() => handleToolClick('Product')}
                     className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'products' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
@@ -1660,117 +1663,117 @@ export default function Home() {
                     </span>
                 </button>
 
-                {/* Tool: Upload Image */}
-                <button
-                    onClick={() => setShowGalleryModal(true)}
-                    className="group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl text-gray-500 hover:bg-blue-50 hover:text-blue-600 cursor-pointer transition-all duration-200 border border-transparent hover:border-blue-200"
-                    title="上傳圖片"
-                >
-                    <Upload className="w-6 h-6 mb-1" />
-                    <span className="text-xs font-medium">
-                        上傳
-                    </span>
-                </button>
+                {/* Dynamic toolbar from product specs */}
+                {(() => {
+                    // Build effective toolbar config: merge product's saved config with defaults
+                    const DEFAULT_TOOLBAR = [
+                        { id: 'upload',     label: '上傳',   visible: true,  sort_order: 1 },
+                        { id: 'text',       label: '文字',   visible: true,  sort_order: 2 },
+                        { id: 'stickers',   label: '貼圖',   visible: true,  sort_order: 3 },
+                        { id: 'background', label: '背景',   visible: true,  sort_order: 4 },
+                        { id: 'frames',     label: '相框',   visible: true,  sort_order: 5 },
+                        { id: 'barcode',    label: '條碼',   visible: false, sort_order: 6 },
+                        { id: 'designs',    label: '設計',   visible: false, sort_order: 7 },
+                        { id: 'ai',         label: 'AI創意', visible: true,  sort_order: 8 },
+                    ];
+                    const savedConfig: any[] = currentProduct?.specs?.toolbar_config || [];
+                    const effectiveConfig = DEFAULT_TOOLBAR
+                        .map(def => { const s = savedConfig.find((x: any) => x.id === def.id); return s ? { ...def, ...s } : def; })
+                        .sort((a, b) => a.sort_order - b.sort_order)
+                        .filter(t => t.visible);
 
-                {/* Tool: Text */}
-                {perms.text && (
-                    <button
-                        onClick={() => handleToolClick('Text')}
-                        className="group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl text-gray-500 hover:bg-blue-50 hover:text-blue-600 transition-all duration-200 border border-transparent hover:border-blue-200"
-                        title="新增文字"
-                    >
-                        <Type className="w-6 h-6 mb-1" />
-                        <span className="text-xs font-medium">
-                            文字
-                        </span>
-                    </button>
-                )}
-
-                {/* Tool: Stickers */}
-                {perms.stickers && (
-                    <button
-                        onClick={() => handleToolClick('Stickers')}
-                        className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'stickers' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
-                        title="貼圖"
-                    >
-                        <Sticker className="w-6 h-6 mb-1" />
-                        <span className="text-xs font-medium">
-                            貼圖
-                        </span>
-                    </button>
-                )}
-
-                {/* Tool: Background */}
-                {perms.backgrounds && (
-                    <button
-                        onClick={() => handleToolClick('Background')}
-                        className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'backgrounds' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
-                        title="背景"
-                    >
-                        <ImageIcon className="w-6 h-6 mb-1" />
-                        <span className="text-xs font-medium">
-                            背景
-                        </span>
-                    </button>
-                )}
-
-                {/* Tool: Frames (New) */}
-                {perms.frames && (
-                    <button
-                        onClick={() => handleToolClick('Frames')}
-                        className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'frames' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
-                        title="相框"
-                    >
-                        <FrameIcon className="w-6 h-6 mb-1" />
-                        <span className="text-xs font-medium">
-                            相框
-                        </span>
-                    </button>
-                )}
-
-                {/* Tool: Barcode */}
-                {perms.barcode && (
-                    <button
-                        onClick={() => handleToolClick('Barcode')}
-                        className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'barcode' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
-                        title="手機條碼"
-                    >
-                        <ScanBarcode className="w-6 h-6 mb-1" />
-                        <span className="text-xs font-medium">
-                            條碼
-                        </span>
-                    </button>
-                )}
-
-
-
-                {/* Tool: Designs */}
-                {perms.designs && (
-                    <button
-                        onClick={() => handleToolClick('Designs')}
-                        className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'designs' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
-                        title="設計"
-                    >
-                        <Palette className="w-6 h-6 mb-1" />
-                        <span className="text-xs font-medium">
-                            設計
-                        </span>
-                    </button>
-                )}
-
-                {/* Tool: AI Design Collage */}
-                {perms.aiDesignCollage && (
-                    <button
-                        onClick={() => handleAiAction('design_collage')}
-                        className="group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-indigo-200 text-indigo-500 hover:bg-indigo-50 hover:text-indigo-600"
-                        title="AI 設計拼貼"
-                    >
-                        <Sparkles className="w-6 h-6 mb-1" />
-                        <span className="text-xs font-medium">
-                            AI創意
-                        </span>
-                    </button>
-                )}
+                    return effectiveConfig.map(tool => {
+                        // Upload tool
+                        if (tool.id === 'upload') return (
+                            <button key="upload"
+                                onClick={() => setShowGalleryModal(true)}
+                                className="group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl text-gray-500 hover:bg-blue-50 hover:text-blue-600 cursor-pointer transition-all duration-200 border border-transparent hover:border-blue-200"
+                                title="上傳圖片"
+                            >
+                                <Upload className="w-6 h-6 mb-1" />
+                                <span className="text-xs font-medium">{tool.label}</span>
+                            </button>
+                        );
+                        // Text
+                        if (tool.id === 'text' && perms.text) return (
+                            <button key="text"
+                                onClick={() => handleToolClick('Text')}
+                                className="group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl text-gray-500 hover:bg-blue-50 hover:text-blue-600 transition-all duration-200 border border-transparent hover:border-blue-200"
+                                title="新增文字"
+                            >
+                                <Type className="w-6 h-6 mb-1" />
+                                <span className="text-xs font-medium">{tool.label}</span>
+                            </button>
+                        );
+                        // Stickers
+                        if (tool.id === 'stickers' && perms.stickers) return (
+                            <button key="stickers"
+                                onClick={() => handleToolClick('Stickers')}
+                                className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'stickers' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
+                                title="貼圖"
+                            >
+                                <Sticker className="w-6 h-6 mb-1" />
+                                <span className="text-xs font-medium">{tool.label}</span>
+                            </button>
+                        );
+                        // Background
+                        if (tool.id === 'background' && perms.backgrounds) return (
+                            <button key="background"
+                                onClick={() => handleToolClick('Background')}
+                                className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'backgrounds' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
+                                title="背景"
+                            >
+                                <ImageIcon className="w-6 h-6 mb-1" />
+                                <span className="text-xs font-medium">{tool.label}</span>
+                            </button>
+                        );
+                        // Frames
+                        if (tool.id === 'frames' && perms.frames) return (
+                            <button key="frames"
+                                onClick={() => handleToolClick('Frames')}
+                                className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'frames' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
+                                title="相框"
+                            >
+                                <FrameIcon className="w-6 h-6 mb-1" />
+                                <span className="text-xs font-medium">{tool.label}</span>
+                            </button>
+                        );
+                        // Barcode
+                        if (tool.id === 'barcode' && perms.barcode) return (
+                            <button key="barcode"
+                                onClick={() => handleToolClick('Barcode')}
+                                className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'barcode' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
+                                title="手機條碼"
+                            >
+                                <ScanBarcode className="w-6 h-6 mb-1" />
+                                <span className="text-xs font-medium">{tool.label}</span>
+                            </button>
+                        );
+                        // Designs
+                        if (tool.id === 'designs' && perms.designs) return (
+                            <button key="designs"
+                                onClick={() => handleToolClick('Designs')}
+                                className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'designs' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
+                                title="設計"
+                            >
+                                <Palette className="w-6 h-6 mb-1" />
+                                <span className="text-xs font-medium">{tool.label}</span>
+                            </button>
+                        );
+                        // AI
+                        if (tool.id === 'ai' && perms.aiDesignCollage) return (
+                            <button key="ai"
+                                onClick={() => handleAiAction('design_collage')}
+                                className="group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-indigo-200 text-indigo-500 hover:bg-indigo-50 hover:text-indigo-600"
+                                title="AI 設計拼貼"
+                            >
+                                <Sparkles className="w-6 h-6 mb-1" />
+                                <span className="text-xs font-medium">{tool.label}</span>
+                            </button>
+                        );
+                        return null;
+                    });
+                })()}
             </aside>
 
             {/* Center - Canvas Area */}

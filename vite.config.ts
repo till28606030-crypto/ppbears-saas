@@ -17,21 +17,21 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       sourcemap: false,
-      // Raise warning threshold slightly — we split at chunk level now
+      // Raise warning threshold slightly ??we split at chunk level now
       chunkSizeWarningLimit: 800,
       rollupOptions: {
         output: {
           /**
            * Manual chunk grouping strategy:
-           * - "vendor-fabric": Fabric.js (~700KB) — large canvas lib, rarely changes
-           * - "vendor-dnd": @dnd-kit/* — drag-and-drop utilities
-           * - "vendor-react": React core — long-lived cache hits
+           * - "vendor-fabric": Fabric.js (~700KB) ??large canvas lib, rarely changes
+           * - "vendor-dnd": @dnd-kit/* ??drag-and-drop utilities
+           * - "vendor-react": React core ??long-lived cache hits
            * - "vendor-supabase": Supabase client
            * Each chunk gets its own immutable cache hash, so users only re-download
            * the chunk that actually changed in a deploy.
            */
           manualChunks(id) {
-            // Fabric.js — the largest single dependency
+            // Fabric.js ??the largest single dependency
             if (id.includes('node_modules/fabric')) {
               return 'vendor-fabric';
             }
@@ -50,7 +50,7 @@ export default defineConfig(({ mode }) => {
                 id.includes('node_modules/scheduler/')) {
               return 'vendor-react';
             }
-            // Lucide icons — medium size, changes with app icon updates
+            // Lucide icons ??medium size, changes with app icon updates
             if (id.includes('node_modules/lucide-react')) {
               return 'vendor-icons';
             }
@@ -106,3 +106,5 @@ export default defineConfig(({ mode }) => {
 })
 
 // Trigger dev server restart for version update (v8.7)
+
+// Trigger dev server restart for version update (v8.8)

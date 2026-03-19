@@ -3,7 +3,7 @@ const APP_VERSION = __APP_VERSION__;
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   ShoppingBag, Image as ImageIcon, LayoutDashboard, LogOut, Menu, X,
-  ArrowLeft, Palette, Shapes, Settings, FolderTree, Sparkles,
+  ArrowLeft, Palette, Shapes, Settings, FolderTree, Sparkles, PanelLeft,
   GripVertical, Pencil, Check, RotateCcw
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -37,8 +37,9 @@ const DEFAULT_NAV_ITEMS: NavItem[] = [
   { id: 'designs',   defaultLabel: '設計款模板',     path: '/admin/designs',      activeKey: 'designs',   icon: <Palette className="w-5 h-5 shrink-0" /> },
   { id: 'frames',    defaultLabel: '相框設計',       path: '/seller/frames',      activeKey: 'frames',    icon: <Shapes className="w-5 h-5 shrink-0" /> },
   { id: 'media',     defaultLabel: '媒體庫 (全域儲存空間)', path: '/admin/media', activeKey: 'media',    icon: <ImageIcon className="w-5 h-5 shrink-0" /> },
-  { id: 'ai-styles', defaultLabel: 'AI 創意',        path: '/admin/ai-styles',    activeKey: 'ai-styles', icon: <Sparkles className="w-5 h-5 shrink-0" /> },
-  { id: 'settings',  defaultLabel: '系統設定 (空間清理)', path: '/admin/settings', activeKey: 'settings', icon: <Settings className="w-5 h-5 shrink-0" /> },
+  { id: 'ai-styles', defaultLabel: 'AI 創意',        path: '/admin/ai-styles',           activeKey: 'ai-styles',         icon: <Sparkles className="w-5 h-5 shrink-0" /> },
+  { id: 'toolbar',   defaultLabel: '工具列設定',      path: '/admin/toolbar-settings',    activeKey: 'toolbar-settings',  icon: <PanelLeft className="w-5 h-5 shrink-0" /> },
+  { id: 'settings',  defaultLabel: '系統設定 (空間清理)', path: '/admin/settings',         activeKey: 'settings',          icon: <Settings className="w-5 h-5 shrink-0" /> },
 ];
 
 const STORAGE_KEY = 'ppbears_admin_nav_prefs';
@@ -231,6 +232,7 @@ export default function AdminLayout() {
     if (path.includes('/admin/media')) return 'media';
     if (path.includes('/admin/settings')) return 'settings';
     if (path.includes('/admin/ai-styles')) return 'ai-styles';
+    if (path.includes('/admin/toolbar-settings')) return 'toolbar-settings';
     if (path.includes('/admin/options')) return 'options';
     return 'orders';
   };

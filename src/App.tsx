@@ -22,6 +22,7 @@ const AdminCategories = lazy(() => import("@/pages/admin/Categories"));
 const MediaLibrary    = lazy(() => import("@/pages/admin/MediaLibrary"));
 const SystemSettings  = lazy(() => import("@/pages/admin/SystemSettings"));
 const AiStylePresets  = lazy(() => import("@/pages/admin/AiStylePresets"));
+const ToolbarSettings = lazy(() => import("@/pages/admin/ToolbarSettings"));
 const ProductListV2   = lazy(() => import("@/pages/seller/products-v2/ProductList"));
 const ProductEditorV2 = lazy(() => import("@/pages/seller/products-v2/ProductEditor"));
 const FrameList       = lazy(() => import("@/pages/seller/FrameList"));
@@ -74,6 +75,7 @@ export default function App() {
                 <Route path="/admin/media"     element={<Suspense fallback={<PageLoader />}><ErrorBoundary inline><MediaLibrary /></ErrorBoundary></Suspense>} />
                 <Route path="/admin/settings"  element={<Suspense fallback={<PageLoader />}><ErrorBoundary inline><SystemSettings /></ErrorBoundary></Suspense>} />
                 <Route path="/admin/ai-styles" element={<Suspense fallback={<PageLoader />}><ErrorBoundary inline><AiStylePresets /></ErrorBoundary></Suspense>} />
+                <Route path="/admin/toolbar-settings" element={<Suspense fallback={<PageLoader />}><ErrorBoundary inline><ToolbarSettings /></ErrorBoundary></Suspense>} />
                 <Route path="/admin/models/:id" element={<Suspense fallback={<PageLoader />}><ErrorBoundary inline><ModelDetail /></ErrorBoundary></Suspense>} />
 
                 {/* Seller Center */}

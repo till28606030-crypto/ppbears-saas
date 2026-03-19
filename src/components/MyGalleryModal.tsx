@@ -14,13 +14,17 @@ interface MyGalleryModalProps {
     isOpen: boolean;
     onClose: () => void;
     onApply: (src: string | string[]) => void;
-    maxSelection?: number; // Added to support multiple selection
+    maxSelection?: number;
+    // Custom disclaimer text from product specs (optional)
+    disclaimerText?: string;
+    disclaimerLinkText?: string;
+    disclaimerLinkUrl?: string;
 }
 
 const STORAGE_KEY = 'ppbears_gallery_v1';
 const MAX_HISTORY = 20;
 
-export default function MyGalleryModal({ isOpen, onClose, onApply, maxSelection = 1 }: MyGalleryModalProps) {
+export default function MyGalleryModal({ isOpen, onClose, onApply, maxSelection = 1, disclaimerText, disclaimerLinkText, disclaimerLinkUrl }: MyGalleryModalProps) {
     const [activeTab, setActiveTab] = useState<'computer' | 'history'>('computer');
     const [historyImages, setHistoryImages] = useState<GalleryImage[]>([]);
     const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
@@ -255,18 +259,23 @@ export default function MyGalleryModal({ isOpen, onClose, onApply, maxSelection 
                                 <p className="text-gray-500 text-sm">
                                     支援 JPG, PNG 格式。上傳後將自動儲存至歷史圖庫。
                                 </p>
-                                <p className="text-red-500 text-[13px] font-medium leading-relaxed">
-                                    【上傳圖片前，請確認您擁有該圖片的使用權，並同意遵守本網站的
-                                    <a
-                                        href="https://ppbears.com/%e8%b3%bc%e8%b2%b7%e5%89%8d%e9%a0%88%e7%9f%a5/"
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-600 underline underline-offset-2 hover:text-blue-700 transition-colors"
-                                    >
-                                        服務條款購買須知
-                                    </a>
-                                    喔。】
-                                </p>
+                                <div className="text-[13px] font-medium leading-relaxed text-center space-y-1">
+                                    <p className="text-red-500">
+                                        {disclaimerText || '【上傳圖片前，請確認您擁有該圖片的使用權，並同意遵守本網站的服務條款喔。】'}
+                                    </p>
+                                    {(disclaimerLinkUrl || disclaimerLinkText) && (
+                                        <p>
+                                            <a
+                                                href={disclaimerLinkUrl || 'https://ppbears.com/%e8%b3%bc%e8%b2%b7%e5%89%8d%e9%a0%88%e7%9f%a5/'}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-blue-600 underline underline-offset-2 hover:text-blue-700 transition-colors"
+                                            >
+                                                {disclaimerLinkText || '服務條款購買須知'}
+                                            </a>
+                                        </p>
+                                    )}
+                                </div>
                             </div>
                             <button
                                 onClick={() => fileInputRef.current?.click()}
