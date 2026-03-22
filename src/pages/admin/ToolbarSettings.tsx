@@ -24,14 +24,15 @@ export interface ToolbarItemConfig {
 }
 
 export const DEFAULT_TOOLBAR_CONFIG: ToolbarItemConfig[] = [
-    { id: 'upload',     label: '上傳',   visible: true,  sort_order: 1 },
-    { id: 'text',       label: '文字',   visible: true,  sort_order: 2 },
-    { id: 'stickers',   label: '貼圖',   visible: true,  sort_order: 3 },
-    { id: 'background', label: '背景',   visible: true,  sort_order: 4 },
-    { id: 'frames',     label: '相框',   visible: true,  sort_order: 5 },
-    { id: 'barcode',    label: '條碼',   visible: false, sort_order: 6 },
-    { id: 'designs',    label: '設計',   visible: false, sort_order: 7 },
-    { id: 'ai',         label: 'AI創意', visible: true,  sort_order: 8 },
+    { id: 'upload',          label: '上傳',   visible: true,  sort_order: 1 },
+    { id: 'text',            label: '文字',   visible: true,  sort_order: 2 },
+    { id: 'stickers',        label: '貼圖',   visible: true,  sort_order: 3 },
+    { id: 'background',      label: '背景',   visible: true,  sort_order: 4 },
+    { id: 'frames',          label: '相框',   visible: true,  sort_order: 5 },
+    { id: 'barcode',         label: '條碼',   visible: false, sort_order: 6 },
+    { id: 'designs',         label: '設計',   visible: false, sort_order: 7 },
+    { id: 'ai',              label: 'AI創意', visible: true,  sort_order: 8 },
+    { id: 'product_preview', label: '規格',   visible: true,  sort_order: 9 },
 ];
 
 // IDs that cannot be hidden (system required)
@@ -41,6 +42,7 @@ const ALWAYS_VISIBLE = new Set(['upload']);
 const TOOL_DEFAULTS: Record<string, string> = {
     upload: '上傳', text: '文字', stickers: '貼圖', background: '背景',
     frames: '相框', barcode: '條碼', designs: '設計', ai: 'AI創意',
+    product_preview: '規格',
 };
 
 // ─── Sortable Row ─────────────────────────────────────────────────────────────

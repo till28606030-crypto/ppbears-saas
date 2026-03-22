@@ -4,6 +4,10 @@ export interface AssetItem {
     name: string;      // For keyword search
     category: string;  // Main grouping (e.g. "Themes", "Styles")
     tags: string[];    // Specific tags (e.g. "Cute", "Red", "New Year")
+    metadata?: {
+        thumbnail_url?: string;
+        [key: string]: any;
+    };
 }
 
 export interface SubAttributeOption {

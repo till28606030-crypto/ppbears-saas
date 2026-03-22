@@ -838,6 +838,7 @@ interface CanvasEditorProps {
         onAiRemoveBg?: () => void;
         onAiDesignCollage?: () => void;
         onOpenProduct: () => void;
+        onOpenProductPreview?: () => void; // NEW: Show Step1 product preview panel
     };
     /** Toolbar config from specs (order/visibility/labels), synced from ToolbarSettings */
     toolbarConfig?: Array<{ id: string; label: string; visible: boolean; sort_order: number }>;
@@ -7365,14 +7366,15 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                         // === 狀態 A: 主功能選單 (Main Menu) ===
                         (() => {
                             const DEFAULT_TOOLBAR = [
-                                { id: 'upload',     label: '上傳',   visible: true,  sort_order: 1 },
-                                { id: 'text',       label: '文字',   visible: true,  sort_order: 2 },
-                                { id: 'stickers',   label: '貼圖',   visible: true,  sort_order: 3 },
-                                { id: 'background', label: '背景',   visible: true,  sort_order: 4 },
-                                { id: 'frames',     label: '相框',   visible: true,  sort_order: 5 },
-                                { id: 'barcode',    label: '條碼',   visible: false, sort_order: 6 },
-                                { id: 'designs',    label: '設計',   visible: false, sort_order: 7 },
-                                { id: 'ai',         label: 'AI創意', visible: true,  sort_order: 8 },
+                                { id: 'upload',          label: '上傳',   visible: true,  sort_order: 1 },
+                                { id: 'text',            label: '文字',   visible: true,  sort_order: 2 },
+                                { id: 'stickers',        label: '貼圖',   visible: true,  sort_order: 3 },
+                                { id: 'background',      label: '背景',   visible: true,  sort_order: 4 },
+                                { id: 'frames',          label: '相框',   visible: true,  sort_order: 5 },
+                                { id: 'barcode',         label: '條碼',   visible: false, sort_order: 6 },
+                                { id: 'designs',         label: '設計',   visible: false, sort_order: 7 },
+                                { id: 'ai',              label: 'AI創意', visible: true,  sort_order: 8 },
+                                { id: 'product_preview', label: '規格',   visible: true,  sort_order: 9 },
                             ];
                             const saved = toolbarConfig || [];
                             const effective = DEFAULT_TOOLBAR
@@ -7431,6 +7433,12 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
                                         if (tool.id === 'ai' && mobileActions?.onAiDesignCollage) return (
                                             <button key="ai" onMouseDown={(e) => e.preventDefault()} onClick={mobileActions?.onAiDesignCollage} className={aiBtnClass}>
                                                 <Sparkles className="w-6 h-6" />
+                                                <span className="text-[10px] font-medium">{tool.label}</span>
+                                            </button>
+                                        );
+                                        if (tool.id === 'product_preview' && mobileActions?.onOpenProductPreview) return (
+                                            <button key="product_preview" onMouseDown={(e) => e.preventDefault()} onClick={mobileActions.onOpenProductPreview} className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] flex-shrink-0 whitespace-nowrap p-2 text-emerald-600 active:text-emerald-800">
+                                                <Smartphone className="w-6 h-6" />
                                                 <span className="text-[10px] font-medium">{tool.label}</span>
                                             </button>
                                         );

@@ -89,6 +89,7 @@ const handleClearCache = async () => {
 };
 
 import SellerShop from "@/pages/shop/SellerShop";
+import ProductPreviewPanel from '../components/ProductPreviewPanel';
 
 export default function Home() {
     // Debug Mode Check - Moved to top level for safe access in JSX
@@ -109,6 +110,7 @@ export default function Home() {
     const [uploadProgress, setUploadProgress] = useState(0);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [currentProduct, setCurrentProduct] = useState<any>(null);
+    const [showProductPreview, setShowProductPreview] = useState(false);
 
     // [Permission Logic]
     // 1. If client_permissions exists, use it mapping to internal keys
@@ -422,6 +424,10 @@ export default function Home() {
     // AI Action Handler
     const handleAiAction = async (action: string, payload?: any, skipDisclaimer = false) => {
         if (!canvasRef.current) return;
+
+        // Auto-close any open panels
+        setActivePanel('none');
+        setShowProductPreview(false);
 
         // Check Daily Usage Limit first for "Generation" actions
         // Note: 'design_collage' is now counted inside DesignCollageModal at actual generate time
@@ -870,7 +876,8 @@ export default function Home() {
     };
 
     const handleToolClick = (toolName: string) => {
-        // console.log('正在切換工具:', toolName);
+        // Auto-close product preview panel when switching tools
+        setShowProductPreview(false);
 
         // Reset search state
         setAssetSearch('');
@@ -1651,6 +1658,14 @@ export default function Home() {
                 </div>
             )}
 
+            {/* Product Preview Panel — shows Step1 products for current model */}
+            <ProductPreviewPanel
+                productId={productId}
+                productName={currentProduct?.name}
+                isOpen={showProductPreview}
+                onClose={() => setShowProductPreview(false)}
+            />
+
             {/* End of Modals */}            {/* Hidden File Input for Mobile/Desktop */}
             <input
                 ref={bgFileInputRef}
@@ -1671,7 +1686,7 @@ export default function Home() {
                 <button
                     onClick={() => handleToolClick('Product')}
                     className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-blue-200 ${activePanel === 'products' ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
-                    title="商品"
+                    title="選擇商品型號"
                 >
                     <Smartphone className="w-6 h-6 mb-1" />
                     <span className="text-xs font-medium">
@@ -1683,14 +1698,15 @@ export default function Home() {
                 {(() => {
                     // Build effective toolbar config: merge product's saved config with defaults
                     const DEFAULT_TOOLBAR = [
-                        { id: 'upload',     label: '上傳',   visible: true,  sort_order: 1 },
-                        { id: 'text',       label: '文字',   visible: true,  sort_order: 2 },
-                        { id: 'stickers',   label: '貼圖',   visible: true,  sort_order: 3 },
-                        { id: 'background', label: '背景',   visible: true,  sort_order: 4 },
-                        { id: 'frames',     label: '相框',   visible: true,  sort_order: 5 },
-                        { id: 'barcode',    label: '條碼',   visible: false, sort_order: 6 },
-                        { id: 'designs',    label: '設計',   visible: false, sort_order: 7 },
-                        { id: 'ai',         label: 'AI創意', visible: true,  sort_order: 8 },
+                        { id: 'upload',          label: '上傳',   visible: true,  sort_order: 1 },
+                        { id: 'text',            label: '文字',   visible: true,  sort_order: 2 },
+                        { id: 'stickers',        label: '貼圖',   visible: true,  sort_order: 3 },
+                        { id: 'background',      label: '背景',   visible: true,  sort_order: 4 },
+                        { id: 'frames',          label: '相框',   visible: true,  sort_order: 5 },
+                        { id: 'barcode',         label: '條碼',   visible: false, sort_order: 6 },
+                        { id: 'designs',         label: '設計',   visible: false, sort_order: 7 },
+                        { id: 'ai',              label: 'AI創意', visible: true,  sort_order: 8 },
+                        { id: 'product_preview', label: '規格',   visible: true,  sort_order: 9 },
                     ];
                     const savedConfig: any[] = currentProduct?.specs?.toolbar_config || [];
                     const effectiveConfig = DEFAULT_TOOLBAR
@@ -1702,7 +1718,7 @@ export default function Home() {
                         // Upload tool
                         if (tool.id === 'upload') return (
                             <button key="upload"
-                                onClick={() => setShowGalleryModal(true)}
+                                onClick={() => { setShowProductPreview(false); setShowGalleryModal(true); }}
                                 className="group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl text-gray-500 hover:bg-blue-50 hover:text-blue-600 cursor-pointer transition-all duration-200 border border-transparent hover:border-blue-200"
                                 title="上傳圖片"
                             >
@@ -1787,6 +1803,17 @@ export default function Home() {
                                 <span className="text-xs font-medium">{tool.label}</span>
                             </button>
                         );
+                        // Product Preview
+                        if (tool.id === 'product_preview' && productId) return (
+                            <button key="product_preview"
+                                onClick={() => setShowProductPreview(prev => !prev)}
+                                className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-xl transition-all duration-200 border border-transparent hover:border-emerald-200 ${showProductPreview ? 'bg-emerald-100 text-emerald-600' : 'text-gray-500 hover:bg-emerald-50 hover:text-emerald-600'}`}
+                                title="查看此型號支援的商品"
+                            >
+                                <ShoppingCart className="w-6 h-6 mb-1" />
+                                <span className="text-xs font-medium">{tool.label}</span>
+                            </button>
+                        );
                         return null;
                     });
                 })()}
@@ -1803,18 +1830,18 @@ export default function Home() {
                 ${activePanel === 'barcode' ? 'h-auto max-h-[50vh]' : 'h-[50vh]'} 
                 rounded-t-2xl border-t slide-in-from-bottom-5
             `}>
-                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 sticky top-0 z-10 shrink-0">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                {activePanel === 'products' && <><Smartphone className="w-4 h-4" /> 選擇商品</>}
-                                {activePanel === 'designs' && <><Palette className="w-4 h-4" /> 選擇設計</>}
-                                {activePanel === 'stickers' && <><Sticker className="w-4 h-4" /> 貼圖</>}
-                                {activePanel === 'backgrounds' && <><ImageIcon className="w-4 h-4" /> 背景</>}
-                                {activePanel === 'barcode' && <><ScanBarcode className="w-4 h-4" /> 手機條碼</>}
-                                {activePanel === 'frames' && <><FrameIcon className="w-4 h-4" /> 精選相框 {isOffline && <span className="ml-2 text-[10px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full font-normal">離線/快取</span>}</>}
-                                {activePanel === 'ai' && <><Sparkles className="w-4 h-4" /> AI 魔法</>}
-                            </h3>
-                            <button onClick={() => setActivePanel('none')} className="text-gray-400 hover:text-gray-600">
-                                <X className="w-4 h-4" />
+                        <div className="ppb-prev-header">
+                            <div className="ppb-prev-header__left">
+                                {activePanel === 'products' && <><Smartphone size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title">選擇商品</h3></>}
+                                {activePanel === 'designs' && <><Palette size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title">選擇設計</h3></>}
+                                {activePanel === 'stickers' && <><Sticker size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title">貼圖</h3></>}
+                                {activePanel === 'backgrounds' && <><ImageIcon size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title">背景</h3></>}
+                                {activePanel === 'barcode' && <><ScanBarcode size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title">手機條碼</h3></>}
+                                {activePanel === 'frames' && <><FrameIcon size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title flex items-center">精選相框 {isOffline && <span className="ml-2 text-[10px] bg-white/20 text-white px-1.5 py-0.5 rounded-full font-normal">離線/快取</span>}</h3></>}
+                                {activePanel === 'ai' && <><Sparkles size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title">AI 魔法</h3></>}
+                            </div>
+                            <button onClick={() => setActivePanel('none')} className="ppb-prev-header__close" aria-label="關閉">
+                                <X size={16} />
                             </button>
                         </div>
 
@@ -2447,15 +2474,7 @@ export default function Home() {
                                                                 title={item.name}
                                                             >
                                                                 <img
-                                                                    src={(() => {
-                                                                        // Supabase Image Transformation: /object/public/ → /render/image/public/
-                                                                        // resize=contain → 保持原始比例，不裁切
-                                                                        try {
-                                                                            return item.url.replace('/object/public/', '/render/image/public/') + '?width=150&height=150&resize=contain&quality=75';
-                                                                        } catch {
-                                                                            return item.url;
-                                                                        }
-                                                                    })()}
+                                                                    src={item.metadata?.thumbnail_url || item.url}
                                                                     onError={(e) => {
                                                                         const target = e.target as HTMLImageElement;
                                                                         if (target.src !== item.url) {
@@ -2593,7 +2612,7 @@ export default function Home() {
                             }
                         }}
                         mobileActions={{
-                            onUpload: () => setShowGalleryModal(true),
+                            onUpload: () => { setShowProductPreview(false); setShowGalleryModal(true); },
                             onAddText: perms.text ? () => handleToolClick('Text') : undefined,
                             onOpenStickers: perms.stickers ? () => handleToolClick('Stickers') : undefined,
                             onOpenBackgrounds: perms.backgrounds ? () => handleToolClick('Background') : undefined,
@@ -2606,6 +2625,7 @@ export default function Home() {
                             onAiRemoveBg: perms.aiRemoveBg ? () => { handleAiAction('remove_bg'); setActivePanel('none'); } : undefined,
                             onOpenProduct: () => handleToolClick('Product'),
                             onAiDesignCollage: perms.aiDesignCollage ? () => { handleAiAction('design_collage'); } : undefined,
+                            onOpenProductPreview: productId ? () => setShowProductPreview(prev => !prev) : undefined,
                         }}
                         toolbarConfig={currentProduct?.specs?.toolbar_config || undefined}
                     />

@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { uploadToSupabase } from '@/lib/upload';
 import { apiUrl } from '@/lib/apiBase';
-import { Sticker, Image as ImageIcon, Upload, Trash2, Edit2, X, Plus, Save, GripVertical, Search, Copy, Sparkles, Loader2 } from 'lucide-react';
+import { generateThumbnail } from '@/lib/imageUtils';
+import { Sticker, Image as ImageIcon, Upload, Trash2, Edit2, X, Plus, Save, GripVertical, Search, Copy, Sparkles, Loader2, Check } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { AssetItem } from '@/types';
 
@@ -22,34 +23,73 @@ const DEFAULT_BACKGROUND_CATEGORIES = [
     '未分類'
 ];
 
-function SortableCategoryItem({ id, onDelete }: { id: string; onDelete: (id: string) => void }) {
-    const {
-        attributes,
-        listeners,
-        setNodeRef,
-        transform,
-        transition,
-    } = useSortable({ id });
+/** Inline sortable category pill used in the category bar */
+function SortableCategoryPill({
+    id, isSelected, isEditing, editValue,
+    onSelect, onDoubleClick, onEditChange, onEditConfirm, onEditKeyDown, onDelete
+}: {
+    id: string;
+    isSelected: boolean;
+    isEditing: boolean;
+    editValue: string;
+    onSelect: () => void;
+    onDoubleClick: () => void;
+    onEditChange: (v: string) => void;
+    onEditConfirm: () => void;
+    onEditKeyDown: (e: React.KeyboardEvent) => void;
+    onDelete: () => void;
+}) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+    const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+    const inputRef = useRef<HTMLInputElement>(null);
 
-    const style = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-    };
+    useEffect(() => {
+        if (isEditing) inputRef.current?.select();
+    }, [isEditing]);
 
     return (
-        <div ref={setNodeRef} style={style} className="flex items-center justify-between text-sm bg-white px-2 py-1 rounded border border-gray-100 group hover:border-blue-200 transition-colors">
-            <div className="flex items-center gap-2">
-                <button {...attributes} {...listeners} className="cursor-grab text-gray-400 hover:text-gray-600 active:cursor-grabbing">
-                    <GripVertical className="w-3 h-3" />
-                </button>
-                <span>{id}</span>
-            </div>
-            {id !== '未分類' && (
+        <div
+            ref={setNodeRef}
+            style={style}
+            className={`relative group flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap select-none transition-all ${
+                isSelected && !isEditing ? 'bg-red-600 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:border-blue-300'
+            }`}
+        >
+            {/* Drag handle */}
+            <button {...attributes} {...listeners} tabIndex={-1}
+                className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 -ml-1 pr-0.5"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <GripVertical className="w-3 h-3" />
+            </button>
+
+            {isEditing ? (
+                <>
+                    <input
+                        ref={inputRef}
+                        value={editValue}
+                        onChange={(e) => onEditChange(e.target.value)}
+                        onKeyDown={onEditKeyDown}
+                        className="w-20 bg-transparent outline-none border-b border-blue-400 text-gray-800 text-sm"
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                    <button onClick={(e) => { e.stopPropagation(); onEditConfirm(); }}
+                        className="text-green-500 hover:text-green-700">
+                        <Check className="w-3.5 h-3.5" />
+                    </button>
+                </>
+            ) : (
+                <span onClick={onSelect} onDoubleClick={onDoubleClick} className="cursor-pointer">{id}</span>
+            )}
+
+            {/* Delete X (hidden for 未分類) */}
+            {id !== '未分類' && !isEditing && (
                 <button
-                    onClick={() => onDelete(id)}
-                    className="text-red-400 hover:text-red-600 p-1"
+                    onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity ml-0.5 text-red-400 hover:text-red-600"
+                    title="刪除這個類別"
                 >
-                    <Trash2 className="w-3 h-3" />
+                    <X className="w-3 h-3" />
                 </button>
             )}
         </div>
@@ -121,7 +161,8 @@ export default function AdminAssets() {
         url: dbItem.url,
         name: dbItem.name || '未命名',
         category: dbItem.category || '未分類',
-        tags: dbItem.tags || []
+        tags: dbItem.tags || [],
+        metadata: dbItem.metadata
     });
 
     // Helper to get current active categories based on editType
@@ -147,7 +188,7 @@ export default function AdminAssets() {
     };
 
     const handleDeleteCategory = (catToDelete: string) => {
-        if (catToDelete === '未分類' || !confirm(`確定要刪除分類「${catToDelete}」嗎？`)) return;
+        if (catToDelete === '未分類') return;
 
         if (activeAssetTab === 'stickers') {
             setStickerCategories(prev => prev.filter(c => c !== catToDelete));
@@ -180,47 +221,130 @@ export default function AdminAssets() {
         }
     };
 
+    // Inline category rename state
+    const [editingCatName, setEditingCatName] = useState<string | null>(null); // which cat is being renamed
+    const [editingCatValue, setEditingCatValue] = useState('');
+
+    const startEditCat = (cat: string) => {
+        setEditingCatName(cat);
+        setEditingCatValue(cat);
+    };
+
+    const confirmEditCat = () => {
+        if (!editingCatName) return;
+        const newName = editingCatValue.trim();
+        if (!newName || newName === editingCatName) { setEditingCatName(null); return; }
+
+        const rename = (cats: string[]) => cats.map(c => c === editingCatName ? newName : c);
+
+        if (activeAssetTab === 'stickers') setStickerCategories(prev => rename(prev));
+        else if (activeAssetTab === 'backgrounds') setBackgroundCategories(prev => rename(prev));
+        else setFrameCategories(prev => rename(prev));
+
+        // Also update any assets using the old name locally
+        const updateAssets = (items: AssetItem[]) =>
+            items.map(i => i.category === editingCatName ? { ...i, category: newName } : i);
+        if (activeAssetTab === 'stickers') setStickers(prev => updateAssets(prev));
+        else if (activeAssetTab === 'backgrounds') setBackgrounds(prev => updateAssets(prev));
+        else setFrames(prev => updateAssets(prev));
+
+        if (selectedCategory === editingCatName) setSelectedCategory(newName);
+        setEditingCatName(null);
+    };
+
+    // Inline new category add state
+    const [isAddingCatInline, setIsAddingCatInline] = useState(false);
+    const [newCatInlineValue, setNewCatInlineValue] = useState('');
+
     // Edit Modal State
     const [editingAsset, setEditingAsset] = useState<AssetItem | null>(null);
     const [editType, setEditType] = useState<'stickers' | 'backgrounds' | 'frames'>('stickers');
     const [isAiTagging, setIsAiTagging] = useState(false);
 
+    // Upload Queue State
+    const [uploadQueue, setUploadQueue] = useState<AssetItem[]>([]);
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
+
+    // Pop next item from queue into edit modal
+    const processNextInQueue = (queue: AssetItem[]) => {
+        if (queue.length === 0) {
+            setUploadProgress(null);
+            return;
+        }
+        const [next, ...rest] = queue;
+        setUploadQueue(rest);
+        setEditingAsset({ ...next });
+        setEditType(next.metadata?.assetType || 'stickers');
+        autoTagAsset(next.url, next);
+    };
+
     const handleAssetUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'stickers' | 'backgrounds' | 'frames') => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+        // Reset input so same files can be re-selected
+        e.target.value = '';
 
-        try {
-            // 1. Upload to Supabase Storage
-            const publicUrl = await uploadToSupabase(file, 'assets', type); // Use 'stickers' or 'backgrounds' as folder
-            if (!publicUrl) return;
+        setIsUploading(true);
+        setUploadProgress({ done: 0, total: files.length });
 
-            // 2. Insert into Supabase DB
-            const newAsset = {
-                type: type === 'stickers' ? 'sticker' : type === 'backgrounds' ? 'background' : 'frame',
-                url: publicUrl,
-                name: file.name.split('.')[0],
-                category: selectedCategory !== '全部' ? selectedCategory : '未分類',
-                tags: [],
-                created_at: new Date().toISOString()
-            };
+        const uploadedItems: AssetItem[] = [];
 
-            const { data, error } = await supabase.from('assets').insert(newAsset).select().single();
-            if (error) throw error;
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            try {
+                // 1. Upload original to Supabase Storage
+                const publicUrl = await uploadToSupabase(file, 'assets', type);
+                if (!publicUrl) continue;
 
-            // 3. Update Local State
-            const newItem = mapDbToAsset(data);
-            if (type === 'stickers') setStickers(prev => [newItem, ...prev]);
-            else if (type === 'backgrounds') setBackgrounds(prev => [newItem, ...prev]);
-            else setFrames(prev => [newItem, ...prev]);
+                // 1.5. Generate and upload thumbnail
+                let thumbUrl = publicUrl;
+                try {
+                    const { blob, filename } = await generateThumbnail(file);
+                    const thumbFile = new File([blob], filename, { type: 'image/webp' });
+                    const uploadedThumbUrl = await uploadToSupabase(thumbFile, 'assets', type);
+                    if (uploadedThumbUrl) thumbUrl = uploadedThumbUrl;
+                } catch (thumbErr) {
+                    console.warn('Thumbnail generation failed:', thumbErr);
+                }
 
-            // 4. Auto-open edit modal and trigger AI tagging
-            setEditingAsset({ ...newItem });
+                // 2. Insert into Supabase DB
+                const newAsset = {
+                    type: type === 'stickers' ? 'sticker' : type === 'backgrounds' ? 'background' : 'frame',
+                    url: publicUrl,
+                    name: file.name.replace(/\.[^.]+$/, ''), // Remove extension
+                    category: selectedCategory !== '全部' ? selectedCategory : '未分類',
+                    tags: [],
+                    metadata: { thumbnail_url: thumbUrl, assetType: type },
+                    created_at: new Date().toISOString()
+                };
+
+                const { data, error } = await supabase.from('assets').insert(newAsset).select().single();
+                if (error) throw error;
+
+                // 3. Update Local State immediately
+                const newItem = mapDbToAsset(data);
+                if (type === 'stickers') setStickers(prev => [newItem, ...prev]);
+                else if (type === 'backgrounds') setBackgrounds(prev => [newItem, ...prev]);
+                else setFrames(prev => [newItem, ...prev]);
+
+                uploadedItems.push(newItem);
+                setUploadProgress({ done: i + 1, total: files.length });
+
+            } catch (err: any) {
+                console.error(`Upload failed for ${file.name}:`, err);
+            }
+        }
+
+        setIsUploading(false);
+
+        // After all uploaded, open edit queue
+        if (uploadedItems.length > 0) {
+            const [first, ...rest] = uploadedItems;
+            setUploadQueue(rest);
+            setEditingAsset({ ...first });
             setEditType(type);
-            autoTagAsset(publicUrl, newItem);
-
-        } catch (err: any) {
-            console.error("Upload failed:", err);
-            alert("上傳失敗：" + err.message);
+            autoTagAsset(first.url, first);
         }
     };
 
@@ -321,6 +445,11 @@ export default function AdminAssets() {
             }
 
             setEditingAsset(null);
+
+            // Process next in upload queue if any
+            if (uploadQueue.length > 0) {
+                processNextInQueue(uploadQueue);
+            }
         } catch (err: any) {
             console.error("Update failed:", err);
             alert("更新失敗：" + err.message);
@@ -386,44 +515,137 @@ export default function AdminAssets() {
                                 />
                             </div>
 
-                            {/* Category Tabs */}
-                            <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                                <div className="flex items-center px-4 py-2 bg-gray-100 text-gray-600 rounded-md text-sm font-medium whitespace-nowrap">
-                                    {activeAssetTab === 'stickers' ? '貼圖風格' : '背景風格'}
-                                </div>
-                                <button
-                                    onClick={() => setSelectedCategory('全部')}
-                                    className={`px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${selectedCategory === '全部' ? 'bg-red-600 text-white shadow-sm' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                                >
-                                    全部
-                                </button>
-                                {(activeAssetTab === 'stickers' ? stickerCategories : backgroundCategories).map(cat => (
+                            {/* Category Bar - fully inline editable */}
+                            <DndContext
+                                sensors={sensors}
+                                collisionDetection={closestCenter}
+                                onDragEnd={handleDragEnd}
+                            >
+                                <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide flex-wrap">
                                     <button
-                                        key={cat}
-                                        onClick={() => setSelectedCategory(cat)}
-                                        className={`px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${selectedCategory === cat ? 'bg-red-600 text-white shadow-sm' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                        onClick={() => setSelectedCategory('全部')}
+                                        className={`px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                                            selectedCategory === '全部' ? 'bg-red-600 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200 hover:border-blue-300'
+                                        }`}
                                     >
-                                        {cat}
+                                        全部
                                     </button>
-                                ))}
-                            </div>
+
+                                    <SortableContext
+                                        items={getCurrentCategories()}
+                                        strategy={horizontalListSortingStrategy}
+                                    >
+                                        {getCurrentCategories().map(cat => (
+                                            <SortableCategoryPill
+                                                key={cat}
+                                                id={cat}
+                                                isSelected={selectedCategory === cat}
+                                                isEditing={editingCatName === cat}
+                                                editValue={editingCatValue}
+                                                onSelect={() => setSelectedCategory(cat)}
+                                                onDoubleClick={() => startEditCat(cat)}
+                                                onEditChange={setEditingCatValue}
+                                                onEditConfirm={confirmEditCat}
+                                                onEditKeyDown={(e) => {
+                                                    if (e.key === 'Enter') confirmEditCat();
+                                                    if (e.key === 'Escape') setEditingCatName(null);
+                                                }}
+                                                onDelete={() => handleDeleteCategory(cat)}
+                                            />
+                                        ))}
+                                    </SortableContext>
+
+                                    {/* Inline add new category */}
+                                    {isAddingCatInline ? (
+                                        <div className="flex items-center gap-1 px-2 py-1 rounded-full border border-blue-400 bg-blue-50">
+                                            <input
+                                                autoFocus
+                                                value={newCatInlineValue}
+                                                onChange={(e) => setNewCatInlineValue(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' && newCatInlineValue.trim()) {
+                                                        handleAddCategory();
+                                                        setIsAddingCatInline(false);
+                                                        setNewCatInlineValue('');
+                                                    }
+                                                    if (e.key === 'Escape') { setIsAddingCatInline(false); setNewCatInlineValue(''); }
+                                                }}
+                                                placeholder="新類別名稱"
+                                                className="w-24 text-sm bg-transparent outline-none text-gray-800"
+                                            />
+                                            <button
+                                                onClick={() => {
+                                                    if (newCatInlineValue.trim()) {
+                                                        setNewCategory(newCatInlineValue.trim());
+                                                        // We need to call handleAddCategory with the inline value
+                                                        const cat = newCatInlineValue.trim();
+                                                        if (activeAssetTab === 'stickers') setStickerCategories(prev => [...prev, cat]);
+                                                        else if (activeAssetTab === 'backgrounds') setBackgroundCategories(prev => [...prev, cat]);
+                                                        else setFrameCategories(prev => [...prev, cat]);
+                                                    }
+                                                    setIsAddingCatInline(false);
+                                                    setNewCatInlineValue('');
+                                                }}
+                                                className="text-green-500 hover:text-green-700"
+                                            >
+                                                <Check className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button onClick={() => { setIsAddingCatInline(false); setNewCatInlineValue(''); }} className="text-gray-400 hover:text-red-500">
+                                                <X className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={() => setIsAddingCatInline(true)}
+                                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs text-gray-400 border border-dashed border-gray-300 hover:border-blue-400 hover:text-blue-500 transition-colors"
+                                            title="新增類別"
+                                        >
+                                            <Plus className="w-3 h-3" /> 新增
+                                        </button>
+                                    )}
+                                </div>
+                            </DndContext>
                         </div>
 
                         {/* Upload Area */}
                         <div className="mb-8">
-                            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors">
+                            <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors ${isUploading ? 'pointer-events-none opacity-60' : ''}`}>
                                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                                    <Upload className="w-8 h-8 mb-3 text-gray-400" />
-                                    <p className="mb-2 text-sm text-gray-500"><span className="font-semibold">點擊上傳</span> {activeAssetTab === 'stickers' ? '貼圖' : '背景'}</p>
-                                    <p className="text-xs text-gray-500">PNG, JPG (最大 5MB)</p>
+                                    {isUploading ? (
+                                        <>
+                                            <Loader2 className="w-8 h-8 mb-2 text-blue-500 animate-spin" />
+                                            <p className="text-sm text-blue-600 font-semibold">
+                                                批量上傳中... {uploadProgress?.done}/{uploadProgress?.total} 張
+                                            </p>
+                                            <div className="w-40 h-1.5 bg-gray-200 rounded-full mt-2 overflow-hidden">
+                                                <div
+                                                    className="h-full bg-blue-500 rounded-full transition-all"
+                                                    style={{ width: `${uploadProgress ? (uploadProgress.done / uploadProgress.total) * 100 : 0}%` }}
+                                                />
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Upload className="w-8 h-8 mb-3 text-gray-400" />
+                                            <p className="mb-1 text-sm text-gray-500"><span className="font-semibold">點擊上傳</span> {activeAssetTab === 'stickers' ? '貼圖' : '背景'}</p>
+                                            <p className="text-xs text-gray-400">支援多選，PNG, JPG, WebP（每檔最大 5MB）</p>
+                                        </>
+                                    )}
                                 </div>
                                 <input
                                     type="file"
                                     className="hidden"
                                     accept="image/*"
+                                    multiple
                                     onChange={(e) => handleAssetUpload(e, activeAssetTab)}
                                 />
                             </label>
+                            {uploadQueue.length > 0 && (
+                                <div className="mt-2 flex items-center gap-2 text-sm text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span>還有 <strong>{uploadQueue.length}</strong> 張圖片等待您編輯名稱與標籤（請儲存目前這張後繼續）</span>
+                                </div>
+                            )}
                         </div>
 
                         {/* Gallery */}
@@ -433,7 +655,18 @@ export default function AdminAssets() {
                             <div className="grid grid-cols-4 md:grid-cols-6 gap-4">
                                 {filteredAssets.map((item, idx) => (
                                     <div key={item.id} className="group relative aspect-square bg-gray-100 rounded-lg border border-gray-200 overflow-hidden flex items-center justify-center p-2">
-                                        <img src={item.url} alt={item.name} className="max-w-full max-h-full object-contain" />
+                                        <img 
+                                            src={item.metadata?.thumbnail_url || item.url} 
+                                            onError={(e) => {
+                                                const target = e.target as HTMLImageElement;
+                                                if (target.src !== item.url) {
+                                                    target.src = item.url;
+                                                }
+                                            }}
+                                            alt={item.name} 
+                                            className="max-w-full max-h-full object-contain" 
+                                            loading="lazy"
+                                        />
 
                                         {/* Actions Overlay */}
                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
@@ -497,8 +730,13 @@ export default function AdminAssets() {
                 <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95">
                         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                            <h3 className="font-bold text-gray-800">編輯素材資訊</h3>
-                            <button onClick={() => setEditingAsset(null)} className="text-gray-400 hover:text-gray-600">
+                            <div>
+                                <h3 className="font-bold text-gray-800">編輯素材資訊</h3>
+                                {uploadQueue.length > 0 && (
+                                    <p className="text-xs text-orange-500 mt-0.5">儲存後將自動開啟下一張（還剩 {uploadQueue.length} 張）</p>
+                                )}
+                            </div>
+                            <button onClick={() => { setEditingAsset(null); setUploadQueue([]); }} className="text-gray-400 hover:text-gray-600">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
@@ -521,65 +759,16 @@ export default function AdminAssets() {
                             </div>
 
                             <div>
-                                <div className="flex items-center justify-between mb-1">
-                                    <label className="block text-sm font-medium text-gray-700">分類</label>
-                                    <button
-                                        onClick={() => setIsAddingCategory(!isAddingCategory)}
-                                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                                    >
-                                        <Plus className="w-3 h-3" /> 管理分類
-                                    </button>
-                                </div>
-
-                                {isAddingCategory ? (
-                                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 mb-2 space-y-2">
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                value={newCategory}
-                                                onChange={(e) => setNewCategory(e.target.value)}
-                                                placeholder="輸入新分類名稱"
-                                                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
-                                            />
-                                            <button
-                                                onClick={handleAddCategory}
-                                                className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
-                                            >
-                                                新增
-                                            </button>
-                                        </div>
-                                        <div className="max-h-48 overflow-y-auto space-y-1">
-                                            <DndContext
-                                                sensors={sensors}
-                                                collisionDetection={closestCenter}
-                                                onDragEnd={handleDragEnd}
-                                            >
-                                                <SortableContext
-                                                    items={getCurrentCategories()}
-                                                    strategy={verticalListSortingStrategy}
-                                                >
-                                                    {getCurrentCategories().map((cat) => (
-                                                        <SortableCategoryItem
-                                                            key={cat}
-                                                            id={cat}
-                                                            onDelete={handleDeleteCategory}
-                                                        />
-                                                    ))}
-                                                </SortableContext>
-                                            </DndContext>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <select
-                                        value={editingAsset.category}
-                                        onChange={(e) => setEditingAsset({ ...editingAsset, category: e.target.value })}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    >
-                                        {getCurrentCategories().map(cat => (
-                                            <option key={cat} value={cat}>{cat}</option>
-                                        ))}
-                                    </select>
-                                )}
+                                <label className="block text-sm font-medium text-gray-700 mb-1">分類</label>
+                                <select
+                                    value={editingAsset.category}
+                                    onChange={(e) => setEditingAsset({ ...editingAsset, category: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                >
+                                    {getCurrentCategories().map(cat => (
+                                        <option key={cat} value={cat}>{cat}</option>
+                                    ))}
+                                </select>
                             </div>
 
                             <div>
@@ -614,7 +803,7 @@ export default function AdminAssets() {
 
                         <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3">
                             <button
-                                onClick={() => setEditingAsset(null)}
+                                onClick={() => { setEditingAsset(null); setUploadQueue([]); }}
                                 className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors"
                             >
                                 取消
@@ -623,7 +812,8 @@ export default function AdminAssets() {
                                 onClick={saveEdit}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
                             >
-                                <Save className="w-4 h-4" /> 儲存變更
+                                <Save className="w-4 h-4" />
+                                {uploadQueue.length > 0 ? `儲存並開啟下一張 (${uploadQueue.length})` : '儲存變更'}
                             </button>
                         </div>
                     </div>
