@@ -1982,6 +1982,21 @@ export default function SaveDesignModal({
                                                                         } else if (tag.theme === 'sale') {
                                                                             badgeClass = "bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-transparent shadow-sm shadow-emerald-500/20";
                                                                             icon = "💰";
+                                                                        } else if (tag.theme === 'star') {
+                                                                            badgeClass = "bg-gradient-to-r from-yellow-400 to-amber-500 text-white border-transparent shadow-sm shadow-yellow-400/20";
+                                                                            icon = "⭐";
+                                                                        } else if (tag.theme === 'gift') {
+                                                                            badgeClass = "bg-gradient-to-r from-pink-500 to-rose-400 text-white border-transparent shadow-sm shadow-pink-500/20";
+                                                                            icon = "🎁";
+                                                                        } else if (tag.theme === 'flash') {
+                                                                            badgeClass = "bg-gradient-to-r from-orange-500 to-yellow-400 text-white border-transparent shadow-sm shadow-orange-500/20";
+                                                                            icon = "⚡";
+                                                                        } else if (tag.theme === 'top') {
+                                                                            badgeClass = "bg-gradient-to-r from-yellow-600 to-amber-400 text-white border-transparent shadow-sm shadow-yellow-600/20";
+                                                                            icon = "🏆";
+                                                                        } else if (tag.theme === 'pick') {
+                                                                            badgeClass = "bg-gradient-to-r from-blue-500 to-indigo-500 text-white border-transparent shadow-sm shadow-blue-500/20";
+                                                                            icon = "🎯";
                                                                         } else {
                                                                             badgeClass = "bg-gray-100 text-gray-700 border-gray-200";
                                                                             icon = "✦";

@@ -137,9 +137,9 @@ export default function AdminAssets() {
                 setFrames(loadedFrames);
 
                 // Extract distinct categories
-                const sCats = Array.from(new Set([...DEFAULT_STICKER_CATEGORIES, ...loadedStickers.map(i => i.category)]));
-                const bCats = Array.from(new Set([...DEFAULT_BACKGROUND_CATEGORIES, ...loadedBackgrounds.map(i => i.category)]));
-                const fCats = Array.from(new Set(['基本相框', '節慶', ...loadedFrames.map(i => i.category)]));
+                const sCats = Array.from(new Set(['未分類', ...loadedStickers.map(i => i.category)]));
+                const bCats = Array.from(new Set(['未分類', ...loadedBackgrounds.map(i => i.category)]));
+                const fCats = Array.from(new Set(['未分類', ...loadedFrames.map(i => i.category)]));
 
                 setStickerCategories(sCats);
                 setBackgroundCategories(bCats);
@@ -187,15 +187,45 @@ export default function AdminAssets() {
         setNewCategory('');
     };
 
-    const handleDeleteCategory = (catToDelete: string) => {
+    const handleDeleteCategory = async (catToDelete: string) => {
         if (catToDelete === '未分類') return;
 
-        if (activeAssetTab === 'stickers') {
-            setStickerCategories(prev => prev.filter(c => c !== catToDelete));
-        } else if (activeAssetTab === 'backgrounds') {
-            setBackgroundCategories(prev => prev.filter(c => c !== catToDelete));
-        } else {
-            setFrameCategories(prev => prev.filter(c => c !== catToDelete));
+        if (!window.confirm(`確定要刪除「${catToDelete}」類別嗎？\n該類別下的所有素材將被移至「未分類」。`)) {
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            const dbType = activeAssetTab.slice(0, -1);
+            
+            // 1. Update in Supabase
+            const { error } = await supabase
+                .from('assets')
+                .update({ category: '未分類' })
+                .eq('type', dbType)
+                .eq('category', catToDelete);
+
+            if (error) throw error;
+
+            // 2. Update local state
+            const updateAssets = (items: AssetItem[]) =>
+                items.map(i => i.category === catToDelete ? { ...i, category: '未分類' } : i);
+            
+            if (activeAssetTab === 'stickers') {
+                setStickerCategories(prev => prev.filter(c => c !== catToDelete));
+                setStickers(prev => updateAssets(prev));
+            } else if (activeAssetTab === 'backgrounds') {
+                setBackgroundCategories(prev => prev.filter(c => c !== catToDelete));
+                setBackgrounds(prev => updateAssets(prev));
+            } else {
+                setFrameCategories(prev => prev.filter(c => c !== catToDelete));
+                setFrames(prev => updateAssets(prev));
+            }
+        } catch (err: any) {
+            console.error("Failed to delete category:", err);
+            alert("刪除失敗：" + err.message);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -230,26 +260,48 @@ export default function AdminAssets() {
         setEditingCatValue(cat);
     };
 
-    const confirmEditCat = () => {
+    const confirmEditCat = async () => {
         if (!editingCatName) return;
         const newName = editingCatValue.trim();
         if (!newName || newName === editingCatName) { setEditingCatName(null); return; }
 
-        const rename = (cats: string[]) => cats.map(c => c === editingCatName ? newName : c);
+        setIsLoading(true);
+        try {
+            const dbType = activeAssetTab.slice(0, -1);
+            
+            // 1. Update in Supabase
+            const { error } = await supabase
+                .from('assets')
+                .update({ category: newName })
+                .eq('type', dbType)
+                .eq('category', editingCatName);
 
-        if (activeAssetTab === 'stickers') setStickerCategories(prev => rename(prev));
-        else if (activeAssetTab === 'backgrounds') setBackgroundCategories(prev => rename(prev));
-        else setFrameCategories(prev => rename(prev));
+            if (error) throw error;
 
-        // Also update any assets using the old name locally
-        const updateAssets = (items: AssetItem[]) =>
-            items.map(i => i.category === editingCatName ? { ...i, category: newName } : i);
-        if (activeAssetTab === 'stickers') setStickers(prev => updateAssets(prev));
-        else if (activeAssetTab === 'backgrounds') setBackgrounds(prev => updateAssets(prev));
-        else setFrames(prev => updateAssets(prev));
+            // 2. Update local state
+            const rename = (cats: string[]) => cats.map(c => c === editingCatName ? newName : c);
+            const updateAssets = (items: AssetItem[]) =>
+                items.map(i => i.category === editingCatName ? { ...i, category: newName } : i);
 
-        if (selectedCategory === editingCatName) setSelectedCategory(newName);
-        setEditingCatName(null);
+            if (activeAssetTab === 'stickers') {
+                setStickerCategories(prev => rename(prev));
+                setStickers(prev => updateAssets(prev));
+            } else if (activeAssetTab === 'backgrounds') {
+                setBackgroundCategories(prev => rename(prev));
+                setBackgrounds(prev => updateAssets(prev));
+            } else {
+                setFrameCategories(prev => rename(prev));
+                setFrames(prev => updateAssets(prev));
+            }
+
+            if (selectedCategory === editingCatName) setSelectedCategory(newName);
+            setEditingCatName(null);
+        } catch (err: any) {
+            console.error("Failed to rename category:", err);
+            alert("重新命名失敗：" + err.message);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     // Inline new category add state

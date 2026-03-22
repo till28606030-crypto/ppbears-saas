@@ -1116,6 +1116,11 @@ export default function AdminOptionManager() {
                                             if (tag.theme === 'hot') icon = "🔥";
                                             if (tag.theme === 'new') icon = "✨";
                                             if (tag.theme === 'sale') icon = "💰";
+                                            if (tag.theme === 'star') icon = "⭐";
+                                            if (tag.theme === 'gift') icon = "🎁";
+                                            if (tag.theme === 'flash') icon = "⚡";
+                                            if (tag.theme === 'top') icon = "🏆";
+                                            if (tag.theme === 'pick') icon = "🎯";
                                             return (
                                                 <span key={tag.id} className="text-[10px] bg-gray-50 text-gray-600 px-1.5 py-0.5 rounded border border-gray-200 shrink-0 flex items-center gap-0.5" title={tag.label}>
                                                     <span>{icon}</span>
@@ -2167,6 +2172,11 @@ export default function AdminOptionManager() {
                                                     <option value="hot">🔥 熱銷/推薦 (紅)</option>
                                                     <option value="new">✨ 新品 (紫)</option>
                                                     <option value="sale">💰 優惠 (綠)</option>
+                                                    <option value="star">⭐ 精選 (黃)</option>
+                                                    <option value="gift">🎁 限定 (粉紅)</option>
+                                                    <option value="flash">⚡ 急購 (橘)</option>
+                                                    <option value="top">🏆 人氣 (金)</option>
+                                                    <option value="pick">🎯 必買 (藍)</option>
                                                     <option value="custom">✦ 自訂 (灰)</option>
                                                 </select>
                                             </div>
