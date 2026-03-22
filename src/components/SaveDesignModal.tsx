@@ -193,6 +193,8 @@ export default function SaveDesignModal({
     const [textFallbackFields, setTextFallbackFields] = useState<Record<string, string>>({});
     // 殼種不符合警告
     const [caseNameMismatch, setCaseNameMismatch] = useState<string | null>(null);
+    // AI 無法辨識（未達規格）警告
+    const [aiRecognitionError, setAiRecognitionError] = useState<boolean>(false);
 
     // Data State
     const [linkedOptionItemsMap, setLinkedOptionItemsMap] = useState<Record<string, string[]>>({});
@@ -1141,9 +1143,15 @@ export default function SaveDesignModal({
             // 8 秒後清除高亮
             setTimeout(() => setMatchedFields(new Set()), 8000);
 
-        } catch (err) {
+        } catch (err: any) {
             console.error('[AI Recognition] Error:', err);
-            setInlineError('AI 辨識失敗，請重試或直接手動選擇下方規格。');
+            
+            if (err?.message?.includes('無法從圖片中辨識出任何規格文字') || err?.message?.includes('未偵測到規格文字') || err?.message?.includes('INVALID_IMAGE')) {
+                setAiRecognitionError(true);
+            } else {
+                setInlineError('AI 辨識失敗，請重試或直接手動選擇下方規格。');
+            }
+            
             setUploadedSpecImage(null);
 
             // Feature: Fallback UI - Ensure advanced options are shown if AI fails
@@ -1398,6 +1406,54 @@ export default function SaveDesignModal({
                 >
                     <X className="w-5 h-5 text-gray-600" />
                 </button>
+
+                {/* ===== AI 辨識失敗 (無法辨識) 警告對話框 ===== */}
+                {aiRecognitionError && (
+                    <div className="absolute inset-0 z-[100002] flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-none md:rounded-2xl animate-in fade-in duration-200">
+                        <div className="bg-white rounded-2xl shadow-2xl p-6 mx-4 max-w-sm w-full animate-in zoom-in-95 duration-200">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center shrink-0">
+                                    <AlertCircle className="w-6 h-6 text-orange-500" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-gray-900 text-base">截圖辨識錯誤</h3>
+                                    <p className="text-xs text-gray-500 mt-0.5">無法從圖片中辨識規格</p>
+                                </div>
+                            </div>
+                            <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-4 space-y-2 text-sm">
+                                <div>
+                                    <span className="text-xs text-gray-500">截圖辨識到的殼種：</span>
+                                    <div className="font-bold text-orange-700">無法辨識</div>
+                                </div>
+                            </div>
+                            <p className="text-sm text-gray-600 mb-5">
+                                請先到 Devilcase 的配色試衣間完成搭配後，再把截圖上傳。
+                            </p>
+                            <a
+                                href="https://devilcase.com.tw/fitting-room"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center justify-center gap-2 w-full py-3 mb-3 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-bold text-sm transition-colors border border-red-200"
+                            >
+                                <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                                Devilcase 配色試衣間（點我開啟）
+                            </a>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setAiRecognitionError(false);
+                                    setUploadedSpecImage(null);
+                                    setShowAdvancedAfterUpload(false);
+                                    setRecognizedProductInfo(null);
+                                    setTextFallbackFields({});
+                                }}
+                                className="w-full px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-sm transition-colors"
+                            >
+                                重新上傳截圖
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* ===== 殼種不符合警告對話框 ===== */}
                 {caseNameMismatch && (
