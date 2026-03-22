@@ -1591,7 +1591,7 @@ export default function Home() {
     }
 
     return (
-        <div className="flex h-screen w-screen overflow-hidden bg-white text-gray-900 font-sans relative">
+        <div className="flex h-dvh w-dvw overflow-hidden bg-white text-gray-900 font-sans relative">
 
             {/* Checkout Modal (Replaced with SaveDesignModal) */}
             {/* Final Modals */}

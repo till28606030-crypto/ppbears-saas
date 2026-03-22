@@ -6919,8 +6919,13 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
         md:hidden fixed left-0 right-0 z-[110] bg-white border-t border-gray-200 rounded-t-2xl shadow-[0_-5px_15px_rgba(0,0,0,0.1)]
         transition-transform duration-300 ease-in-out
         ${selectedObject && !isMobileLayersOpen && !showCropMenu && showMobilePropertyBar && (selectedObject.type === 'i-text' || selectedObject.type === 'text' || (selectedObject.type === 'image' && activeMobileSubMenu === 'align')) ? 'translate-y-0' : 'translate-y-[150%]'}
-        ${(selectedObject?.type === 'i-text' || selectedObject?.type === 'text' || (selectedObject?.type === 'image' && activeMobileSubMenu === 'align')) ? 'bottom-[64px] rounded-b-none border-b-0' : 'bottom-[72px]'} 
-      `}>
+      `}
+              style={{
+                  bottom: (selectedObject?.type === 'i-text' || selectedObject?.type === 'text' || (selectedObject?.type === 'image' && activeMobileSubMenu === 'align'))
+                      ? 'calc(64px + env(safe-area-inset-bottom))'
+                      : 'calc(72px + env(safe-area-inset-bottom))'
+              }}
+            >
                 {selectedObject && (
                     <>
                         {/* Header / Done Bar */}
@@ -7330,7 +7335,7 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
 
                 <div
                     className="flex items-center overflow-x-auto flex-nowrap w-full no-scrollbar gap-2 px-4 py-3"
-                    style={{ scrollbarWidth: 'none' }}
+                    style={{ scrollbarWidth: 'none', paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
                 >
                     {showCropMenu ? (
                         // === 狀態 B: 裁切子選單 (Crop Sub-menu) ===
