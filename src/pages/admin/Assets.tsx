@@ -432,7 +432,8 @@ export default function AdminAssets() {
 
             console.log('[AutoTag] Sending request for asset:', asset.id, 'url:', imageUrl.slice(0, 60));
 
-            const response = await fetch('/api/ai/vision-analyze', {
+            const apiOrigin = (import.meta as any).env?.VITE_API_ORIGIN || '';
+            const response = await fetch(`${apiOrigin}/api/ai/vision-analyze`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
