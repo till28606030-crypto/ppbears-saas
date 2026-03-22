@@ -2,6 +2,10 @@
 
 所有版本修改紀錄。每次每次修改需記錄：修改內容、影響檔案、測試結果。
 
+## [9.8] - 2026-03-22
+### Features & Fixes
+- **手機版規格選取頁佈局修正 (SaveDesignModal Fix)**：修復了手機瀏覽器下「加入購物車」按鈕被切掉一半的問題。透過將外層 Overlay 的高度由 `100vh` 改為 `100dvh`，確保模態視窗能正確對齊可見視窗，不被瀏覽器網址列或導覽列擠壓。
+
 ## [9.7] - 2026-03-22
 ### Features & Fixes
 - **手機版視窗佈局優化 (Viewport Fix)**：為了解決手機瀏覽器（Samsung / Apple）網址列與功能列遮擋畫面的問題，全面改用 `100dvh` (Dynamic Viewport Height) 容器，並加入 `viewport-fit=cover` 與 `env(safe-area-inset-bottom)`。確保畫布與底部工具列在不同手機瀏覽器下均能完整呈現且不被系統 UI 遮擋。
