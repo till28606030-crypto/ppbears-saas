@@ -1826,17 +1826,22 @@ export default function Home() {
 
             {/* Center - Canvas Area */}
             <main className="flex-1 relative bg-gray-100 flex flex-col">
-                {/* Assets Panel (Responsive: Sidebar on Desktop, Bottom Sheet on Mobile) */}
+                {/* Assets Panel (Responsive: Sidebar on Desktop, Full-screen Modal on Mobile) */}
                 {activePanel !== 'none' && (
-                    <div className={`
-                absolute z-[120] bg-white shadow-xl flex flex-col overflow-hidden animate-in duration-200
-                md:left-0 md:top-0 md:bottom-0 md:w-64 md:border-r md:border-t-0 md:slide-in-from-left-5 md:rounded-none
-                fixed inset-x-0 bottom-0 top-auto 
-                ${activePanel === 'barcode' ? 'h-auto max-h-[50vh]' : 'h-[50vh]'} 
-                rounded-t-2xl border-t slide-in-from-bottom-5
-            `}>
-                        <div className="ppb-prev-header">
-                            <div className="ppb-prev-header__left">
+                    <>
+                        {/* Mobile Overlay Backdrop */}
+                        <div 
+                            className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[190] animate-in fade-in duration-200"
+                            onClick={() => setActivePanel('none')} 
+                        />
+                        <div className={`
+                            bg-white shadow-2xl flex flex-col overflow-hidden animate-in duration-200
+                            md:absolute md:z-[120] md:left-0 md:top-0 md:bottom-0 md:w-64 md:border-r md:border-t-0 md:slide-in-from-left-5 md:rounded-none md:shadow-xl
+                            fixed z-[200] inset-x-4 top-[8vh] ${activePanel === 'barcode' ? 'bottom-auto pb-4 max-h-[84vh]' : 'bottom-[8vh]'} rounded-2xl zoom-in-95
+                            md:inset-auto md:left-0 md:top-0 md:bottom-0 md:zoom-in-none
+                        `}>
+                            <div className="ppb-prev-header">
+                                <div className="ppb-prev-header__left">
                                 {activePanel === 'products' && <><Smartphone size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title">選擇商品</h3></>}
                                 {activePanel === 'designs' && <><Palette size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title">選擇設計</h3></>}
                                 {activePanel === 'stickers' && <><Sticker size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title">貼圖</h3></>}
@@ -2505,8 +2510,8 @@ export default function Home() {
                             </div>
                         )}
                     </div>
-                )
-                }
+                    </>
+                )}
 
                 {/* Top Header */}
                 <header className="h-16 bg-white border-b border-gray-200 flex items-center px-4 md:px-6 justify-between shadow-sm z-10 shrink-0">

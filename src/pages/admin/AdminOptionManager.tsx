@@ -1222,9 +1222,6 @@ export default function AdminOptionManager() {
                 </div>
                 <div className="p-2">
                     <div className="font-bold text-xs text-gray-800 truncate" title={item.name}>{item.name}</div>
-                    <div className="text-[10px] text-gray-500 font-medium">
-                        {item.priceModifier > 0 ? `+$${item.priceModifier}` : '包含'}
-                    </div>
                 </div>
             </div>
         );
@@ -2235,15 +2232,7 @@ export default function AdminOptionManager() {
                             />
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-bold mb-1">加價金額</label>
-                            <input
-                                type="number"
-                                className="w-full border rounded-lg px-3 py-2"
-                                value={editingItemData.priceModifier || 0}
-                                onChange={e => setEditingItemData(prev => ({ ...prev, priceModifier: Number(e.target.value) }))}
-                            />
-                        </div>
+
 
                         <div>
                             <label className="flex items-center gap-2 cursor-pointer py-1">

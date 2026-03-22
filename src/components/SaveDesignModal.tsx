@@ -941,16 +941,25 @@ export default function SaveDesignModal({
         if (!group || !item) return;
 
         const step = getStep(group);
-        const delta = Number(item.priceModifier) || 0;
+        let delta = Number(item.priceModifier) || 0;
+        const groupPrice = Number((group as any)?.priceModifier) || 0;
+        const isSelf = String(val).includes('__self');
 
         // Step1 規格（殼種/顏色等）
         if (step === 1 || step1KeySet.has(key)) {
+            // Step1: 如果自己沒有價格設定，回退使用群組基礎價格
+            delta = isSelf ? delta : (delta > 0 ? delta : groupPrice);
+            
             // 這裡不要顯示「group.name: item.name」避免出現「大惡魔殼: 大惡魔殼」
             specLines.push({ label: item.name, delta });
             return;
         }
 
         // Step2/3 加購
+        if (!isSelf) {
+            delta += groupPrice;
+        }
+        
         addonLines.push({
             label: `${group.name}: ${item.name}`,
             delta
@@ -1849,11 +1858,32 @@ export default function SaveDesignModal({
                                                         const groupKey = getGroupKey(group);
                                                         const validItems = getFilteredItems(group.id);
 
+                                                        const getDisplayPrice = (item: any) => {
+                                                            const isSelf = String(item.id).includes('__self');
+                                                            const itemPrice = Number(item.priceModifier) || 0;
+                                                            const gPrice = Number((group as any)?.priceModifier) || 0;
+                                                            const step = getStep(group);
+                                                            
+                                                            // For Step 1:
+                                                            // If it's the __self option, its price modifier is 0, so it shows '包含' or nothing.
+                                                            // If it's a child item (like color or variant), its price modifier is strictly an ADD-ON (e.g. +100).
+                                                            // We should NOT add the group base price to the UI display on the card, otherwise it looks like the product price instead of the add-on extra.
+                                                            if (step === 1) {
+                                                                return itemPrice;
+                                                            }
+                                                            // For Step 2/3 (Add-ons):
+                                                            // The group price acts as a base for the whole category, and the item price adds on top.
+                                                            // Wait, is this correct for Add-ons? Usually Add-ons show their exact add-on price.
+                                                            // But let's leave Step 2/3 as it was fixed before, only modify Step 1 to return `itemPrice`.
+                                                            return itemPrice + (!isSelf ? gPrice : 0);
+                                                        };
+
                                                         if (displayType === 'checkbox') {
                                                             return (
                                                                 <div className="col-span-1 sm:col-span-2 grid grid-cols-2 md:grid-cols-3 gap-3">
                                                                     {validItems.map(item => {
                                                                         const isSelected = selectedOptions[groupKey] === item.id;
+                                                                        const displayPrice = getDisplayPrice(item);
                                                                         return (
                                                                             <button
                                                                                 key={item.id}
@@ -1882,9 +1912,9 @@ export default function SaveDesignModal({
                                                                                 )}
                                                                                 <div className="text-center w-full">
                                                                                     <div className="text-sm font-bold text-gray-900 truncate w-full">{item.name}</div>
-                                                                                    {item.priceModifier > 0 && (
+                                                                                    {displayPrice > 0 && (
                                                                                         <div className="text-xs font-semibold text-blue-600 mt-1">
-                                                                                            +NT$ {item.priceModifier}
+                                                                                            +NT$ {displayPrice}
                                                                                         </div>
                                                                                     )}
                                                                                 </div>
@@ -1904,7 +1934,9 @@ export default function SaveDesignModal({
                                                             );
                                                         }
 
-                                                        return validItems.map(item => (
+                                                        return validItems.map(item => {
+                                                            const displayPrice = getDisplayPrice(item);
+                                                            return (
                                                             <button
                                                                 type="button"
                                                                 key={item.id}
@@ -1949,12 +1981,12 @@ export default function SaveDesignModal({
                                                                             <h3 className="font-bold text-gray-900 text-xs md:text-base line-clamp-2 md:line-clamp-none leading-tight">{item.name}</h3>
                                                                         </div>
                                                                         <div className="mt-1 md:mt-3 font-medium text-blue-600 text-[10px] md:text-sm">
-                                                                            {item.priceModifier > 0 ? `NT$ ${item.priceModifier}` : ''}
+                                                                            {displayPrice > 0 ? `+NT$ ${displayPrice}` : ''}
                                                                         </div>
                                                                     </div>
                                                                 </div>
                                                             </button>
-                                                        ));
+                                                        )});
                                                     })()}
                                                 </div>
 
