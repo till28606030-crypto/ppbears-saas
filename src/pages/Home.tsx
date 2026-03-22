@@ -1842,7 +1842,7 @@ export default function Home() {
                                 {activePanel === 'stickers' && <><Sticker size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title">貼圖</h3></>}
                                 {activePanel === 'backgrounds' && <><ImageIcon size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title">背景</h3></>}
                                 {activePanel === 'barcode' && <><ScanBarcode size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title">手機條碼</h3></>}
-                                {activePanel === 'frames' && <><FrameIcon size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title flex items-center">精選相框 {isOffline && <span className="ml-2 text-[10px] bg-white/20 text-white px-1.5 py-0.5 rounded-full font-normal">離線/快取</span>}</h3></>}
+                                {activePanel === 'frames' && <><FrameIcon size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title">精選相框</h3></>}
                                 {activePanel === 'ai' && <><Sparkles size={16} className="ppb-prev-header__icon" /><h3 className="ppb-prev-header__title">AI 魔法</h3></>}
                             </div>
                             <button onClick={() => setActivePanel('none')} className="ppb-prev-header__close" aria-label="關閉">
