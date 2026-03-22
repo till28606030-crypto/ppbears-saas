@@ -103,6 +103,10 @@ export default function AdminAssets() {
     const [frames, setFrames] = useState<AssetItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
+    // Batch Edit & Inline Edit State
+    const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+    const [isBatchUpdating, setIsBatchUpdating] = useState(false);
+
     // Categories Management State
     const [stickerCategories, setStickerCategories] = useState<string[]>(DEFAULT_STICKER_CATEGORIES);
     const [backgroundCategories, setBackgroundCategories] = useState<string[]>(DEFAULT_BACKGROUND_CATEGORIES);
@@ -114,6 +118,10 @@ export default function AdminAssets() {
     // Search & Filter State
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('全部');
+
+    useEffect(() => {
+        setSelectedAssetIds([]);
+    }, [activeAssetTab, searchTerm, selectedCategory]);
 
     // Load Data from Supabase
     const fetchData = async () => {
@@ -248,6 +256,56 @@ export default function AdminAssets() {
             if (activeAssetTab === 'stickers') setStickerCategories(newCategories);
             else if (activeAssetTab === 'backgrounds') setBackgroundCategories(newCategories);
             else setFrameCategories(newCategories);
+        }
+    };
+
+    const handleBatchCategoryUpdate = async (newCategory: string) => {
+        if (selectedAssetIds.length === 0 || !newCategory) return;
+        setIsBatchUpdating(true);
+        try {
+            const dbType = activeAssetTab.slice(0, -1);
+            const { error } = await supabase
+                .from('assets')
+                .update({ category: newCategory })
+                .eq('type', dbType)
+                .in('id', selectedAssetIds);
+
+            if (error) throw error;
+
+            const updateFn = (items: AssetItem[]) => 
+                items.map(i => selectedAssetIds.includes(i.id) ? { ...i, category: newCategory } : i);
+            
+            if (activeAssetTab === 'stickers') setStickers(updateFn);
+            else if (activeAssetTab === 'backgrounds') setBackgrounds(updateFn);
+            else setFrames(updateFn);
+
+            setSelectedAssetIds([]);
+        } catch (err: any) {
+            alert("批次更新分類失敗: " + err.message);
+        } finally {
+            setIsBatchUpdating(false);
+        }
+    };
+
+    const handleInlineNameUpdate = async (id: string, newName: string) => {
+        const trimmedName = newName.trim();
+        if (!trimmedName) return;
+        try {
+            const { error } = await supabase
+                .from('assets')
+                .update({ name: trimmedName })
+                .eq('id', id);
+
+            if (error) throw error;
+
+            const updateFn = (items: AssetItem[]) => 
+                items.map(i => i.id === id ? { ...i, name: trimmedName } : i);
+            
+            if (activeAssetTab === 'stickers') setStickers(updateFn);
+            else if (activeAssetTab === 'backgrounds') setBackgrounds(updateFn);
+            else setFrames(updateFn);
+        } catch (err: any) {
+            alert("名稱更新失敗: " + err.message);
         }
     };
 
@@ -702,12 +760,68 @@ export default function AdminAssets() {
                         </div>
 
                         {/* Gallery */}
+                        {selectedAssetIds.length > 0 && !isLoading && (
+                            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+                                <div className="text-sm text-blue-800 font-medium flex items-center gap-2">
+                                    <span className="bg-blue-600 text-white w-5 h-5 flex items-center justify-center rounded-full text-xs">{selectedAssetIds.length}</span>
+                                    已選取項目
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <select 
+                                        id="batchCategorySelect"
+                                        className="text-sm border-gray-300 rounded-md py-1.5 pl-3 pr-8 focus:ring-blue-500 focus:border-blue-500"
+                                        defaultValue=""
+                                    >
+                                        <option value="" disabled>請選擇新分類...</option>
+                                        {activeAssetTab === 'stickers' ? stickerCategories.filter(c=>c!=='全部').map(c => <option key={c} value={c}>{c}</option>) : null}
+                                        {activeAssetTab === 'backgrounds' ? backgroundCategories.filter(c=>c!=='全部').map(c => <option key={c} value={c}>{c}</option>) : null}
+                                        {activeAssetTab === 'frames' ? frameCategories.filter(c=>c!=='全部').map(c => <option key={c} value={c}>{c}</option>) : null}
+                                    </select>
+                                    <button 
+                                        onClick={() => {
+                                            const select = document.getElementById('batchCategorySelect') as HTMLSelectElement;
+                                            if (select.value) {
+                                                handleBatchCategoryUpdate(select.value);
+                                            } else {
+                                                alert('請先選擇分類');
+                                            }
+                                        }}
+                                        disabled={isBatchUpdating}
+                                        className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1"
+                                    >
+                                        {isBatchUpdating && <Loader2 className="w-3 h-3 animate-spin" />}
+                                        套用分類
+                                    </button>
+                                    <button 
+                                        onClick={() => setSelectedAssetIds([])}
+                                        className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 text-sm rounded-md hover:bg-gray-50"
+                                    >
+                                        取消選取
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         {isLoading ? (
                             <div className="text-center py-12 text-gray-400">載入中...</div>
                         ) : (
                             <div className="grid grid-cols-4 md:grid-cols-6 gap-4">
                                 {filteredAssets.map((item, idx) => (
                                     <div key={item.id} className="group relative aspect-square bg-gray-100 rounded-lg border border-gray-200 overflow-hidden flex items-center justify-center p-2">
+                                        {/* Checkbox for Batch Selection */}
+                                        <div className="absolute top-2 left-2 z-20">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={selectedAssetIds.includes(item.id)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) setSelectedAssetIds(prev => [...prev, item.id]);
+                                                    else setSelectedAssetIds(prev => prev.filter(id => id !== item.id));
+                                                }}
+                                                className={`w-4 h-4 rounded border-gray-300 shadow-sm cursor-pointer transition-opacity ${selectedAssetIds.includes(item.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                                title="選取以批次修改分類"
+                                            />
+                                        </div>
+
                                         <img 
                                             src={item.metadata?.thumbnail_url || item.url} 
                                             onError={(e) => {
@@ -752,9 +866,30 @@ export default function AdminAssets() {
                                             </button>
                                         </div>
 
-                                        {/* Label */}
-                                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 p-1">
-                                            <p className="text-white text-[10px] truncate text-center">{item.name}</p>
+                                        {/* Inline Editable Label */}
+                                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 p-0.5 z-20">
+                                            <input
+                                                type="text"
+                                                defaultValue={item.name}
+                                                onBlur={(e) => {
+                                                    const val = e.target.value.trim();
+                                                    if (val && val !== item.name) {
+                                                        handleInlineNameUpdate(item.id, val);
+                                                    } else {
+                                                        e.target.value = item.name;
+                                                    }
+                                                }}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') e.currentTarget.blur();
+                                                    if (e.key === 'Escape') {
+                                                        e.currentTarget.value = item.name;
+                                                        e.currentTarget.blur();
+                                                    }
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="w-full bg-transparent text-white text-[10px] text-center outline-none border-b border-transparent focus:border-white/50 focus:bg-white/20 px-0.5 rounded-none transition-colors"
+                                                title="點擊修改圖片名稱 (Enter 儲存)"
+                                            />
                                         </div>
                                     </div>
                                 ))}
