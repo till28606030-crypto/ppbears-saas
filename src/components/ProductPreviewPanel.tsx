@@ -40,6 +40,10 @@ function Lightbox({
     onPrev: () => void;
     onNext: () => void;
 }) {
+    // Touch swipe state
+    const [touchStartX, setTouchStartX] = useState<number | null>(null);
+    const [touchEndX, setTouchEndX] = useState<number | null>(null);
+
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onClose();
@@ -50,11 +54,44 @@ function Lightbox({
         return () => window.removeEventListener('keydown', onKey);
     }, [onClose, onPrev, onNext]);
 
+    const handleTouchStart = (e: React.TouchEvent) => {
+        setTouchStartX(e.targetTouches[0].clientX);
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        setTouchEndX(e.targetTouches[0].clientX);
+    };
+
+    const handleTouchEnd = () => {
+        if (touchStartX === null || touchEndX === null) return;
+        const diff = touchStartX - touchEndX;
+        // Swipe threshold
+        if (diff > 50) onNext();
+        else if (diff < -50) onPrev();
+        setTouchStartX(null);
+        setTouchEndX(null);
+    };
+
     return (
         <div className="ppb-lightbox" onClick={onClose}>
             <button className="ppb-lightbox__close" onClick={onClose}><X size={20} /></button>
-            <div className="ppb-lightbox__content" onClick={e => e.stopPropagation()}>
-                <img src={images[index]} alt={`preview-${index}`} className="ppb-lightbox__img" />
+            <div 
+                className="ppb-lightbox__content" 
+                onClick={e => e.stopPropagation()}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+            >
+                <img 
+                    src={images[index]} 
+                    alt={`preview-${index}`} 
+                    className="ppb-lightbox__img cursor-pointer" 
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        // If only 1 image, click does nothing or closes. If > 1, go to next.
+                        if (images.length > 1) onNext();
+                    }}
+                />
                 {images.length > 1 && (
                     <>
                         <button className="ppb-lightbox__nav ppb-lightbox__nav--left" onClick={onPrev}>

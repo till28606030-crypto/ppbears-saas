@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 
 import { isAdminRoute } from '../../lib/isAdminRoute';
+import { getOptimizedUrl } from '../../lib/imageOptimizer';
 
 // --- Types ---
 
@@ -138,7 +139,7 @@ const SellerShop: React.FC = () => {
                         category: p.category || 'other',
                         categoryId: p.category_id,
                         brand: p.brand || '', // Task 2: Map Brand
-                        image: p.thumbnail || p.base_image || 'https://placehold.co/300x400?text=No+Image',
+                        image: getOptimizedUrl(p.thumbnail || p.base_image) || 'https://placehold.co/300x400?text=No+Image',
                         price: 990, // Default price (Hidden in UI)
                         tags: p.tags || []
                     }));

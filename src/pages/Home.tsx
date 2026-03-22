@@ -31,6 +31,7 @@ import { isAdminRoute } from '../lib/isAdminRoute';
 import { FIX_RLS_SQL } from './admin/Designs';
 import { buildCategoryTree } from '@/utils/categoryTree';
 import { removeDraft } from '../lib/draftStore';
+import { getOptimizedUrl } from '../lib/imageOptimizer';
 
 const EMPTY_TAGS: string[] = [];
 
@@ -1624,24 +1625,28 @@ export default function Home() {
                                 <Check className="w-8 h-8" />
                             </div>
                             <h2 className="text-xl font-bold text-gray-800 mb-2">設計已保存</h2>
-                            <p className="text-sm text-gray-500 mb-6 w-full break-all bg-gray-50 p-3 rounded-lg border border-gray-100 font-mono">
-                                您的設計ID:<br />
-                                <span className="font-bold text-gray-800 text-base">{designId}</span>
-                            </p>
+                            
+                            <div className="w-full bg-gray-50 p-4 rounded-xl border border-gray-100 mb-6 flex flex-col items-center gap-2">
+                                <span className="text-xs text-gray-500 font-medium">您的設計ID</span>
+                                <div className="flex items-center gap-3 bg-white pl-4 pr-1.5 py-1.5 rounded-lg border border-gray-200 shadow-sm w-full max-w-[240px]">
+                                    <span className="font-mono font-bold text-gray-800 tracking-wide flex-1 text-center">{designId}</span>
+                                    <button
+                                        onClick={() => {
+                                            if (designId) {
+                                                navigator.clipboard.writeText(designId);
+                                                alert('設計ID已複製到剪貼簿！');
+                                            }
+                                        }}
+                                        className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-800 bg-gray-50 hover:bg-gray-100 px-2 py-1.5 rounded transition-colors"
+                                        title="複製設計ID"
+                                    >
+                                        <Copy className="w-3.5 h-3.5" />
+                                        複製
+                                    </button>
+                                </div>
+                            </div>
 
-                            <div className="w-full space-y-3">
-                                <button
-                                    onClick={() => {
-                                        if (designId) {
-                                            navigator.clipboard.writeText(designId);
-                                            alert('設計ID已複製到剪貼簿！');
-                                        }
-                                    }}
-                                    className="w-full py-3 bg-white border-2 border-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
-                                >
-                                    <Copy className="w-5 h-5" />
-                                    複製設計ID
-                                </button>
+                            <div className="w-full">
                                 <button
                                     onClick={() => {
                                         setShowSaveSuccess(false);
@@ -2453,7 +2458,7 @@ export default function Home() {
                                                                     )}
 
                                                                     {design.previewUrl ? (
-                                                                        <img src={design.previewUrl} alt={design.name} className="w-full h-full object-contain p-1 relative z-10" loading="lazy" />
+                                                                        <img src={getOptimizedUrl(design.previewUrl, 600)} alt={design.name} className="w-full h-full object-contain p-1 relative z-10" loading="lazy" />
                                                                     ) : (
                                                                         <div className="w-full h-full flex items-center justify-center relative z-10">
                                                                             <FileImage className="w-8 h-8 text-gray-300" />

@@ -62,7 +62,15 @@ export default async function handler(req, res) {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const promptText = `你是手機殼商品規格辨識專家，專門處理 Devilcase 官網截圖。
-請從截圖中提取：
+
+【極度重要：防呆機制】
+如果圖片中「沒有」包含明顯的手機殼規格文字表格（例如只有純商品照片、動物照片、風景照等純圖片格式），請直接回傳以下 JSON，絕對不要回傳其他內容：
+{
+  "error": "INVALID_IMAGE",
+  "reason": "未偵測到規格文字，請上傳包含詳細規格文字的訂單截圖"
+}
+
+如果確認有規格表格，請從截圖中提取：
 1. 手機型號（如 Apple - iPhone 17 Pro Max）
 2. 殼種款式名稱（如 惡魔防摔殼 PRO 3 磁吸版、惡魔防摔殼 標準版 等）
 3. 所有配件規格屬性（外框、鏡頭造型、按鍵組、動作按鍵、相機按鍵 等）
@@ -124,6 +132,11 @@ export default async function handler(req, res) {
     } catch (parseErr) {
       console.error('[AI] recognize-product JSON parse error:', parseErr.message, 'Raw:', content.slice(0, 200));
       return res.status(502).json({ success: false, message: 'AI 辨識結果格式錯誤，請重試', errorCode: 'PARSE_ERROR' });
+    }
+
+    if (productInfo.error === 'INVALID_IMAGE') {
+      console.warn('[AI] INVALID_IMAGE detected by AI');
+      return res.status(400).json({ success: false, message: productInfo.reason || '未偵測到規格文字，請確保您上傳的是規格截圖而非純商品照片', errorCode: 'INVALID_IMAGE' });
     }
 
     console.log('[AI] recognize-product result:', JSON.stringify(productInfo).slice(0, 300));

@@ -78,6 +78,11 @@ export async function recognizeProductFromImage(file: File): Promise<RecognizedP
         })) : []
     };
 
+    // 防呆機制：若完全抓不到有效內容
+    if (!result.phoneName && !result.caseName && result.specs.length === 0) {
+        throw new Error('無法從圖片中辨識出任何規格文字。請確保您「上傳的是包含詳細規格列表的網頁截圖」，而非純照片！');
+    }
+
     // 針對特定欄位，若截圖中沒有辨識到，則強制補上「無選項」
     const requiredCategories = ['鏡頭造型', '相機按鍵', '動作按鍵'];
     requiredCategories.forEach(cat => {
