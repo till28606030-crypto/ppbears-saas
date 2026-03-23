@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Trash2, Search, Loader2, Database, AlertTriangle, Image as ImageIcon } from 'lucide-react';
+import { Trash2, Search, Loader2, Database, AlertTriangle, Image as ImageIcon, BarChart3, Save, CheckCircle2 } from 'lucide-react';
 import { formatBytes } from '@/lib/utils';
 import { format } from 'date-fns';
 
@@ -11,6 +11,58 @@ function getPublicUrl(bucket: string, filename: string): string {
 }
 
 export default function SystemSettings() {
+  // ── Tracking Code State ─────────────────────────────────────────────
+  const [ga4Id, setGa4Id] = useState('');
+  const [adsId, setAdsId] = useState('');
+  const [trackingSettingsId, setTrackingSettingsId] = useState<string | null>(null);
+  const [isSavingTracking, setIsSavingTracking] = useState(false);
+  const [trackingSaved, setTrackingSaved] = useState(false);
+
+  // Load existing tracking settings on mount
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from('store_settings')
+        .select('id, ga4_id, ads_id')
+        .limit(1)
+        .maybeSingle();
+      if (data) {
+        setTrackingSettingsId(data.id);
+        setGa4Id(data.ga4_id || '');
+        setAdsId(data.ads_id || '');
+      }
+    })();
+  }, []);
+
+  const handleSaveTracking = async () => {
+    setIsSavingTracking(true);
+    try {
+      if (trackingSettingsId) {
+        await supabase
+          .from('store_settings')
+          .update({ ga4_id: ga4Id.trim() || null, ads_id: adsId.trim() || null, updated_at: new Date().toISOString() })
+          .eq('id', trackingSettingsId);
+      } else {
+        const { data } = await supabase
+          .from('store_settings')
+          .insert({ ga4_id: ga4Id.trim() || null, ads_id: adsId.trim() || null })
+          .select('id')
+          .single();
+        if (data) setTrackingSettingsId(data.id);
+      }
+      setTrackingSaved(true);
+      setTimeout(() => setTrackingSaved(false), 3000);
+    } catch (err) {
+      console.error('Failed to save tracking settings:', err);
+      alert('儲存失敗，請重試。');
+    } finally {
+      setIsSavingTracking(false);
+    }
+  };
+
+
+
+  // ── Storage Scan State ─────────────────────────────────────────────
   const [isScanning, setIsScanning] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [scanResult, setScanResult] = useState<{
@@ -105,7 +157,69 @@ export default function SystemSettings() {
     <div className="p-6 md:p-8 max-w-5xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold mb-1">系統設定</h1>
-        <p className="text-gray-500">維護與清理系統檔案資源</p>
+        <p className="text-gray-500">維護、清理系統資源與設定行銷追蹤碼</p>
+      </div>
+
+      {/* ── Tracking Code Card ── */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
+        <div className="p-6 border-b border-gray-200 bg-gray-50/50">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-green-600" />
+            行銷與追蹤碼設定
+          </h2>
+          <p className="text-sm text-gray-500 mt-1">
+            設定後，系統將於前台自動動態注入追蹤腳本（SaaS 多租戶架構，無需修改程式碼）。
+          </p>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Google Analytics 4 (GA4) Measurement ID
+            </label>
+            <input
+              type="text"
+              value={ga4Id}
+              onChange={e => setGa4Id(e.target.value)}
+              placeholder="G-XXXXXXXXXX"
+              className="w-full sm:max-w-sm px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent font-mono"
+            />
+            <p className="text-xs text-gray-400 mt-1">例：G-407WTZ6K8S　　清空並儲存可停用追蹤</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Google ADS Conversion Tracking ID
+            </label>
+            <input
+              type="text"
+              value={adsId}
+              onChange={e => setAdsId(e.target.value)}
+              placeholder="AW-XXXXXXXXXX"
+              className="w-full sm:max-w-sm px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent font-mono"
+            />
+            <p className="text-xs text-gray-400 mt-1">例：AW-8141846681　　清空並儲存可停用追蹤</p>
+          </div>
+
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              onClick={handleSaveTracking}
+              disabled={isSavingTracking}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm disabled:opacity-50"
+            >
+              {isSavingTracking ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> 儲存中...</>
+              ) : (
+                <><Save className="w-4 h-4" /> 儲存設定</>
+              )}
+            </button>
+            {trackingSaved && (
+              <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium">
+                <CheckCircle2 className="w-4 h-4" /> 已儲存！前台將於下次載入時生效。
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">

@@ -9,6 +9,7 @@ import PublicTemplate from "@/pages/public/PublicTemplate";
 import DesignLookup from "@/pages/public/DesignLookup";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import TrackingProvider from "@/components/TrackingProvider";
 
 // ── Lazy-loaded: Admin / Seller routes ──────────────────
 // These are only downloaded when the user navigates to a protected route.
@@ -49,6 +50,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
+        <TrackingProvider>
         <Router basename={import.meta.env.VITE_BASE_PATH || '/'}>
           <Routes>
             {/* Public routes — statically imported for instant first paint */}
@@ -93,6 +95,7 @@ export default function App() {
             </Route>
           </Routes>
         </Router>
+        </TrackingProvider>
       </AuthProvider>
     </ErrorBoundary>
   );

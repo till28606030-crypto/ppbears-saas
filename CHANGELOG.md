@@ -2,6 +2,13 @@
 
 所有版本修改紀錄。每次每次修改需記錄：修改內容、影響檔案、測試結果。
 
+## [10.0] - 2026-03-23
+### Features
+- **SaaS 行銷追蹤碼管理 (Tracking Code Management)**：將原本寫死在 `index.html` 的 GA4 / Google ADS 腳本，升級為可由管理後台動態設定的 SaaS 多租戶架構。
+  - **後台管理介面**：在「系統設定」頁面新增「行銷與追蹤碼設定」卡片，管理員可於此填入 GA4 Measurement ID 與 Google ADS Conversion ID，儲存至 Supabase `store_settings` 資料表。
+  - **前台動態注入**：新建 `TrackingProvider.tsx`，應用程式啟動時自動從 Supabase 讀取追蹤 ID，並以 DOM 操作方式動態注入 `<head>`，完全不需修改程式碼。
+  - **架構清潔**：移除 `index.html` 中的寫死腳本，避免硬編碼帶來的維運負擔。
+
 ## [9.9] - 2026-03-23
 ### Features & Fixes
 - **資料追蹤與廣告歸因 (Analytics & ADS)**：在 React SaaS (`/design/`) 的 `index.html` 內新增 Google Analytics 4 (G-407WTZ6K8S) 與 Google ADS (Account 8141846681) 追蹤腳本。確保從廣告進入並使用設計工具的使用者旅程不會斷線，補足跨域追蹤盲區，並為再行銷與轉換歸因建立完整基礎。
