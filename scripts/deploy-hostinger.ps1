@@ -77,7 +77,7 @@ $scriptContent = @"
 option batch abort
 option confirm off
 open ftp://${FtpUser}:${encPass}@${FtpHost}/
-synchronize remote `"$DistPath`" `"$FtpRemotePath`" -delete
+synchronize remote `"$DistPath`" `"$FtpRemotePath`" -delete -resumesupport=off
 exit
 "@
 $scriptContent | Out-File -FilePath $winscpScript -Encoding ASCII
