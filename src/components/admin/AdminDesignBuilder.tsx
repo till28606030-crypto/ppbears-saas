@@ -5,7 +5,7 @@ import { listFrames, Frame } from '../../lib/frameService';
 import CanvasEditor, { CanvasEditorRef } from '../../components/CanvasEditor';
 import FontPicker from '../../components/FontPicker';
 import { AssetItem } from '@/types';
-import { Palette, X, Layers, Image as ImageIcon, Sparkles, Loader2, Save, Type, Plus, Undo2, Redo2, Trash2 } from 'lucide-react';
+import { Palette, X, Layers, Image as ImageIcon, Sparkles, Loader2, Save, Type, Plus, Undo2, Redo2, Trash2, Ban } from 'lucide-react';
 
 interface AdminDesignBuilderProps {
     onClose: () => void;
@@ -50,6 +50,10 @@ export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, can
     const [stickers, setStickers] = useState<AssetItem[]>([]);
     const [backgrounds, setBackgrounds] = useState<AssetItem[]>([]);
     const [frames, setFrames] = useState<Frame[]>([]);
+    const [stickerCategories, setStickerCategories] = useState<string[]>(['全部']);
+    const [backgroundCategories, setBackgroundCategories] = useState<string[]>(['全部']);
+    const [frameCategories, setFrameCategories] = useState<string[]>(['全部']);
+    const [selectedAssetCategory, setSelectedAssetCategory] = useState<string>('全部');
     const [loadingAssets, setLoadingAssets] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -66,12 +70,18 @@ export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, can
             try {
                 if (activePanel === 'stickers' || activePanel === 'backgrounds') {
                     const type = activePanel === 'stickers' ? 'sticker' : 'background';
-                    const { data } = await listAssets({ type, category: '全部', limit: 100 });
-                    if (type === 'sticker') setStickers(data);
-                    else setBackgrounds(data);
+                    const { data } = await listAssets({ type, category: '全部', limit: 300 }); // Increased limit to fetch all categories
+                    if (type === 'sticker') {
+                        setStickers(data);
+                        setStickerCategories(['全部', ...Array.from(new Set(data.map(item => item.category).filter(Boolean) as string[]))]);
+                    } else {
+                        setBackgrounds(data);
+                        setBackgroundCategories(['全部', ...Array.from(new Set(data.map(item => item.category).filter(Boolean) as string[]))]);
+                    }
                 } else if (activePanel === 'frames') {
                     const { data } = await listFrames();
                     setFrames(data);
+                    setFrameCategories(['全部', ...Array.from(new Set(data.map(item => item.category).filter(Boolean) as string[]))]);
                 }
             } catch (e) {
                 console.error("Failed to load assets", e);
@@ -111,6 +121,28 @@ export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, can
     const tabClass = (panel: string) =>
         `flex-1 py-3 text-sm font-medium border-b-2 transition-colors flex flex-col items-center gap-1 ${activePanel === panel ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`;
 
+    const handleTabSwitch = (panel: 'stickers' | 'backgrounds' | 'frames' | 'text') => {
+        setActivePanel(panel);
+        setSelectedAssetCategory('全部');
+    };
+
+    const renderCategoryTabs = (categories: string[]) => (
+        <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-2 scrollbar-none border-b border-gray-100 shrink-0">
+            {categories.map((cat) => (
+                <button
+                    key={cat}
+                    onClick={() => setSelectedAssetCategory(cat)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors shrink-0 
+                        ${selectedAssetCategory === cat 
+                            ? 'bg-blue-600 text-white shadow-sm' 
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                >
+                    {cat}
+                </button>
+            ))}
+        </div>
+    );
+
     return (
         <div className="flex flex-col h-full bg-gray-50">
             {/* Header */}
@@ -138,16 +170,16 @@ export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, can
                 <div className="w-80 bg-white border-r border-gray-200 flex flex-col shrink-0 z-10">
                     {/* Tabs */}
                     <div className="flex border-b border-gray-100">
-                        <button onClick={() => setActivePanel('stickers')} className={tabClass('stickers')}>
+                        <button onClick={() => handleTabSwitch('stickers')} className={tabClass('stickers')}>
                             <Sparkles className="w-4 h-4" /> 貼紙
                         </button>
-                        <button onClick={() => setActivePanel('frames')} className={tabClass('frames')}>
+                        <button onClick={() => handleTabSwitch('frames')} className={tabClass('frames')}>
                             <ImageIcon className="w-4 h-4" /> 相框
                         </button>
-                        <button onClick={() => setActivePanel('backgrounds')} className={tabClass('backgrounds')}>
+                        <button onClick={() => handleTabSwitch('backgrounds')} className={tabClass('backgrounds')}>
                             <Layers className="w-4 h-4" /> 背景
                         </button>
-                        <button onClick={() => setActivePanel('text')} className={tabClass('text')}>
+                        <button onClick={() => handleTabSwitch('text')} className={tabClass('text')}>
                             <Type className="w-4 h-4" /> 字體
                         </button>
                     </div>
@@ -224,44 +256,101 @@ export default function AdminDesignBuilder({ onClose, onSave, canvasWidthMM, can
                                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
                             </div>
                         ) : activePanel === 'stickers' ? (
-                            <div className="grid grid-cols-3 gap-2">
-                                {stickers.map((s) => (
-                                    <button key={s.id} onClick={() => canvasRef.current?.addSticker(s.url)}
-                                        className="aspect-square bg-gray-50 rounded-lg p-2 border border-gray-100 hover:border-blue-400 hover:shadow-sm transition-all flex items-center justify-center group">
-                                        <img src={s.url} alt={s.name} className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform" crossOrigin="anonymous" />
-                                    </button>
-                                ))}
-                                {stickers.length === 0 && <p className="col-span-3 text-center text-sm text-gray-400 py-8">沒有找到素材</p>}
+                            <div className="flex flex-col h-full">
+                                {renderCategoryTabs(stickerCategories)}
+                                <div className="grid grid-cols-4 gap-2">
+                                    {stickers.filter(s => selectedAssetCategory === '全部' || s.category === selectedAssetCategory).map((s) => (
+                                        <button key={s.id} onClick={() => canvasRef.current?.addSticker(s.url)}
+                                            className="aspect-square bg-gray-50 rounded-lg p-2 border border-gray-100 hover:border-blue-400 hover:shadow-sm transition-all flex items-center justify-center group">
+                                            <img src={s.url} alt={s.name} className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform" crossOrigin="anonymous" />
+                                        </button>
+                                    ))}
+                                    {stickers.filter(s => selectedAssetCategory === '全部' || s.category === selectedAssetCategory).length === 0 && <p className="col-span-4 text-center text-sm text-gray-400 py-8">這個分類沒有素材</p>}
+                                </div>
                             </div>
                         ) : activePanel === 'frames' ? (
-                            <div className="grid grid-cols-2 gap-3">
-                                {frames.map((f) => (
-                                    <button key={f.id} onClick={() => canvasRef.current?.addFrame({
-                                        id: f.id, name: f.name, imageUrl: f.url,
-                                        clipPathPoints: f.clipPathPoints, width: f.width, height: f.height, category: f.category
-                                    })}
-                                        className="aspect-[3/4] bg-gray-50 rounded-lg p-2 border border-gray-100 hover:border-blue-400 hover:shadow-sm transition-all flex flex-col items-center justify-center group">
-                                        <div className="flex-1 w-full flex items-center justify-center mb-1">
-                                            <img src={f.url} alt={f.name} className="max-w-full max-h-full object-contain drop-shadow-sm group-hover:scale-105 transition-transform" crossOrigin="anonymous" />
-                                        </div>
-                                        <span className="text-[10px] text-gray-500 truncate w-full text-center">{f.name}</span>
-                                    </button>
-                                ))}
-                                {frames.length === 0 && <p className="col-span-2 text-center text-sm text-gray-400 py-8">沒有找到相框</p>}
+                            <div className="flex flex-col h-full">
+                                {renderCategoryTabs(frameCategories)}
+                                <div className="grid grid-cols-3 gap-2">
+                                    {frames.filter(f => selectedAssetCategory === '全部' || f.category === selectedAssetCategory).map((f) => (
+                                        <button key={f.id} onClick={() => canvasRef.current?.addFrame({
+                                            id: f.id, name: f.name, imageUrl: f.url,
+                                            clipPathPoints: f.clipPathPoints, width: f.width, height: f.height, category: f.category
+                                        })}
+                                            className="aspect-[3/4] bg-gray-50 rounded-lg p-1.5 border border-gray-100 hover:border-blue-400 hover:shadow-sm transition-all flex flex-col items-center justify-center group">
+                                            <div className="flex-1 w-full flex items-center justify-center mb-1">
+                                                <img src={f.url} alt={f.name} className="max-w-full max-h-full object-contain drop-shadow-sm group-hover:scale-105 transition-transform" crossOrigin="anonymous" />
+                                            </div>
+                                            <span className="text-[9px] text-gray-500 truncate w-full text-center px-0.5">{f.name}</span>
+                                        </button>
+                                    ))}
+                                    {frames.filter(f => selectedAssetCategory === '全部' || f.category === selectedAssetCategory).length === 0 && <p className="col-span-3 text-center text-sm text-gray-400 py-8">這個分類沒有相框</p>}
+                                </div>
                             </div>
                         ) : activePanel === 'backgrounds' ? (
-                            <div className="grid grid-cols-2 gap-3">
-                                <button onClick={() => canvasRef.current?.setCanvasBgImage("")}
-                                    className="aspect-[9/16] bg-white rounded-lg border-2 border-dashed border-gray-300 hover:border-red-400 hover:text-red-500 text-gray-400 transition-all flex flex-col items-center justify-center">
-                                    <X className="w-6 h-6 mb-1" />
-                                    <span className="text-xs font-medium">移除背景</span>
-                                </button>
-                                {backgrounds.map((bg) => (
-                                    <button key={bg.id} onClick={() => canvasRef.current?.setCanvasBgImage(bg.url)}
-                                        className="aspect-[9/16] rounded-lg border border-gray-200 hover:border-blue-500 hover:shadow-md transition-all overflow-hidden relative group">
-                                        <img src={bg.url} alt={bg.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" crossOrigin="anonymous" />
-                                    </button>
-                                ))}
+                            <div className="flex flex-col gap-5">
+                                {/* 純色背景區塊 */}
+                                <div className="border border-gray-100 rounded-xl p-4 bg-white shadow-sm">
+                                    <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">純色背景</div>
+                                    <div className="flex flex-wrap gap-2.5">
+                                        {/* Remove Background */}
+                                        <button
+                                            onClick={() => {
+                                                canvasRef.current?.setCanvasBgImage("");
+                                                canvasRef.current?.setCanvasBgColor(null);
+                                            }}
+                                            className="w-8 h-8 flex-shrink-0 rounded-full border border-gray-200 hover:scale-110 transition-transform shadow-sm relative bg-white flex items-center justify-center text-red-500"
+                                            title="移除背景"
+                                        >
+                                            <Ban className="w-4 h-4" />
+                                        </button>
+
+                                        {/* Custom Color Picker */}
+                                        <label className="w-8 h-8 flex-shrink-0 rounded-full border border-gray-300 cursor-pointer relative overflow-hidden flex items-center justify-center bg-gradient-to-br from-red-500 via-green-500 to-blue-500 hover:shadow-md transition-shadow" title="自訂顏色">
+                                            <input
+                                                type="color"
+                                                className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+                                                onChange={(e) => canvasRef.current?.setCanvasBgColor(e.target.value)}
+                                            />
+                                            <div className="bg-white/80 p-0.5 rounded-full pointer-events-none">
+                                                <Plus className="w-3 h-3 text-gray-600" />
+                                            </div>
+                                        </label>
+
+                                        {/* Presets */}
+                                        {['#FF0000', '#FFA500', '#FFFF00', '#008000', '#0000FF', '#4B0082', '#EE82EE', '#1C1C1E', '#FFFFFF'].map(color => (
+                                            <button
+                                                key={color}
+                                                onClick={() => canvasRef.current?.setCanvasBgColor(color)}
+                                                className="w-8 h-8 flex-shrink-0 rounded-full border border-gray-200 hover:scale-110 transition-transform shadow-sm relative cursor-pointer"
+                                                style={{ backgroundColor: color }}
+                                                title={color}
+                                            >
+                                                {color === '#FFFFFF' && <div className="absolute inset-0 border border-gray-100 rounded-full" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* 圖片背景區塊 */}
+                                <div>
+                                    <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 px-1">圖片背景</div>
+                                    {renderCategoryTabs(backgroundCategories)}
+                                    <div className="grid grid-cols-3 gap-2 mt-2">
+                                        <button onClick={() => canvasRef.current?.setCanvasBgImage("")}
+                                            className="aspect-[9/16] bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 hover:border-red-400 hover:text-red-500 text-gray-400 transition-all flex flex-col items-center justify-center">
+                                            <X className="w-5 h-5 mb-1" />
+                                            <span className="text-[10px] font-medium">移除圖片</span>
+                                        </button>
+                                        {backgrounds.filter(bg => selectedAssetCategory === '全部' || bg.category === selectedAssetCategory).map((bg) => (
+                                            <button key={bg.id} onClick={() => canvasRef.current?.setCanvasBgImage(bg.url)}
+                                                className="aspect-[9/16] rounded-lg border border-gray-200 hover:border-blue-500 hover:shadow-md transition-all overflow-hidden relative group">
+                                                <img src={bg.url} alt={bg.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" crossOrigin="anonymous" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {backgrounds.filter(bg => selectedAssetCategory === '全部' || bg.category === selectedAssetCategory).length === 0 && <p className="text-center text-sm text-gray-400 py-8">這個分類沒有圖片</p>}
+                                </div>
                             </div>
                         ) : null}
                     </div>

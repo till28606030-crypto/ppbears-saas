@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { ShoppingBag, Download, Clock, Search, Trash2, ExternalLink, RefreshCw, CheckSquare, Square, Copy, Image as ImageIcon, Settings, Save, Loader2, RefreshCcw } from 'lucide-react';
+import { ShoppingBag, Download, Clock, Search, Trash2, ExternalLink, RefreshCw, CheckSquare, Square, Copy, Image as ImageIcon, Settings, Save, Loader2, RefreshCcw, X } from 'lucide-react';
 
 interface Design {
     id: string;
@@ -289,10 +289,16 @@ export default function AdminOrders() {
         }
     };
 
-    const handleDownload = async (design: Design, type: 'PREVIEW' | 'PRINT' = 'PREVIEW') => {
-        const imageUrl = type === 'PRINT' ? design.print_image : design.preview_image;
+    const handleDownload = async (design: Design, type: 'PREVIEW' | 'PRINT' | 'SPEC' = 'PREVIEW', showMissingAlert: boolean = true) => {
+        let imageUrl = '';
+        if (type === 'PRINT') imageUrl = design.print_image || '';
+        else if (type === 'PREVIEW') imageUrl = design.preview_image || '';
+        else if (type === 'SPEC') imageUrl = design.spec_image_url || '';
+
         if (!imageUrl) {
-            alert(type === 'PRINT' ? '此設計尚無印刷稿可下載' : '此設計無預覽圖可下載');
+            if (showMissingAlert) {
+                alert(type === 'PRINT' ? '此設計尚無印刷稿可下載' : '此設計無檔案可下載');
+            }
             return;
         }
 
@@ -342,7 +348,11 @@ export default function AdminOrders() {
                 }
             } else {
                 downloadUrl = window.URL.createObjectURL(blob);
-                extension = 'png'; // 印刷稿維持高品質 PNG
+                if (type === 'SPEC' && imageUrl.toLowerCase().includes('.jpg')) {
+                    extension = 'jpg';
+                } else {
+                    extension = 'png'; // 印刷稿/SPEC 預設維持高品質 PNG
+                }
             }
 
             // Create a link and trigger download
@@ -359,6 +369,23 @@ export default function AdminOrders() {
             console.error('Download failed:', error);
             // Fallback to direct navigation if blob download fails, but set target blank
             window.open(imageUrl, '_blank');
+        }
+    };
+
+    const handleOneClickDownload = async (design: Design) => {
+        const types: Array<'PRINT' | 'PREVIEW' | 'SPEC'> = [];
+        if (design.print_image) types.push('PRINT');
+        if (design.preview_image) types.push('PREVIEW');
+        if (design.spec_image_url) types.push('SPEC');
+
+        if (types.length === 0) {
+            alert('此設計無任何檔案可下載');
+            return;
+        }
+
+        for (const type of types) {
+            await handleDownload(design, type, false);
+            await new Promise(resolve => setTimeout(resolve, 300));
         }
     };
 
@@ -434,10 +461,11 @@ export default function AdminOrders() {
         return `${base}?${params.toString()}`;
     };
 
+    const safeSearchTerm = searchTerm.trim().toLowerCase();
     const filteredDesigns = designs.filter(d =>
-        d.design_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        d.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        d.phone_model.toLowerCase().includes(searchTerm.toLowerCase())
+        d.design_id.toLowerCase().includes(safeSearchTerm) ||
+        d.product_name.toLowerCase().includes(safeSearchTerm) ||
+        d.phone_model.toLowerCase().includes(safeSearchTerm)
     );
 
     const isAllSelected = filteredDesigns.length > 0 && selectedIds.size === filteredDesigns.length;
@@ -561,8 +589,16 @@ export default function AdminOrders() {
                         placeholder="搜尋設計 ID、商品名稱..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="block w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+                        className="block w-full pl-10 pr-10 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
                     />
+                    {searchTerm && (
+                        <button
+                            onClick={() => setSearchTerm('')}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    )}
                 </div>
 
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -778,6 +814,15 @@ CREATE POLICY "public insert custom_designs"
                                                 >
                                                     <Download className="w-4 h-4" />
                                                     下載預覽
+                                                </button>
+                                                {/* One Click Download */}
+                                                <button
+                                                    onClick={() => handleOneClickDownload(design)}
+                                                    className="flex items-center gap-2 px-3 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 font-medium transition-colors shadow-sm text-sm"
+                                                    title="一鍵下載（預覽圖 + 印刷稿 + 規格圖）"
+                                                >
+                                                    <Download className="w-4 h-4" />
+                                                    一鍵下載所有圖片
                                                 </button>
                                                 {/* Delete */}
                                                 <button

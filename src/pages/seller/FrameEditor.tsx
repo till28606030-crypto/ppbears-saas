@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Canvas, FabricImage, Circle, Line, Polygon } from 'fabric';
-import { Upload, Save, ArrowLeft, Trash2, MousePointer2 } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Canvas, FabricImage, Circle as FabricCircle, Line, Polygon, Rect, Ellipse } from 'fabric';
+import { Upload, Save, ArrowLeft, Trash2, MousePointer2, Square, Circle as CircleIcon } from 'lucide-react';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { uploadToSupabase } from '@/lib/upload';
 
@@ -20,6 +20,7 @@ export interface FrameTemplate {
 const FrameEditor = () => {
     const navigate = useNavigate();
     const { id } = useParams();
+    const location = useLocation();
     const canvasEl = useRef<HTMLCanvasElement>(null);
     const fabricCanvas = useRef<Canvas | null>(null);
     const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -27,7 +28,7 @@ const FrameEditor = () => {
     const [isDrawing, setIsDrawing] = useState(false);
     const [points, setPoints] = useState<{ x: number; y: number }[]>([]);
     const [tempLines, setTempLines] = useState<Line[]>([]);
-    const [tempCircles, setTempCircles] = useState<Circle[]>([]);
+    const [tempCircles, setTempCircles] = useState<FabricCircle[]>([]);
     const [frameName, setFrameName] = useState('New Frame');
     const [isCanvasReady, setIsCanvasReady] = useState(false);
     const [existingFrameData, setExistingFrameData] = useState<any>(null);
@@ -39,7 +40,6 @@ const FrameEditor = () => {
         const canvas = new Canvas(canvasEl.current, {
             width: 800,
             height: 600,
-            backgroundColor: '#f3f4f6',
             selection: false // Disable selection while drawing
         });
         fabricCanvas.current = canvas;
@@ -127,10 +127,13 @@ const FrameEditor = () => {
                             fill: 'rgba(255, 0, 0, 0.3)',
                             stroke: 'red',
                             strokeWidth: 2,
-                            selectable: false,
-                            evented: false,
-                            objectCaching: false
+                            selectable: true,
+                            evented: true,
+                            objectCaching: false,
+                            transparentCorners: false,
+                            cornerColor: 'blue'
                         });
+                        (polygon as any).isClipMask = true;
                         
                         canvas.add(polygon);
                     }
@@ -184,7 +187,7 @@ const FrameEditor = () => {
                 originX: 'center',
                 originY: 'center',
                 selectable: false,
-                evented: false, // Let clicks pass through for drawing? No, we need clicks on canvas
+                evented: false,
                 opacity: 0.8 // Dim slightly to make red lines visible
             });
             
@@ -221,7 +224,7 @@ const FrameEditor = () => {
             setPoints(prev => [...prev, newPoint]);
 
             // Visuals: Add Circle Marker
-            const circle = new Circle({
+            const circle = new FabricCircle({
                 left: x,
                 top: y,
                 radius: 4,
@@ -295,10 +298,13 @@ const FrameEditor = () => {
             fill: 'rgba(255, 0, 0, 0.3)',
             stroke: 'red',
             strokeWidth: 2,
-            selectable: false,
-            evented: false,
-            objectCaching: false
+            selectable: true,
+            evented: true,
+            objectCaching: false,
+            transparentCorners: false,
+            cornerColor: 'blue'
         });
+        (polygon as any).isClipMask = true;
         
         // Remove temp guides
         tempLines.forEach(l => canvas.remove(l));
@@ -307,7 +313,56 @@ const FrameEditor = () => {
         setTempCircles([]);
         
         canvas.add(polygon);
+        canvas.setActiveObject(polygon);
         canvas.requestRenderAll();
+    };
+
+    const addPresetShape = (type: 'rect' | 'ellipse') => {
+        resetDrawing();
+        const canvas = fabricCanvas.current;
+        if (!canvas) return;
+
+        canvas.set({ selection: true });
+        
+        const w = 200, h = 200;
+        const left = canvas.width / 2;
+        const top = canvas.height / 2;
+        
+        let shape;
+        if (type === 'rect') {
+            shape = new Rect({
+                left, top,
+                width: w, height: h,
+                originX: 'center', originY: 'center',
+                fill: 'rgba(255, 0, 0, 0.3)',
+                stroke: 'red',
+                strokeWidth: 2,
+                selectable: true,
+                evented: true,
+                transparentCorners: false,
+                cornerColor: 'blue'
+            });
+        } else {
+            shape = new Ellipse({
+                left, top,
+                rx: w/2, ry: h/2,
+                originX: 'center', originY: 'center',
+                fill: 'rgba(255, 0, 0, 0.3)',
+                stroke: 'red',
+                strokeWidth: 2,
+                selectable: true,
+                evented: true,
+                transparentCorners: false,
+                cornerColor: 'blue'
+            });
+        }
+        
+        (shape as any).isClipMask = true;
+        canvas.add(shape);
+        canvas.setActiveObject(shape);
+        canvas.requestRenderAll();
+        
+        setIsDrawing(false);
     };
 
     const resetDrawing = () => {
@@ -333,14 +388,62 @@ const FrameEditor = () => {
     };
 
     const saveFrame = async () => {
-        if (!imageUrl || points.length < 3) {
-            alert("請先上傳圖片並繪製完整的裁切區域");
-            return;
-        }
-
         const canvas = fabricCanvas.current;
         const imgObj = canvas?.getObjects().find(o => o.type === 'image');
         if (!imgObj) return;
+
+        const clipShape = canvas?.getObjects().find(o => (o as any).isClipMask || o.type === 'polygon' || o.type === 'rect' || o.type === 'ellipse');
+        let finalPoints = points;
+
+        if (clipShape) {
+            if (clipShape.type === 'rect') {
+                const coords = clipShape.getCoords();
+                finalPoints = [
+                    {x: coords[0].x, y: coords[0].y},
+                    {x: coords[1].x, y: coords[1].y},
+                    {x: coords[2].x, y: coords[2].y},
+                    {x: coords[3].x, y: coords[3].y}
+                ];
+            } else if (clipShape.type === 'ellipse') {
+                const extPoints = [];
+                const res = 60;
+                const rx = (clipShape as any).rx;
+                const ry = (clipShape as any).ry;
+                const rad = (clipShape.angle || 0) * Math.PI / 180;
+                const cosA = Math.cos(rad);
+                const sinA = Math.sin(rad);
+                const center = clipShape.getCenterPoint();
+                const scaleX = clipShape.scaleX || 1;
+                const scaleY = clipShape.scaleY || 1;
+                
+                for (let i = 0; i < res; i++) {
+                    const a = (i * Math.PI * 2) / res;
+                    const x = rx * scaleX * Math.cos(a);
+                    const y = ry * scaleY * Math.sin(a);
+                    extPoints.push({
+                        x: center.x + x * cosA - y * sinA, 
+                        y: center.y + x * sinA + y * cosA
+                    });
+                }
+                finalPoints = extPoints;
+            } else if (clipShape.type === 'polygon') {
+                const m = clipShape.calcTransformMatrix();
+                const pathOffset = (clipShape as any).pathOffset || {x: 0, y: 0};
+                finalPoints = (clipShape as any).points.map((p: any) => {
+                    const x = p.x - pathOffset.x;
+                    const y = p.y - pathOffset.y;
+                    return {
+                        x: x * m[0] + y * m[2] + m[4],
+                        y: x * m[1] + y * m[3] + m[5]
+                    };
+                });
+            }
+        }
+
+        if (!imageUrl || finalPoints.length < 3) {
+            alert("請先上傳圖片並繪製完整的裁切區域");
+            return;
+        }
 
         try {
             // 1. Upload Image to Supabase if a new file is selected
@@ -357,12 +460,13 @@ const FrameEditor = () => {
 
             // 2. Normalize points
             const center = imgObj.getCenterPoint();
-            const normalizedPoints = points.map(p => ({
+            const normalizedPoints = finalPoints.map(p => ({
                 x: (p.x - center.x) / (imgObj.scaleX || 1),
                 y: (p.y - center.y) / (imgObj.scaleY || 1)
             }));
 
             // 3. Prepare DB Record
+            const defaultCategory = location.state?.category || '未分類';
             const metadata = {
                 clipPathPoints: normalizedPoints,
                 width: imgObj.width,
@@ -374,7 +478,7 @@ const FrameEditor = () => {
                 url: finalUrl,
                 type: 'frame',
                 metadata: metadata,
-                category: existingFrameData?.category || '未分類',
+                category: existingFrameData?.category || defaultCategory,
                 tags: existingFrameData?.tags || []
             };
 
@@ -444,10 +548,26 @@ const FrameEditor = () => {
                                 className={`flex items-center gap-2 p-3 rounded-lg text-sm font-medium transition-colors ${isDrawing ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-white border border-gray-200 hover:bg-gray-50'}`}
                             >
                                 <MousePointer2 className="w-4 h-4" />
-                                {isDrawing ? '停止繪製' : '開始繪製區域'}
+                                {isDrawing ? '停止繪製' : '開始手繪區域'}
+                            </button>
+                            
+                            <button 
+                                onClick={() => addPresetShape('rect')} 
+                                className="flex items-center gap-2 p-3 rounded-lg text-sm font-medium bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
+                            >
+                                <Square className="w-4 h-4" />
+                                加入矩形 (可拉伸變形)
+                            </button>
+                            
+                            <button 
+                                onClick={() => addPresetShape('ellipse')} 
+                                className="flex items-center gap-2 p-3 rounded-lg text-sm font-medium bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
+                            >
+                                <CircleIcon className="w-4 h-4" />
+                                加入圓形 (可拉伸變形)
                             </button>
 
-                            {points.length > 0 && (
+                            {(points.length > 0 || fabricCanvas.current?.getObjects().some(o => (o as any).isClipMask)) && (
                                 <button 
                                     onClick={resetDrawing} 
                                     className="flex items-center gap-2 p-3 rounded-lg text-sm font-medium bg-white border border-gray-200 hover:bg-red-50 hover:text-red-600 transition-colors"
@@ -472,7 +592,15 @@ const FrameEditor = () => {
 
                 {/* Canvas Area */}
                 <div className="flex-1 bg-gray-100 relative flex items-center justify-center p-8">
-                    <div className="shadow-lg bg-white">
+                    <div 
+                        className="shadow-lg"
+                        style={{
+                            backgroundColor: '#fff',
+                            backgroundImage: 'linear-gradient(45deg, #e5e5e5 25%, transparent 25%, transparent 75%, #e5e5e5 75%, #e5e5e5), linear-gradient(45deg, #e5e5e5 25%, transparent 25%, transparent 75%, #e5e5e5 75%, #e5e5e5)',
+                            backgroundSize: '20px 20px',
+                            backgroundPosition: '0 0, 10px 10px'
+                        }}
+                    >
                         <canvas ref={canvasEl} />
                     </div>
                     {!imageUrl && (

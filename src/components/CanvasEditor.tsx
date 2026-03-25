@@ -1553,25 +1553,27 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             o.data?.systemId === 'system_base_image' || o.id === 'system_base_image'
         ) as FabricImage;
 
-        // If no base layer exists yet, defer background creation
-        // This prevents creating background with wrong dimensions during initial load
-        if (!baseLayer) {
-            console.warn('[BG] No base layer found, skipping background creation. Call setCanvasBgColor again after product loads.');
-            canvas.requestRenderAll();
-            dumpCanvas(canvas, 'bg_apply_color_deferred');
-            console.groupEnd();
-            return;
+        let targetRect;
+        if (baseLayer) {
+            // Use base layer's bounding box for full visual coverage
+            const baseBounds = baseLayer.getBoundingRect();
+            targetRect = {
+                left: baseBounds.left,
+                top: baseBounds.top,
+                width: baseBounds.width,
+                height: baseBounds.height
+            };
+            console.log('[BG] Using base layer dimensions for color:', targetRect);
+        } else {
+            // Fallback for Admin Template Builder where no base layer exists
+            targetRect = {
+                left: 0,
+                top: 0,
+                width: REAL_WIDTH || canvas.getWidth(),
+                height: REAL_HEIGHT || canvas.getHeight()
+            };
+            console.warn('[BG] No base layer found, using REAL dimensions for color:', targetRect);
         }
-
-        // Use base layer's bounding box for full visual coverage
-        const baseBounds = baseLayer.getBoundingRect();
-        const targetRect = {
-            left: baseBounds.left,
-            top: baseBounds.top,
-            width: baseBounds.width,
-            height: baseBounds.height
-        };
-        console.log('[BG] Using base layer dimensions for color:', targetRect);
 
         // Create color rectangle as layer
         const rect = new Rect({
@@ -1664,16 +1666,14 @@ const CanvasEditor = forwardRef((props: CanvasEditorProps, ref: React.ForwardedR
             };
             console.log('[BG-DEBUG] Using base layer dimensions:', targetRect);
         } else {
-            // Fallback to canvas dimensions
-            const canvasWidth = canvas.getWidth();
-            const canvasHeight = canvas.getHeight();
+            // Fallback to REAL_WIDTH / REAL_HEIGHT
             targetRect = {
                 left: 0,
                 top: 0,
-                width: canvasWidth,
-                height: canvasHeight
+                width: REAL_WIDTH || canvas.getWidth(),
+                height: REAL_HEIGHT || canvas.getHeight()
             };
-            console.warn('[BG-DEBUG] No base layer found, using canvas dimensions:', targetRect);
+            console.warn('[BG-DEBUG] No base layer found, using REAL dimensions:', targetRect);
         }
 
         try {
